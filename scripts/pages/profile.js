@@ -33,11 +33,21 @@ export async function init(context) {
     return;
   }
 
+  // ============================================================
+  // ✅ Use cached subscription – no backend calls
+  // ============================================================
+  let sub = null;
+  try {
+    sub = await subscription.getSubscription(); // returns cached object
+  } catch (err) {
+    console.warn('[Profile] Failed to get subscription:', err);
+    sub = null;
+  }
+
   // Update header status
-  const sub = subscription.getSubscription();
   const statusEl = $('#header-status');
   if (sub && sub.isActive) {
-    const remaining = await subscription.formatRemainingTime?.() || '';
+    const remaining = await subscription.formatRemainingTime(); // uses cached expiry
     statusEl.textContent = `${sub.plan} · expires ${utils.formatDate(sub.expiryDate)} (${remaining} left)`;
   } else {
     statusEl.textContent = 'No active plan';
@@ -53,7 +63,7 @@ export async function init(context) {
   // Subscription info
   const subEl = $('#subscription-info');
   if (sub?.isActive) {
-    const remaining = await subscription.formatRemainingTime?.() || '';
+    const remaining = await subscription.formatRemainingTime();
     subEl.innerHTML = `
       <p><strong>Plan:</strong> ${sub.plan}</p>
       <p><strong>Expires:</strong> ${utils.formatDate(sub.expiryDate)} (${remaining} left)</p>

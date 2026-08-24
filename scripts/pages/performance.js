@@ -123,6 +123,9 @@ export async function init(context) {
 
 // ==================== ATTACH EVENT LISTENERS ====================
 function attachEventListeners(context) {
+  // Use a safe root: fallback to document if context.root is not a DOM element
+  const root = (context.root && context.root.nodeType === 1) ? context.root : document;
+
   // Theme toggle
   const themeToggle = $('#themeToggle');
   if (themeToggle) {
@@ -135,19 +138,19 @@ function attachEventListeners(context) {
     notifBtn.addEventListener('click', () => router.navigateTo('notifications'));
   }
 
-  // Tabs
-  const tabs = context.root.querySelectorAll('.tab-button');
+  // Tabs – use the safe root
+  const tabs = root.querySelectorAll('.tab-button');
   tabs.forEach(btn => {
     btn.addEventListener('click', function() {
       const tabId = this.dataset.tab;
-      switchTab(tabId, context.root);
+      switchTab(tabId, root);
     });
   });
 
   // Quick links in academic overview
-  context.root.querySelectorAll('.quick-link[data-tab]').forEach(el => {
+  root.querySelectorAll('.quick-link[data-tab]').forEach(el => {
     el.addEventListener('click', function() {
-      switchTab(this.dataset.tab, context.root);
+      switchTab(this.dataset.tab, root);
     });
   });
 
@@ -158,7 +161,7 @@ function attachEventListeners(context) {
   }
 
   // Chart buttons
-  const chartBtns = context.root.querySelectorAll('.chart-btn');
+  const chartBtns = root.querySelectorAll('.chart-btn');
   chartBtns.forEach(btn => {
     btn.addEventListener('click', function() {
       chartBtns.forEach(b => b.classList.remove('active'));
@@ -168,13 +171,13 @@ function attachEventListeners(context) {
   });
 
   // Planner buttons
-  const plannerBtns = context.root.querySelectorAll('.planner-btn');
+  const plannerBtns = root.querySelectorAll('.planner-btn');
   plannerBtns.forEach(btn => {
     btn.addEventListener('click', function() {
       plannerBtns.forEach(b => b.classList.remove('active'));
       this.classList.add('active');
       const key = this.dataset.planner;
-      context.root.querySelectorAll('.planner-module-container').forEach(el => {
+      root.querySelectorAll('.planner-module-container').forEach(el => {
         el.classList.toggle('active', el.id === `planner-${key}`);
       });
       switch (key) {
@@ -189,20 +192,20 @@ function attachEventListeners(context) {
   });
 
   // Academic buttons
-  const academicBtns = context.root.querySelectorAll('.academic-btn');
+  const academicBtns = root.querySelectorAll('.academic-btn');
   academicBtns.forEach(btn => {
     btn.addEventListener('click', function() {
       academicBtns.forEach(b => b.classList.remove('active'));
       this.classList.add('active');
       const key = this.dataset.academic;
-      context.root.querySelectorAll('.academic-module-container').forEach(el => {
+      root.querySelectorAll('.academic-module-container').forEach(el => {
         el.classList.toggle('active', el.id === `academic-${key}`);
       });
     });
   });
 
   // Leaderboard tabs
-  const leaderboardBtns = context.root.querySelectorAll('.leaderboard-tabs button');
+  const leaderboardBtns = root.querySelectorAll('.leaderboard-tabs button');
   leaderboardBtns.forEach(btn => {
     btn.addEventListener('click', function() {
       leaderboardBtns.forEach(b => b.classList.remove('active'));
@@ -287,14 +290,14 @@ function attachEventListeners(context) {
     });
   }
 
-  // Toggle switches (privacy)
-  context.root.querySelectorAll('.toggle-switch').forEach(toggle => {
+  // Toggle switches (privacy) – use root
+  root.querySelectorAll('.toggle-switch').forEach(toggle => {
     toggle.addEventListener('click', function() {
       this.classList.toggle('on');
     });
   });
 
-  // Footer buttons
+  // Footer buttons (they use data-route, not root)
   context.root.querySelectorAll('[data-route]').forEach(el => {
     el.addEventListener('click', () => router.navigateTo(el.dataset.route));
   });
@@ -302,10 +305,17 @@ function attachEventListeners(context) {
 
 // ==================== TAB SWITCHING ====================
 function switchTab(tabId, root = document) {
+  // Ensure root is a valid DOM element (nodeType 1 = Element)
+  if (!root || root.nodeType !== 1 || typeof root.getElementById !== 'function') {
+    root = document;
+  }
+
   root.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
   root.querySelectorAll('.tab-button').forEach(el => el.classList.remove('active'));
+
   const tab = root.getElementById(tabId);
   if (tab) tab.classList.add('active');
+
   const btn = root.querySelector(`.tab-button[data-tab="${tabId}"]`);
   if (btn) btn.classList.add('active');
 

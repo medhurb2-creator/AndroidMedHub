@@ -1,28 +1,18 @@
 // scripts/sync.js
 
-/**
- * Data Synchronization Module – Convex Integration
- * Handles silent two‑way sync between local IndexedDB and Convex backend.
- * All authenticated calls include the JWT token directly from localStorage.
- *
- * Throttling: sync runs at most once per hour (or on demand via force).
- * Push & pull only happen after the 1‑hour cooldown, and then all pending data is exchanged.
- *
- * Note: Conversations are synced in real‑time via the AI module, so they are excluded from this batch sync.
- */
-
 import * as utils from './utils.js';
 import * as db from './db.js';
 import * as auth from './auth.js';
 import * as subscription from './subscription.js';
 import { convexHttpClient } from './convex-client.js';
+import { navigateTo } from './router.js';
 
 // ==================== CONSTANTS ====================
 
 const SYNC_INTERVAL_MS = 30 * 60 * 1000;     // 30 minutes (background check)
 const SYNC_COOLDOWN_MS = 60 * 60 * 1000;     // 1 hour (minimum time between full syncs)
 const SYNC_STATE_KEY = 'sync_state';
-const SYNC_TIMER_KEY = 'sync_timer';          // stores last sync timestamp (milliseconds)
+const SYNC_TIMER_KEY = 'sync_timer';
 
 // ==================== SYNC TIMER ====================
 
@@ -47,14 +37,8 @@ function isSyncAllowed() {
 
 let syncState = {
     lastFullSync: 0,
-    lastPush: {
-        exams: 0,
-        notes: 0,
-    },
-    lastPull: {
-        exams: 0,
-        notes: 0,
-    }
+    lastPush: { exams: 0, notes: 0 },
+    lastPull: { exams: 0, notes: 0 }
 };
 
 function loadSyncState() {
@@ -93,7 +77,6 @@ export function isOnline() {
 export function monitorConnection() {
     window.addEventListener('online', () => {
         onlineStatus = true;
-        // Attempt a sync when coming online, but respect cooldown
         syncData().catch(() => {});
     });
     window.addEventListener('offline', () => {
@@ -101,7 +84,7 @@ export function monitorConnection() {
     });
 }
 
-// ==================== DIRECT TOKEN RETRIEVAL ====================
+// ==================== TOKEN HELPERS (with refresh) ====================
 
 function getAuthToken() {
     const token = utils.getLocalStorage('accessToken');
@@ -110,6 +93,62 @@ function getAuthToken() {
         return null;
     }
     return token;
+}
+
+async function ensureValidToken() {
+    let token = getAuthToken();
+    if (!token) return null;
+
+    // Try using current token first; if it fails, we'll refresh in the caller.
+    return token;
+}
+
+async function refreshTokenIfNeeded() {
+    console.log('[Sync] Attempting to refresh token...');
+    const refreshed = await auth.refreshSession();
+    if (refreshed) {
+        console.log('[Sync] Token refreshed successfully.');
+        return getAuthToken();
+    }
+    console.warn('[Sync] Token refresh failed.');
+    return null;
+}
+
+// Helper to execute an action with retry after token refresh
+async function withTokenRetry(action) {
+    let token = getAuthToken();
+    if (!token) throw new Error('No authentication token');
+
+    try {
+        return await action(token);
+    } catch (error) {
+        const message = error?.message || error?.toString() || '';
+        const isTokenError =
+            message.includes('invalid_token') ||
+            message.includes('session_expired') ||
+            message.includes('verify authentication token') ||
+            message.includes('Failed to verify authentication token') ||
+            message.includes('Unauthorized') ||
+            message.includes('authentication failed') ||
+            message.includes('token') ||
+            message.includes('JWT verification error') ||
+            message.includes('jwt expired') ||
+            message.includes('TokenExpiredError');
+
+        if (!isTokenError) {
+            throw error; // Not a token error, rethrow
+        }
+
+        console.warn('[Sync] Token error detected, attempting refresh...');
+        const newToken = await refreshTokenIfNeeded();
+        if (!newToken) {
+            // Refresh failed, throw original error
+            throw error;
+        }
+        // Retry once with new token
+        console.log('[Sync] Retrying with refreshed token...');
+        return await action(newToken);
+    }
 }
 
 // ==================== LOCAL HELPER FOR SYNC QUEUE ====================
@@ -128,23 +167,12 @@ async function addToSyncQueue(type, data, attempts = 0) {
 
 // ==================== SYNC DATA (MAIN) ====================
 
-/**
- * Main sync function.
- * @param {boolean} force - if true, bypass the 1‑hour cooldown.
- */
 export async function syncData(force = false) {
     if (!onlineStatus) {
         console.log('[Sync] Skipped: offline');
         return;
     }
 
-    const token = getAuthToken();
-    if (!token) {
-        console.warn('[Sync] Skipped: no token');
-        return;
-    }
-
-    // Respect cooldown unless forced
     if (!force && !isSyncAllowed()) {
         const last = getLastSyncTime();
         const nextAllowed = last + SYNC_COOLDOWN_MS;
@@ -163,16 +191,19 @@ export async function syncData(force = false) {
             return;
         }
 
-        // 1. Push local changes to backend
-        await pushAllData(user, token);
+        // Use withTokenRetry for each step to handle token refresh
+        await withTokenRetry(async (token) => {
+            await pushAllData(user, token);
+        });
 
-        // 2. Process sync queue (deletions, etc.) BEFORE pulling
-        await processSyncQueue(token);
+        await withTokenRetry(async (token) => {
+            await processSyncQueue(token);
+        });
 
-        // 3. Pull updates from backend
-        await pullAllData(user, token);
+        await withTokenRetry(async (token) => {
+            await pullAllData(user, token);
+        });
 
-        // 4. Update timers and state
         const now = Date.now();
         syncState.lastFullSync = now;
         setLastSyncTime(now);
@@ -181,10 +212,13 @@ export async function syncData(force = false) {
         console.log('[Sync] Full sync completed successfully.');
     } catch (err) {
         console.error('[Sync] Sync failed:', err);
-        if (err.message && (err.message.includes('verify authentication token') || err.message.includes('invalid_token'))) {
+        // Only force logout if token refresh also failed and it's a token error
+        const message = err?.message || err?.toString() || '';
+        if (message.includes('token') || message.includes('Unauthorized')) {
+            console.warn('[Sync] Token error and refresh failed, logging out.');
             utils.removeLocalStorage('accessToken');
             utils.removeLocalStorage('user');
-            window.location.href = '/pages/login.html';
+            navigateTo('login');
         }
     }
 }
@@ -194,10 +228,8 @@ export async function syncData(force = false) {
 async function pushAllData(user, token) {
     await pushExamResults(user, token);
     await pushNotes(user, token);
-    // Conversations are synced separately in real-time (AI module) – skip here.
 }
 
-// --- Push Exam Results ---
 async function pushExamResults(user, token) {
     const lastPushTime = syncState.lastPush.exams;
     const exams = await db.getAllExamResults();
@@ -212,73 +244,67 @@ async function pushExamResults(user, token) {
 
     console.log(`[Sync] Pushing ${newExams.length} downloaded exam results...`);
 
-    try {
-        const mappedResults = newExams.map(exam => {
-            const scorePercentage = exam.scorePercentage ?? exam.score ?? 0;
-            const correctAnswers = exam.correctAnswers ?? 0;
-            const totalQuestions = exam.totalQuestions ?? 0;
-            const timeSpent = exam.timeSpent ?? 0;
-            const averageTimePerQuestion = exam.averageTimePerQuestion ?? (timeSpent / (totalQuestions || 1));
+    const mappedResults = newExams.map(exam => {
+        const scorePercentage = exam.scorePercentage ?? exam.score ?? 0;
+        const correctAnswers = exam.correctAnswers ?? 0;
+        const totalQuestions = exam.totalQuestions ?? 0;
+        const timeSpent = exam.timeSpent ?? 0;
+        const averageTimePerQuestion = exam.averageTimePerQuestion ?? (timeSpent / (totalQuestions || 1));
 
-            let topicPerformance = [];
-            if (Array.isArray(exam.topicPerformance)) {
-                topicPerformance = exam.topicPerformance.map(tp => ({
-                    topic: tp.topic,
-                    correct: tp.correct ?? Math.round((tp.score || 0) / 100 * (tp.questions || 1)),
-                    questions: tp.questions ?? 1,
-                    percentage: tp.percentage ?? tp.score ?? 0,
-                    averageTime: tp.averageTime ?? tp.timePerQuestion ?? 0
-                }));
-            }
-
-            let questions = [];
-            let answers = [];
-            if (exam.downloaded === true) {
-                questions = exam.questions || [];
-                answers = (exam.answers || []).map(a => ({
-                    questionId: a.questionId,
-                    selectedAnswer: a.selectedAnswer ?? '',
-                    isCorrect: a.isCorrect ?? false,
-                    timeSpent: a.timeSpent ?? 0
-                }));
-            }
-
-            return {
-                examId: exam.examId || exam._id,
-                completedAt: new Date(exam.date).getTime(),
-                scorePercentage,
-                correctAnswers,
-                totalQuestions,
-                subject: exam.subject || '',
-                mode: exam.mode || 'standard',
-                timeSpent,
-                averageTimePerQuestion,
-                topicPerformance,
-                weakAreas: exam.weakAreas || [],
-                questions,
-                answers
-            };
-        });
-
-        const result = await convexHttpClient.action("examResults/mutations:syncExamResults", {
-            token,
-            results: mappedResults
-        });
-
-        if (result.success) {
-            syncState.lastPush.exams = Date.now();
-            saveSyncState();
-            console.log(`[Sync] Pushed ${newExams.length} downloaded exam results.`);
-        } else {
-            throw new Error(result.message || 'Push failed');
+        let topicPerformance = [];
+        if (Array.isArray(exam.topicPerformance)) {
+            topicPerformance = exam.topicPerformance.map(tp => ({
+                topic: tp.topic,
+                correct: tp.correct ?? Math.round((tp.score || 0) / 100 * (tp.questions || 1)),
+                questions: tp.questions ?? 1,
+                percentage: tp.percentage ?? tp.score ?? 0,
+                averageTime: tp.averageTime ?? tp.timePerQuestion ?? 0
+            }));
         }
-    } catch (err) {
-        console.error('[Sync] Push exam results failed:', err);
-        throw err;
+
+        let questions = [];
+        let answers = [];
+        if (exam.downloaded === true) {
+            questions = exam.questions || [];
+            answers = (exam.answers || []).map(a => ({
+                questionId: a.questionId,
+                selectedAnswer: a.selectedAnswer ?? '',
+                isCorrect: a.isCorrect ?? false,
+                timeSpent: a.timeSpent ?? 0
+            }));
+        }
+
+        return {
+            examId: exam.examId || exam._id,
+            completedAt: new Date(exam.date).getTime(),
+            scorePercentage,
+            correctAnswers,
+            totalQuestions,
+            subject: exam.subject || '',
+            mode: exam.mode || 'standard',
+            timeSpent,
+            averageTimePerQuestion,
+            topicPerformance,
+            weakAreas: exam.weakAreas || [],
+            questions,
+            answers
+        };
+    });
+
+    const result = await convexHttpClient.action("examResults/mutations:syncExamResults", {
+        token,
+        results: mappedResults
+    });
+
+    if (result.success) {
+        syncState.lastPush.exams = Date.now();
+        saveSyncState();
+        console.log(`[Sync] Pushed ${newExams.length} downloaded exam results.`);
+    } else {
+        throw new Error(result.message || 'Push failed');
     }
 }
 
-// --- Push Notes ---
 async function pushNotes(user, token) {
     const notes = await db.getNotesByUser(user._id);
     const newNotes = notes.filter(n => n.synced === false);
@@ -289,65 +315,61 @@ async function pushNotes(user, token) {
 
     console.log(`[Sync] Pushing ${newNotes.length} notes...`);
 
-    try {
-        for (const note of newNotes) {
-            const isAlreadySynced = !!note.serverId;
-            let serverResult;
-            if (!isAlreadySynced) {
-                serverResult = await convexHttpClient.action("notes/actions:createNote", {
-                    token,
-                    title: note.title,
-                    content: note.content,
-                    plainText: note.plainText || '',
-                    isProtected: note.isProtected || false,
-                    password: note.password || undefined,
-                    subject: note.subject,
-                    topic: note.topic,
-                    questionId: note.questionId,
-                    tags: note.tags,
-                    attachments: note.attachments,
-                    flashcards: note.flashcards,
-                    shareWith: note.shareWith,
-                    sharedPublic: note.sharedPublic,
-                });
-            } else {
-                serverResult = await convexHttpClient.action("notes/actions:updateNote", {
-                    token,
-                    noteId: note.serverId,
-                    title: note.title,
-                    content: note.content,
-                    plainText: note.plainText || '',
-                    isProtected: note.isProtected || false,
-                    password: note.password || undefined,
-                    subject: note.subject,
-                    topic: note.topic,
-                    questionId: note.questionId,
-                    tags: note.tags,
-                    attachments: note.attachments,
-                    flashcards: note.flashcards,
-                    shareWith: note.shareWith,
-                    sharedPublic: note.sharedPublic,
-                });
-            }
-            if (!serverResult.success) throw new Error(serverResult.message || 'Note sync failed');
-            const serverId = isAlreadySynced ? note.serverId : serverResult.data.noteId;
-            await db.saveNote({
-                ...note,
-                serverId: serverId,
-                synced: true,
-                updatedAt: Date.now()
+    for (const note of newNotes) {
+        const isAlreadySynced = !!note.serverId;
+        let serverResult;
+        if (!isAlreadySynced) {
+            serverResult = await convexHttpClient.action("notes/actions:createNote", {
+                token,
+                title: note.title,
+                content: note.content,
+                plainText: note.plainText || '',
+                isProtected: note.isProtected || false,
+                password: note.password || undefined,
+                subject: note.subject,
+                topic: note.topic,
+                questionId: note.questionId,
+                tags: note.tags,
+                attachments: note.attachments,
+                flashcards: note.flashcards,
+                shareWith: note.shareWith,
+                sharedPublic: note.sharedPublic,
+            });
+        } else {
+            serverResult = await convexHttpClient.action("notes/actions:updateNote", {
+                token,
+                noteId: note.serverId,
+                title: note.title,
+                content: note.content,
+                plainText: note.plainText || '',
+                isProtected: note.isProtected || false,
+                password: note.password || undefined,
+                subject: note.subject,
+                topic: note.topic,
+                questionId: note.questionId,
+                tags: note.tags,
+                attachments: note.attachments,
+                flashcards: note.flashcards,
+                shareWith: note.shareWith,
+                sharedPublic: note.sharedPublic,
             });
         }
-        syncState.lastPush.notes = Date.now();
-        saveSyncState();
-        console.log(`[Sync] Pushed ${newNotes.length} notes.`);
-    } catch (err) {
-        console.error('[Sync] Push notes failed:', err);
-        throw err;
+        if (!serverResult.success) throw new Error(serverResult.message || 'Note sync failed');
+        const serverId = isAlreadySynced ? note.serverId : serverResult.data.noteId;
+        await db.saveNote({
+            ...note,
+            serverId: serverId,
+            synced: true,
+            updatedAt: Date.now()
+        });
     }
+    syncState.lastPush.notes = Date.now();
+    saveSyncState();
+    console.log(`[Sync] Pushed ${newNotes.length} notes.`);
 }
 
 // ==================== PUSH SINGLE NOTE ====================
+
 export async function pushSingleNote(noteId) {
     if (!onlineStatus) {
         throw new Error('Cannot push note while offline');
@@ -410,7 +432,6 @@ export async function pushSingleNote(noteId) {
 
     syncState.lastPush.notes = Date.now();
     saveSyncState();
-
     console.log(`[Sync] Pushed single note ${noteId} successfully.`);
 }
 
@@ -419,10 +440,8 @@ export async function pushSingleNote(noteId) {
 async function pullAllData(user, token) {
     await pullExamResults(user, token);
     await pullNotes(user, token);
-    // Conversations are synced separately in real-time – skip here.
 }
 
-// --- Pull Exam Results ---
 async function pullExamResults(user, token) {
     const lastPullTime = syncState.lastPull.exams;
     try {
@@ -480,7 +499,6 @@ async function pullExamResults(user, token) {
     }
 }
 
-// --- Pull Notes ---
 async function pullNotes(user, token) {
     const lastPullTime = syncState.lastPull.notes;
     try {
@@ -606,7 +624,6 @@ async function processSyncItem(item, token) {
     }
 }
 
-// --- Process Note Deletion ---
 async function processNoteDeletion(data, token) {
     if (!data || !data.serverId) {
         console.warn('[Sync] Invalid note deletion data:', data);
@@ -630,7 +647,6 @@ async function processNoteDeletion(data, token) {
     }
 }
 
-// --- Push Exam Results from Queue Item ---
 async function pushExamResultsForItem(data, token) {
     if (!data) return;
     const result = await convexHttpClient.action("examResults/mutations:syncExamResults", {
@@ -640,7 +656,6 @@ async function pushExamResultsForItem(data, token) {
     if (!result.success) throw new Error(result.message);
 }
 
-// --- Process Subscription Item ---
 async function processSubscriptionItem(data, token) {
     if (!data) return;
     if (data.planId && data.phoneNumber) {
@@ -661,17 +676,16 @@ async function processSubscriptionItem(data, token) {
     }
 }
 
-// ==================== SYNC USER DATA (moved from app.js) ====================
+// ==================== SYNC USER DATA (from app.js) ====================
 
-/**
- * Fetch fresh user profile from backend and update local cache.
- * @returns {Promise<boolean>} true if successful
- */
 async function _syncUserProfile() {
-    const token = getAuthToken();
-    if (!token || !navigator.onLine) return false;
+    if (!navigator.onLine) return false;
+
     try {
-        const result = await convexHttpClient.query("users/queries:getProfile", { token });
+        const result = await withTokenRetry(async (token) => {
+            return await convexHttpClient.query("users/queries:getProfile", { token });
+        });
+
         if (result && result.success && result.data && result.data.user) {
             const freshUser = result.data.user;
             console.log('[Sync] Fetched user profile from backend:', freshUser);
@@ -686,15 +700,13 @@ async function _syncUserProfile() {
     return false;
 }
 
-/**
- * Fetch fresh subscription status from backend and update local cache.
- * @returns {Promise<boolean>} true if successful
- */
 async function _syncSubscriptionStatus() {
-    const token = getAuthToken();
-    if (!token || !navigator.onLine) return false;
+    if (!navigator.onLine) return false;
+
     try {
-        const freshSub = await subscription.getSubscriptionStatus(true);
+        const freshSub = await withTokenRetry(async (token) => {
+            return await subscription.getSubscriptionStatus(true);
+        });
         if (freshSub) {
             await subscription.setSubscription(freshSub);
             return true;
@@ -705,25 +717,17 @@ async function _syncSubscriptionStatus() {
     return false;
 }
 
-/**
- * Sync all user data from backend (profile + subscription).
- * Call after login/register or periodically.
- */
 export async function syncUserData() {
     console.log('[Sync] Syncing user data from backend...');
     await Promise.all([_syncUserProfile(), _syncSubscriptionStatus()]);
 }
 
-/**
- * Perform a full sync of all data (exam results, notes, conversations, etc.)
- * using the sync module. This is the main sync function for all data types.
- */
 export async function triggerFullSync() {
     console.log('[Sync] Triggering full sync...');
-    await syncData(); // existing syncData function
+    await syncData();
 }
 
-// ==================== LEGACY SYNC FUNCTIONS (already exported) ====================
+// ==================== LEGACY SYNC FUNCTIONS ====================
 
 export async function syncExamResults(result) {
     if (!result) {
@@ -838,8 +842,6 @@ export async function getPendingSyncs() {
     return queue.length;
 }
 
-// ==================== RESET SYNC TIMER ON LOGIN ====================
-
 export function resetSyncTimer() {
     console.log('[Sync] Resetting sync timer (force sync on next call)');
     setLastSyncTime(0);
@@ -866,7 +868,6 @@ window.sync = {
     triggerBackgroundSync,
     pushSingleNote,
     resetSyncTimer,
-    // ✅ NEW EXPORTS
     syncUserData,
     triggerFullSync
 };

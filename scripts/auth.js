@@ -265,6 +265,14 @@ export async function login(identifier, password, deviceInfo) {
 
         await sync.syncUserData();
 
+        // ✅ Refresh subscription immediately after login
+        try {
+            await subscription.refreshSubscription();
+            console.log('[Auth] Subscription refreshed after login.');
+        } catch (subErr) {
+            console.warn('[Auth] Could not refresh subscription after login:', subErr);
+        }
+
         console.log('[Auth] Login successful:', email);
         return { _id: userId, name, email };
     } catch (error) {
@@ -320,6 +328,14 @@ export async function register(userData) {
         clearStoredReferralCode();
 
         await sync.syncUserData();
+
+        // ✅ Refresh subscription immediately after registration
+        try {
+            await subscription.refreshSubscription();
+            console.log('[Auth] Subscription refreshed after registration.');
+        } catch (subErr) {
+            console.warn('[Auth] Could not refresh subscription after registration:', subErr);
+        }
 
         console.log('[Auth] Registration successful:', email);
         return { _id: userId, name, email, referralCode: userReferralCode, isAgent: userIsAgent };

@@ -30,21 +30,23 @@
          ============================================================ -->
     <style>
         /* ===== Splash overlay ===== */
-#app-bootstrap {
-    position: fixed;
-    inset: 0;
-    z-index: 99999;
-    display: flex;
-    flex-direction: column;
-    align-items: center;          /* ← center horizontally */
-    justify-content: flex-end;    /* ← keep at bottom */
-    padding-bottom: 60px;
-    background-image: url('/assets/images/splash.png');
-    background-size: 100% 100%;
-    background-position: center;
-    background-repeat: no-repeat;
-    transition: opacity 0.5s ease;
-}
+        #app-bootstrap {
+            position: fixed;
+            inset: 0;
+            z-index: 99999;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            /* ← center horizontally */
+            justify-content: flex-end;
+            /* ← keep at bottom */
+            padding-bottom: 60px;
+            background-image: url('/assets/images/splash.png');
+            background-size: 100% 100%;
+            background-position: center;
+            background-repeat: no-repeat;
+            transition: opacity 0.5s ease;
+        }
 
         /* Gradient at bottom */
         #app-bootstrap::after {
@@ -125,32 +127,40 @@
             }
         }
 
-.progress-track {
-    width: 100%;
-    height: 12px;                /* thicker */
-    background: rgba(255, 255, 255, 0.15);
-    border-radius: 9999px;       /* fully rounded */
-    overflow: hidden;
-    position: relative;
-    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+        .progress-track {
+            width: 100%;
+            height: 12px;
+            /* thicker */
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 9999px;
+            /* fully rounded */
+            overflow: hidden;
+            position: relative;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
 
         }
 
- .progress-fill {
-    height: 100%;
-    width: 0%;
-    background: linear-gradient(90deg, #2563eb, #60a5fa, #2563eb);
-    background-size: 200% 100%;
-    border-radius: 9999px;
-    animation: progressShimmer 1.5s linear infinite;
-    transition: width 0.3s ease;
-    box-shadow: 0 0 12px rgba(96, 165, 250, 0.4); /* soft glow */
-}
+        .progress-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #2563eb, #60a5fa, #2563eb);
+            background-size: 200% 100%;
+            border-radius: 9999px;
+            animation: progressShimmer 1.5s linear infinite;
+            transition: width 0.3s ease;
+            box-shadow: 0 0 12px rgba(96, 165, 250, 0.4);
+            /* soft glow */
+        }
 
-@keyframes progressShimmer {
-    0% { background-position: 0% 0%; }
-    100% { background-position: 200% 0%; }
-}
+        @keyframes progressShimmer {
+            0% {
+                background-position: 0% 0%;
+            }
+
+            100% {
+                background-position: 200% 0%;
+            }
+        }
 
         .loading-text {
             font-size: 0.85rem;
@@ -244,7 +254,50 @@
          SPA APPLICATION HOST – page HTML is injected here
          ============================================================ -->
     <div id="app-root" data-app="medhub"></div>
+    <!-- ============================================================
+     DEEP‑LINK CAPTURE (Capacitor)
+     ============================================================ -->
+    <script>
+        // ============================================================
+        // EARLY DEEP‑LINK CAPTURE (runs before app.js loads)
+        // ============================================================
+        if (window.Capacitor?.Plugins?.App) {
+            const App = window.Capacitor.Plugins.App;
 
+            function normalizeDeepLink(url) {
+                try {
+                    const parsed = new URL(url);
+                    if (parsed.protocol === 'https:') {
+                        return parsed.pathname + parsed.search + parsed.hash;
+                    }
+                    if (parsed.protocol === 'medhub:') {
+                        let path = parsed.hostname + parsed.pathname;
+                        if (!path.startsWith('/')) path = '/' + path;
+                        return path + parsed.search + parsed.hash;
+                    }
+                    return null;
+                } catch (_) {
+                    return null;
+                }
+            }
+
+            App.getLaunchUrl().then(result => {
+                if (result?.url) {
+                    const normalized = normalizeDeepLink(result.url);
+                    if (normalized) {
+                        sessionStorage.setItem('deepLink', normalized);
+                    }
+                }
+            }).catch(err => console.warn('[DeepLink] getLaunchUrl error:', err));
+
+            App.addListener('appUrlOpen', (data) => {
+                const normalized = normalizeDeepLink(data.url);
+                if (normalized) {
+                    sessionStorage.setItem('deepLink', normalized);
+                }
+            });
+        }
+    </script>
     <!-- ============================================================
          SINGLE ENTRY POINT – app.js bootstraps everything
          ============================================================ -->

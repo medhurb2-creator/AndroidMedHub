@@ -110,6 +110,7 @@ function createResourceCard(doc) {
     const isDownloaded = content.isDownloaded(doc._id);
     const isFav = isFavorite(doc._id);
     const sizeStr = doc.fileSize ? content.formatFileSize(doc.fileSize) : '';
+    const isPremium = doc.isPremium || false;
 
     let mainBtnHtml = '';
     if (isDownloaded) {
@@ -139,7 +140,7 @@ function createResourceCard(doc) {
                 </div>
                 <div class="card-stats">
                     <span>${sizeStr}</span>
-                    ${doc.isPremium ? '<span class="premium-badge">🔒 Premium</span>' : ''}
+                    ${isPremium ? '<span class="premium-badge">🔒 Premium</span>' : ''}
                     ${isDownloaded ? '<span class="downloaded-badge">✅ Downloaded</span>' : ''}
                 </div>
                 <div class="card-actions">
@@ -164,18 +165,36 @@ function attachCardEventListeners() {
     document.querySelectorAll('.btn-download, .btn-open').forEach(btn => {
         btn.addEventListener('click', async (e) => {
             const id = btn.dataset.id;
+            const doc = docMap.get(id);
+
+            // ===== OPEN =====
             if (btn.classList.contains('btn-open')) {
+                // ✅ Check subscription only for premium resources
+                if (doc && doc.isPremium) {
+                    const hasActive = await subscription.hasActiveSubscription();
+                    if (!hasActive) {
+                        ui.showToast('Subscription required to open this premium resource', 'warning');
+                        router.navigateTo('subscription');
+                        return;
+                    }
+                }
                 const title = btn.dataset.title || 'Document';
                 const fileType = btn.dataset.type || 'pdf';
                 viewer.openDocument(id, title, fileType);
                 return;
             }
-            const hasActive = await subscription.hasActiveSubscription();
-            if (!hasActive) {
-                ui.showToast('Subscription required to download', 'warning');
-                router.navigateTo('subscription');
-                return;
+
+            // ===== DOWNLOAD =====
+            // ✅ Check subscription only for premium resources
+            if (doc && doc.isPremium) {
+                const hasActive = await subscription.hasActiveSubscription();
+                if (!hasActive) {
+                    ui.showToast('Subscription required to download this premium resource', 'warning');
+                    router.navigateTo('subscription');
+                    return;
+                }
             }
+            // For free resources, proceed without subscription check
             startDownload(id);
         });
     });
@@ -223,7 +242,7 @@ function attachCardEventListeners() {
             if (!confirm('Delete this downloaded file?')) return;
             // Remove file blob and thumbnail blob
             await db.deleteFileBlob(id);
-            await db.deleteThumbnailBlob(id); // new: also delete thumbnail
+            await db.deleteThumbnailBlob(id);
             const manifest = content.getDownloadManifest();
             delete manifest[id];
             content.setDownloadManifest(manifest);
@@ -244,24 +263,16 @@ function attachCardEventListeners() {
 }
 
 // ==================== THUMBNAIL CACHING ====================
-/**
- * Cache a thumbnail from a signed URL.
- * @param {string} resourceId
- * @param {string} thumbnailUrl - signed URL (or null)
- * @returns {Promise<boolean>} true if thumbnail was successfully cached
- */
 async function cacheThumbnail(resourceId, thumbnailUrl) {
     if (!thumbnailUrl) {
         console.warn(`[Thumbnail] No thumbnail URL for ${resourceId}`);
         return false;
     }
 
-    // Already cached in memory
     if (thumbnailCache.has(resourceId)) {
         return true;
     }
 
-    // Check IndexedDB
     const existing = await db.getThumbnailBlob(resourceId);
     if (existing) {
         const url = URL.createObjectURL(existing);
@@ -291,11 +302,6 @@ async function cacheThumbnail(resourceId, thumbnailUrl) {
     }
 }
 
-/**
- * Hydrate the in-memory thumbnail cache from IndexedDB.
- * Called after resources are loaded.
- * @param {Array} docs - list of resource documents
- */
 async function hydrateThumbnailCache(docs) {
     await Promise.all(
         docs.map(async (doc) => {
@@ -371,10 +377,8 @@ async function startDownload(resourceId) {
             throw new Error(result.message);
         }
 
-        // NEW: destructure both URLs
         const { downloadUrl, thumbnailUrl } = result.data;
 
-        // ================== Download main file ==================
         const response = await fetch(downloadUrl, { signal: abortController.signal });
         if (!response.ok) throw new Error('Download failed');
         const contentLength = response.headers.get('content-length');
@@ -400,23 +404,20 @@ async function startDownload(resourceId) {
         const blob = new Blob(chunks);
         await db.saveFileBlob(resourceId, blob);
 
-        // ================== Cache thumbnail ==================
         let thumbnailDownloaded = false;
         if (thumbnailUrl) {
             thumbnailDownloaded = await cacheThumbnail(resourceId, thumbnailUrl);
         }
 
-        // ================== Update manifest ==================
         const manifest = content.getDownloadManifest();
         manifest[resourceId] = {
             downloadedAt: Date.now(),
             size: blob.size,
             mime: response.headers.get('content-type') || 'application/octet-stream',
-            thumbnailDownloaded   // new flag
+            thumbnailDownloaded
         };
         content.setDownloadManifest(manifest);
 
-        // ================== Update UI ==================
         if (doc) {
             card.outerHTML = createResourceCard(doc);
             attachCardEventListeners();
@@ -490,7 +491,6 @@ async function loadResources(reset = true) {
         if (loadMoreSpinner) loadMoreSpinner.style.display = 'none';
         isLoading = false;
 
-        // NEW: hydrate thumbnail cache from IndexedDB
         await hydrateThumbnailCache(allDocuments);
 
         applyFiltersAndRender();
@@ -518,7 +518,6 @@ export function closeViewer() {
 export async function initResourceBrowser(subject, type, forceRefresh = false) {
     console.log(`[ResourceBrowser] initResourceBrowser called: subject=${subject}, type=${type}, forceRefresh=${forceRefresh}`);
 
-    // Re‑acquire DOM refs (they are fresh after each page navigation)
     const pageTitle = document.getElementById('page-title');
     const searchInput = document.getElementById('search-input');
     const filterBtn = document.getElementById('filter-btn');
@@ -539,22 +538,15 @@ export async function initResourceBrowser(subject, type, forceRefresh = false) {
     pageTitle.textContent = `${typeName} – ${subject}`;
     console.log(`[ResourceBrowser] Title set to: ${pageTitle.textContent}`);
 
-    // Reset state and load resources
     await loadResources(true);
 
     // ---- Event listeners ----
-    // Remove old listeners by cloning? Better to re‑attach fresh.
-    // We'll use a simple approach: remove and re‑add.
-
-    // Search input
     const newSearchInput = document.getElementById('search-input');
     if (newSearchInput) {
-        // Remove any existing listener by replacing with a new one
         newSearchInput.removeEventListener('input', searchHandler);
         newSearchInput.addEventListener('input', debounce(() => applyFiltersAndRender(), 300));
     }
 
-    // Filter button
     const newFilterBtn = document.getElementById('filter-btn');
     if (newFilterBtn) {
         newFilterBtn.removeEventListener('click', filterToggleHandler);
@@ -565,7 +557,6 @@ export async function initResourceBrowser(subject, type, forceRefresh = false) {
         });
     }
 
-    // Dropdown items
     const dropdown = document.getElementById('filter-dropdown');
     if (dropdown) {
         dropdown.querySelectorAll('button').forEach(btn => {
@@ -580,14 +571,12 @@ export async function initResourceBrowser(subject, type, forceRefresh = false) {
         });
     }
 
-    // Load more
     const newLoadMoreBtn = document.getElementById('load-more-btn');
     if (newLoadMoreBtn) {
         newLoadMoreBtn.removeEventListener('click', loadMoreHandler);
         newLoadMoreBtn.addEventListener('click', () => loadResources(false));
     }
 
-    // Global click to close dropdown
     document.removeEventListener('click', closeDropdownHandler);
     document.addEventListener('click', (e) => {
         if (!e.target.closest('.filter-wrapper')) {
@@ -596,7 +585,6 @@ export async function initResourceBrowser(subject, type, forceRefresh = false) {
         }
     });
 
-    // Define handlers (for removal)
     function searchHandler(e) { applyFiltersAndRender(); }
     function filterToggleHandler(e) { /* handled inline */ }
     function filterSelectHandler(e) { /* handled inline */ }
@@ -604,7 +592,6 @@ export async function initResourceBrowser(subject, type, forceRefresh = false) {
     function closeDropdownHandler(e) { /* handled inline */ }
 }
 
-// ==================== DEBOUNCE ====================
 function debounce(fn, delay) {
     let timer;
     return (...args) => {

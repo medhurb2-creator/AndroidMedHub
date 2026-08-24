@@ -25,8 +25,17 @@ export async function init(context) {
     return;
   }
 
-  // Load subscription from storage
-  let currentSub = subscription.getSubscription();
+  // ============================================================
+  // ✅ Load subscription from cache (no backend refresh)
+  // ============================================================
+  let currentSub = null;
+  try {
+    currentSub = await subscription.getSubscription(); // returns cached object
+  } catch (e) {
+    console.warn('[Subscription] Failed to get subscription:', e);
+  }
+
+  // If not in memory, try to load from IndexedDB
   if (!currentSub) {
     try {
       currentSub = await db.getSubscription();
@@ -38,7 +47,7 @@ export async function init(context) {
   plansList = await subscription.getSubscriptionPlans();
 
   // Render header status
-  renderHeaderStatus(currentSub);
+  await renderHeaderStatus(currentSub);
 
   // Hide shimmer, show real content
   $('#shimmer-content').style.display = 'none';
@@ -47,21 +56,18 @@ export async function init(context) {
   // Show method selection
   switchBodyView('method-selection');
 
-  // Check trial eligibility online
-  if (navigator.onLine) {
+  // Check trial eligibility ONLY if online and no active subscription
+  if (navigator.onLine && !(currentSub && currentSub.isActive)) {
     try {
       trialEligible = await subscription.checkTrialEligibility();
-      const freshSub = await subscription.getSubscriptionStatus(true);
-      if (freshSub) {
-        currentSub = freshSub;
-        renderHeaderStatus(freshSub);
-      }
+      // If trial eligible, update UI; but we don't refresh subscription from backend here
+      // because we only need eligibility flag, not the subscription object.
     } catch (e) {
-      console.warn('Background refresh failed', e);
+      console.warn('Trial eligibility check failed', e);
       trialEligible = false;
     }
   } else {
-    trialEligible = false;
+    trialEligible = false; // already subscribed or offline
   }
 
   // Show/hide trial option
@@ -145,11 +151,11 @@ function switchBodyView(viewName) {
 }
 
 // ==================== HEADER STATUS ====================
-function renderHeaderStatus(sub) {
+async function renderHeaderStatus(sub) {
   const container = $('#status-area');
   if (!container) return;
   if (sub && sub.isActive) {
-    const remaining = subscription.formatRemainingTime?.(sub.expiryDate) || '';
+    const remaining = await subscription.formatRemainingTime(); // uses cached expiry
     container.innerHTML = `<span class="status-text">Plan: ${sub.plan} · expires ${utils.formatDate(sub.expiryDate)}</span><span class="status-text">(${remaining} left)</span>`;
     return;
   }
@@ -311,6 +317,7 @@ async function verifyC2BPayment(event) {
     const result = await window.Payment.claimManualPayment({ mpesaCode, phoneNumber: phone });
     statusDiv.className = 'verification-status success';
     statusDiv.innerHTML = `✅ ${result.message || 'Subscription activated successfully!'} <button class="close-status" onclick="document.getElementById('verification-status').style.display='none'">&times;</button>`;
+    // After successful claim, refresh subscription status from backend
     await subscription.syncSubscription(true);
     setTimeout(() => window.location.reload(), 2000);
   } catch (err) {

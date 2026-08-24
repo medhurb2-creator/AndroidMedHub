@@ -3800,7 +3800,6 @@
         "clinicalCorrelation": "Often confused with median nerve injury, but pure anterior interosseous nerve palsy spares thenar muscles and sensation."
       }
     },
-    // 50 new questions starting from upper_limb_101
     {
       "questionId": "upper_limb_101",
       "difficulty": 2,

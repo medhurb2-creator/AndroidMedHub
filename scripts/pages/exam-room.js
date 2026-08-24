@@ -687,17 +687,24 @@ function renderQuestion() {
     const submitBtn = $('#submit-btn-rev');
     const nextBtn = $('#next-btn-rev');
     const alreadySubmitted = examEngine.isQuestionSubmitted(currentQuestionIndex);
+
     if (alreadySubmitted) {
       restoreRevisionFeedback();
       document.querySelectorAll('#answers-list-rev .option-item').forEach(el => el.style.pointerEvents = 'none');
       submitBtn.style.display = 'none';
       nextBtn.style.display = 'block';
       nextBtn.disabled = false;
+
+      // 🔁 On last question, change "Next →" to "Submit Exam"
+      const isLast = currentQuestionIndex === totalQuestions - 1;
+      nextBtn.textContent = isLast ? '📤 Submit Exam' : 'Next →';
     } else {
       document.querySelectorAll('#answers-list-rev .option-item').forEach(el => el.style.pointerEvents = 'auto');
       submitBtn.style.display = 'block';
       nextBtn.style.display = 'none';
       nextBtn.disabled = true;
+      // Reset button text when not submitted
+      nextBtn.textContent = 'Next →';
     }
   }
   if (isRev) setTimeout(ensureFooterVisible, 100);

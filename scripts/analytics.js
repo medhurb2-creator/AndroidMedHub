@@ -12,7 +12,7 @@ import * as utils from './utils.js';
 import * as db from './db.js';
 import * as sync from './sync.js';
 import * as performanceRating from './performance-rating-v2.js';
-// NEW: import AI insights generator from performance-ai.js (no direct ai.js)
+import * as auth from './auth.js';              // ✅ ADDED
 import { generateAIInsightsFromRaw } from './performance-ai.js';
 
 // ==================== CONSTANTS ====================
@@ -159,12 +159,6 @@ export async function identifyWeakAreas() {
 
 // ==================== AI-POWERED INSIGHTS ====================
 
-/**
- * Generate AI-powered personalized insights based on user's exam history.
- * Uses the AI engine via performance-ai.js to provide natural-language recommendations.
- * Cached to avoid repeated API calls.
- * No UI spinners are triggered.
- */
 export async function generateAIInsights(forceRefresh = false) {
     const now = Date.now();
     if (!forceRefresh && aiInsightsCache && (now - aiInsightsCacheTime) < AI_CACHE_TTL) {
@@ -172,7 +166,6 @@ export async function generateAIInsights(forceRefresh = false) {
     }
 
     try {
-        // Gather raw data (no pre‑interpreted summary)
         const exams = filterValidExams(await db.getAllExamResults());
         if (!exams.length) {
             aiInsightsCache = { insights: 'Complete your first exam to get personalized AI insights!' };
@@ -188,7 +181,6 @@ export async function generateAIInsights(forceRefresh = false) {
             subjectAnalysis: analyzeSubjects(exams)
         };
 
-        // Call the AI with raw data
         const aiResult = await generateAIInsightsFromRaw(rawData);
 
         if (aiResult) {
@@ -196,7 +188,6 @@ export async function generateAIInsights(forceRefresh = false) {
             aiInsightsCacheTime = now;
             return aiResult;
         } else {
-            // Fallback: rule-based insights
             const fallback = {
                 insights: 'AI insights currently unavailable. Review your weak areas and practice consistently.',
                 recommendations: ['Focus on weak topics', 'Practice timed exams'],
@@ -226,7 +217,6 @@ export async function calculateAllAnalytics(results = null) {
         const rawExams = results || (await db.getAllExamResults()) || [];
         const exams = filterValidExams(rawExams);
 
-        // Get AI insights (cached)
         let aiInsights = null;
         if (navigator.onLine) {
             try {
@@ -245,7 +235,7 @@ export async function calculateAllAnalytics(results = null) {
             recommendations: generateRecommendations(exams, aiInsights),
             rating: await getUserRatingInfo(),
             aiInsights: aiInsights,
-            exams: exams // Include full exams array for detailed academic profile
+            exams: exams
         };
     } catch (e) {
         console.warn('calculateAllAnalytics failed', e);
@@ -270,7 +260,6 @@ export async function refreshAnalytics(forceSync = false) {
     } else if (forceSync) {
         console.warn('[Analytics] Force sync requested but device is offline.');
     }
-    // Force refresh AI insights
     await generateAIInsights(true);
     return await calculateAllAnalytics();
 }
@@ -279,7 +268,7 @@ export async function refreshAnalytics(forceSync = false) {
 
 export async function getUserRatingInfo() {
     try {
-        const user = window.app?.getUser?.();
+        const user = auth.getUser();               // ✅ Use auth directly
         if (!user) return null;
 
         const rating = user.rating || 100;
@@ -328,7 +317,7 @@ export async function getLeaderboard(limit = 100) {
 
 export async function getRatingHistory(userId = null, limit = 30) {
     try {
-        const targetUserId = userId || window.app?.getUser?.()?._id;
+        const targetUserId = userId || auth.getUser()?._id;   // ✅ Use auth
         if (!targetUserId) return [];
 
         const exams = await db.getAllExamResults();
@@ -361,17 +350,14 @@ function calculateSummary(exams) {
             totalStudyTime: 0,
             bestScore: 0,
             worstScore: 0,
-            correct: 0 // Add correct field for pie chart
+            correct: 0
         };
     }
 
     const totalExams = exams.length;
     const totalQuestions = exams.reduce((sum, e) => sum + (e.totalQuestions || 0), 0);
-    
-    // Compute correct answers, falling back to scorePercentage if missing
     const totalCorrect = exams.reduce((sum, e) => {
         if (e.correctAnswers !== undefined) return sum + e.correctAnswers;
-        // fallback: derive from scorePercentage and totalQuestions
         const score = e.scorePercentage || 0;
         const questions = e.totalQuestions || 1;
         return sum + Math.round((score / 100) * questions);
@@ -392,7 +378,7 @@ function calculateSummary(exams) {
         totalStudyTime: Math.round(totalHours * 10) / 10,
         bestScore: Math.round(bestScore),
         worstScore: Math.round(worstScore),
-        correct: totalCorrect // Expose correct count
+        correct: totalCorrect
     };
 }
 
@@ -548,13 +534,12 @@ function analyzeStudyPatterns(exams) {
     const totalMinutes = totalMs / (1000 * 60);
     const avgSession = exams.length ? totalMinutes / exams.length : 0;
 
-    // Additional patterns for academic profile
     let totalQuestions = 0;
     let longestSession = 0;
     let sessionCount = 0;
     exams.forEach(e => {
         totalQuestions += e.totalQuestions || 0;
-        const duration = (e.timeSpent || 0) / (1000 * 60); // minutes
+        const duration = (e.timeSpent || 0) / (1000 * 60);
         if (duration > longestSession) longestSession = Math.round(duration);
         sessionCount++;
     });
@@ -601,10 +586,6 @@ function calculateStreak(exams) {
     return streak;
 }
 
-/**
- * Generate recommendations (rule-based + AI-enhanced).
- * Merges AI insights with rule-based ones.
- */
 function generateRecommendations(exams, aiInsights = null) {
     const recommendations = [];
 
@@ -616,7 +597,6 @@ function generateRecommendations(exams, aiInsights = null) {
         return recommendations;
     }
 
-    // Rule-based recommendations
     const weakAreas = identifyWeakAreasSync(exams);
     if (weakAreas.length > 0) {
         weakAreas.slice(0, 3).forEach(area => {
@@ -655,7 +635,6 @@ function generateRecommendations(exams, aiInsights = null) {
         });
     }
 
-    // If AI insights are available, add them as a special recommendation
     if (aiInsights) {
         recommendations.push({
             type: 'ai_insights',

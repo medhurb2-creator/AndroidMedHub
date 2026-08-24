@@ -45,7 +45,17 @@ export async function init(context) {
   }
 
   const user = auth.getUser();
-  const sub = subscription.getSubscription();
+
+  // ============================================================
+  // ✅ Use cached subscription only – no backend calls
+  // ============================================================
+  let sub = null;
+  try {
+    sub = await subscription.getSubscription(); // returns cached object
+  } catch (err) {
+    console.warn('[Subjects] Failed to get subscription:', err);
+    sub = null;
+  }
 
   // 2. Render greeting and subscription status
   const greetingEl = $('#user-greeting');
@@ -54,9 +64,7 @@ export async function init(context) {
   const statusContainer = $('#sub-status');
   if (statusContainer) {
     if (sub && sub.isActive) {
-      const remaining = typeof subscription.formatRemainingTime === 'function'
-        ? await subscription.formatRemainingTime(sub.expiryDate)
-        : '—';
+      const remaining = await subscription.formatRemainingTime(); // uses cached expiry
       const expiryStr = utils.formatDate(sub.expiryDate);
       statusContainer.innerHTML = `<span>Expires ${expiryStr} (${remaining})</span>`;
     } else {

@@ -66,6 +66,7 @@ let scrollTimeout = null;
 let zoomRenderTimer = null;
 let dprListener = null;
 const textContentCache = new Map();
+const pageViewportCache = new Map(); // pageNum -> { width, height } at scale 1
 
 // Auto-hide state
 let autoHideTimer = null;
@@ -256,6 +257,7 @@ function destroyCurrentDocument() {
   }
 
   textContentCache.clear();
+  pageViewportCache.clear();
 
   // Remove auto-hide interaction listeners
   removeAutoHideListeners();
@@ -413,7 +415,14 @@ async function renderCurrentLayout() {
       main.addEventListener('scroll', onScrollHandler);
       setTimeout(() => detectVisiblePage(), 100);
     } else {
-      // Zoom changed: re-render only visible pages
+      // Zoom changed: cancel all pending renders
+      renderTasks.forEach(task => task.cancel());
+      renderTasks.clear();
+
+      // Immediately update dimensions for pages whose base sizes are cached
+      syncWrapperDimensions();
+
+      // Then re-render visible pages at new scale
       await updateVisiblePages();
     }
   } else {
@@ -529,10 +538,17 @@ async function renderAllPagesScroll() {
   intersectionObserver = new IntersectionObserver(
     (entries) => {
       entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          const pageNum = parseInt(entry.target.dataset.page, 10);
-          lazyRenderPage(pageNum, entry.target);
-          intersectionObserver.unobserve(entry.target);
+        if (!entry.isIntersecting) return;
+
+        const wrapper = entry.target;
+        const pageNum = parseInt(wrapper.dataset.page, 10);
+
+        const needsRender =
+          !wrapper.querySelector('canvas.pdf-canvas') ||
+          wrapper.dataset.renderedScale !== String(currentScale);
+
+        if (needsRender) {
+          lazyRenderPage(pageNum, wrapper);
         }
       });
     },
@@ -542,6 +558,9 @@ async function renderAllPagesScroll() {
   document.querySelectorAll('.canvas-wrapper').forEach(w => {
     intersectionObserver.observe(w);
   });
+
+  // Preload page sizes to eliminate placeholder jumps
+  preloadPageSizes();
 }
 
 async function lazyRenderPage(pageNum, wrapper) {
@@ -549,6 +568,9 @@ async function lazyRenderPage(pageNum, wrapper) {
   if (!canvas) return;
   wrapper.innerHTML = '';
   wrapper.appendChild(canvas);
+
+  // Mark this wrapper as rendered at the current zoom scale
+  wrapper.dataset.renderedScale = String(currentScale);
 }
 
 async function renderSinglePage(pageNum) {
@@ -567,6 +589,8 @@ async function renderSinglePage(pageNum) {
 async function renderPageToCanvas(pageNum) {
   if (!pdfDoc) return null;
 
+  const scale = currentScale; // capture current zoom
+
   if (renderTasks.has(pageNum)) {
     renderTasks.get(pageNum).cancel();
     renderTasks.delete(pageNum);
@@ -575,12 +599,19 @@ async function renderPageToCanvas(pageNum) {
   try {
     const page = await pdfDoc.getPage(pageNum);
 
+    // Cache base viewport at scale 1 for dimension calculations
+    const baseViewport = page.getViewport({ scale: 1 });
+    pageViewportCache.set(pageNum, {
+      width: baseViewport.width,
+      height: baseViewport.height,
+    });
+
     // CSS viewport (used for layout / CSS size)
-    const cssViewport = page.getViewport({ scale: currentScale });
+    const cssViewport = page.getViewport({ scale });
 
     // High-DPI rendering viewport
     const pixelRatio = window.devicePixelRatio || 1;
-    const renderViewport = page.getViewport({ scale: currentScale * pixelRatio });
+    const renderViewport = page.getViewport({ scale: scale * pixelRatio });
 
     const canvas = document.createElement('canvas');
     canvas.className = 'pdf-canvas';
@@ -597,6 +628,11 @@ async function renderPageToCanvas(pageNum) {
     renderTasks.set(pageNum, renderTask);
     await renderTask.promise;
     renderTasks.delete(pageNum);
+
+    // If zoom changed while this render was in progress, discard it.
+    if (scale !== currentScale) {
+      return null;
+    }
 
     // Text layer is not attached here for performance.
     // It will be created only when needed (e.g., search/highlight).
@@ -1667,6 +1703,79 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+// =========================================================================
+// Helper: sync wrapper dimensions using cached base sizes
+// =========================================================================
+
+function syncWrapperDimensions() {
+  const wrappers = viewerEls.main?.querySelectorAll('.canvas-wrapper');
+  wrappers?.forEach(wrapper => {
+    const pageNum = parseInt(wrapper.dataset.page, 10);
+    const base = pageViewportCache.get(pageNum);
+    if (!base) return;
+
+    const w = base.width * currentScale;
+    const h = base.height * currentScale;
+
+    wrapper.style.width = `${w}px`;
+    wrapper.style.height = `${h}px`;
+    wrapper.style.minHeight = `${h}px`;
+
+    const canvas = wrapper.querySelector('canvas.pdf-canvas');
+    if (canvas && wrapper.dataset.renderedScale !== String(currentScale)) {
+      canvas.remove(); // remove stale old-zoom canvas
+      delete wrapper.dataset.renderedScale;
+    }
+  });
+}
+
+// =========================================================================
+// Helper: preload page sizes to prevent placeholder jumps
+// =========================================================================
+
+let pageSizePreloadStarted = false;
+
+function preloadPageSizes() {
+  if (pageSizePreloadStarted || !pdfDoc) return;
+  pageSizePreloadStarted = true;
+
+  const queue = Array.from({ length: totalPages }, (_, i) => i + 1);
+  const concurrency = 3;
+
+  const worker = async () => {
+    while (queue.length && pdfDoc) {
+      const pageNum = queue.shift();
+      try {
+        const page = await pdfDoc.getPage(pageNum);
+        const base = page.getViewport({ scale: 1 });
+
+        if (!pageViewportCache.has(pageNum)) {
+          pageViewportCache.set(pageNum, {
+            width: base.width,
+            height: base.height,
+          });
+        }
+
+        const wrapper = viewerEls.main?.querySelector(
+          `.canvas-wrapper[data-page="${pageNum}"]`
+        );
+
+        if (wrapper && !wrapper.querySelector('canvas.pdf-canvas')) {
+          wrapper.style.width = `${base.width * currentScale}px`;
+          wrapper.style.height = `${base.height * currentScale}px`;
+          wrapper.style.minHeight = `${base.height * currentScale}px`;
+        }
+      } catch (err) {
+        console.warn('Page size preload failed', pageNum, err);
+      }
+    }
+  };
+
+  Promise.all(
+    Array.from({ length: Math.min(concurrency, queue.length) }, worker)
+  ).catch(() => {});
 }
 
 // =========================================================================

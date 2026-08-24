@@ -9,6 +9,7 @@ import ai from '../ai.js';
 
 let $;
 let chatUI;
+let updateHeaderOffset;  // store reference for cleanup
 
 export async function init(context) {
   $ = (sel) => context.root.querySelector(sel);
@@ -17,14 +18,14 @@ export async function init(context) {
   ui.applyTheme();
 
   // --- Dynamic header offset ---
-  function updateHeaderOffset() {
+  updateHeaderOffset = function() {
     const header = $('#topBar');
     if (!header) return;
     const headerHeight = header.offsetHeight;
     document.documentElement.style.setProperty('--header-height', headerHeight + 'px');
     const appHeight = window.innerHeight - headerHeight;
     document.documentElement.style.setProperty('--app-height', appHeight + 'px');
-  }
+  };
 
   window.addEventListener('resize', updateHeaderOffset);
   if (window.visualViewport) {
@@ -38,18 +39,35 @@ export async function init(context) {
     return;
   }
 
+  // ============================================================
+  // ✅ Use cached subscription – no backend calls
+  // ============================================================
+  let sub = null;
+  try {
+    sub = await subscription.getSubscription(); // returns cached object
+  } catch (err) {
+    console.warn('[AI] Failed to get subscription:', err);
+    sub = null;
+  }
+
   // --- Update subscription status ---
   const statusEl = $('#header-status');
-  const sub = subscription.getSubscription();
   const subscribeBtn = $('#subscribeBtn');
 
   if (sub && sub.isActive) {
-    const remaining = await ai.formatRemainingTime?.() || '';
+    const remaining = await subscription.formatRemainingTime(); // uses cached expiry
     statusEl.innerHTML =
       `<span class="status-text">${sub.plan} · expires ${utils.formatDate(sub.expiryDate)} (${remaining})</span>`;
     subscribeBtn.style.display = 'none';
   } else {
-    const trialEligible = await ai.checkTrialEligibility?.() || false;
+    // Check trial eligibility (only if no active subscription)
+    let trialEligible = false;
+    try {
+      trialEligible = await subscription.checkTrialEligibility();
+    } catch (err) {
+      console.warn('[AI] Trial eligibility check failed:', err);
+    }
+
     if (trialEligible) {
       statusEl.innerHTML =
         `<span class="status-text">No active plan</span><button class="trial-btn" id="trialBtn">Start Trial</button>`;
@@ -182,14 +200,15 @@ function attachEventListeners(context) {
 
 export function destroy() {
   // Cleanup: remove event listeners if needed
-  // chatUI cleanup? (if it has destroy method)
   if (chatUI && typeof chatUI.destroy === 'function') {
     chatUI.destroy();
   }
   // Remove resize listener
-  window.removeEventListener('resize', updateHeaderOffset);
-  if (window.visualViewport) {
-    window.visualViewport.removeEventListener('resize', updateHeaderOffset);
-    window.visualViewport.removeEventListener('scroll', updateHeaderOffset);
+  if (updateHeaderOffset) {
+    window.removeEventListener('resize', updateHeaderOffset);
+    if (window.visualViewport) {
+      window.visualViewport.removeEventListener('resize', updateHeaderOffset);
+      window.visualViewport.removeEventListener('scroll', updateHeaderOffset);
+    }
   }
 }

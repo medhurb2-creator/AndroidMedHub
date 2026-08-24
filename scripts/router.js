@@ -4,7 +4,7 @@
  * SPA Router – Full Version (Clean URLs)
  * Handles static, dynamic, query, hash routes.
  * No `.html` in URLs or internal page names.
- * 
+ *
  * Pages are resolved dynamically – no static lists required.
  * Authentication is enforced by page-manager based on each page's `data-auth`.
  */
@@ -48,31 +48,33 @@ function isAllowed(targetPage, currentPage) {
     return true;
 }
 
-// ==================== ROUTE RESOLVER (FIXED) ====================
+// ==================== ROUTE RESOLVER ====================
 function resolveRoute(path) {
+    // 1. Separate hash and query from the path
     let pathPart = path;
     let queryString = '';
     let hash = '';
 
-    // 1. Extract hash
     if (pathPart.includes('#')) {
         const parts = pathPart.split('#');
         pathPart = parts[0];
         hash = parts[1];
     }
 
-    // 2. Extract query string
     if (pathPart.includes('?')) {
         const parts = pathPart.split('?');
         pathPart = parts[0];
         queryString = parts[1];
     }
 
-    // 3. Clean path (strip leading and trailing slashes safely)
+    // 2. Clean the path: remove leading/trailing slashes, strip /pages/ prefix, remove .html
     pathPart = pathPart.replace(/^\/+|\/+$/g, '');
+    pathPart = pathPart.replace(/^pages\//, '');          // strip /pages/ prefix
+    pathPart = pathPart.replace(/\.html$/, '');           // strip .html extension
+
     const query = new URLSearchParams(queryString || '');
 
-    // 4. Root → redirect based on auth
+    // 3. Root → redirect based on auth
     if (!pathPart || pathPart === 'index' || pathPart === 'index.html') {
         const isLoggedIn = auth.checkAuth();
         return {
@@ -83,7 +85,7 @@ function resolveRoute(path) {
         };
     }
 
-    // 5. Dynamic route match
+    // 4. Dynamic route match
     for (const route of DYNAMIC_ROUTES) {
         const match = pathPart.match(route.pattern);
         if (match) {
@@ -96,7 +98,7 @@ function resolveRoute(path) {
         }
     }
 
-    // 6. For any other path
+    // 5. For any other path, treat it as a static page name
     return { page: pathPart, params: {}, query, hash };
 }
 
@@ -150,11 +152,16 @@ export function navigateTo(target, data = {}) {
 export function getCurrentPage() {
     const path = window.location.pathname;
     if (path === '/' || path === '/index') return 'index';
+    // Strip /pages/ and .html for matching
+    let cleanPath = path.replace(/^\/+|\/+$/g, '');
+    cleanPath = cleanPath.replace(/^pages\//, '');
+    cleanPath = cleanPath.replace(/\.html$/, '');
+
     for (const route of DYNAMIC_ROUTES) {
-        const match = path.match(route.pattern);
+        const match = cleanPath.match(route.pattern);
         if (match) return route.page;
     }
-    const parts = path.split('/').filter(p => p);
+    const parts = cleanPath.split('/');
     return parts[0] || 'index';
 }
 

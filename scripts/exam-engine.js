@@ -464,19 +464,19 @@ export async function endExam() {
 
     examState.questions.forEach((q, idx) => {
         const answer = examState.answers[idx];
-        const correctLetter = getCorrectAnswerLetter(q);   // compute from shuffled options
+        const correctLetter = getCorrectAnswerLetter(q);
         const isCorrect = answer.selectedOption === correctLetter;
         if (isCorrect) results.correctAnswers++;
 
         const qResult = {
             id: q.id,
             question: q.question,
-            options: q.options,               // shuffled options
-            correctAnswer: correctLetter,     // computed correct letter
+            options: q.options,
+            correctAnswer: correctLetter,
             userAnswer: answer.selectedOption,
             timeSpent: answer.timeSpent,
             correct: isCorrect,
-            explanation: q.explanation,       // object or string
+            explanation: q.explanation,
             topic: q.topic,
             difficulty: q.difficulty,
             flagged: answer.flagged,
@@ -484,7 +484,6 @@ export async function endExam() {
         };
         results.questions.push(qResult);
 
-        // Topic statistics
         if (!topicMap[q.topic]) {
             topicMap[q.topic] = { total: 0, correct: 0, totalTime: 0 };
         }
@@ -494,8 +493,6 @@ export async function endExam() {
     });
 
     results.scorePercentage = (results.correctAnswers / results.totalQuestions) * 100;
-
-    // Format topic performance
     results.topics = Object.entries(topicMap).map(([topic, data]) => ({
         topic,
         questions: data.total,
@@ -503,19 +500,22 @@ export async function endExam() {
         percentage: (data.correct / data.total) * 100,
         averageTime: data.totalTime / data.total
     }));
-
-    // Identify weak areas (<70%)
     results.weakAreas = results.topics.filter(t => t.percentage < 70).map(t => t.topic);
 
     // ============================================================
-    // PERFORMANCE RATING ENGINE INTEGRATION
+    // 1. SAVE THE EXAM FIRST (so it exists in the database)
+    // ============================================================
+    await db.saveExamResult(results);
+
+    // ============================================================
+    // 2. PERFORMANCE RATING ENGINE INTEGRATION
     // ============================================================
     try {
         const user = auth.getUser();
         if (user && user._id) {
             const prResult = await performanceRating.computeFullPerformance(
-                results,                         // exam data
-                user,                            // user object
+                results.examId,          // ✅ examId string
+                user._id,                // ✅ userId string
                 examState.lobbyAvgPR || 0.5,
                 examState.opponentRating || 100
             );
@@ -532,6 +532,7 @@ export async function endExam() {
             results.integrity = prResult.integrity;
             results.historyCount = prResult.historyCount;
 
+            // Update user
             user.rating = prResult.newRating;
             user.rank = prResult.rank.rank;
             user.historyEWMA = prResult.historyEWMA;
@@ -541,10 +542,17 @@ export async function endExam() {
         }
     } catch (err) {
         console.warn('Performance Rating computation failed:', err);
+        // The exam is already saved, so we continue
     }
 
+    // ============================================================
+    // 3. UPDATE THE EXAM RECORD WITH RATING DATA
+    // ============================================================
     await db.saveExamResult(results);
 
+    // ============================================================
+    // 4. RECORD SEEN QUESTIONS (except challenge mode)
+    // ============================================================
     if (examState.config.mode !== 'challenge') {
         const questionIds = results.questions.map(q => q.id);
         const byTopic = {};
@@ -682,10 +690,8 @@ export const examEngine = {
     isChallengeMode,
     isQuestionSubmitted,
     getRevisionFeedback,
-    // ✅ Added exam config functions
     setExamConfig,
     getExamConfig,
     clearExamConfig,
-    // ✅ Added clearExamState
     clearExamState
 };

@@ -50,16 +50,25 @@ let redirectTarget = null;
 let screenOrientation = null;
 
 // ============================================================
-// DEEP‑LINK HELPERS
+// DEEP‑LINK HELPERS (dynamic – accepts any scheme/host)
 // ============================================================
 function normalizeMedHubUrl(url) {
     try {
         const parsed = new URL(url);
-        if (parsed.protocol !== 'https:' || parsed.hostname !== 'medhub.edgeone.app') {
-            console.warn('[DeepLink] Rejected external URL:', url);
-            return null;
+        // Accept any HTTPS link – Capacitor has already vetted it
+        if (parsed.protocol === 'https:') {
+            return parsed.pathname + parsed.search + parsed.hash;
         }
-        return parsed.pathname + parsed.search + parsed.hash;
+        // Accept custom scheme (e.g., medhub://subjects -> /subjects)
+        if (parsed.protocol === 'medhub:') {
+            // medhub://subjects/foo?x=1 -> /subjects/foo?x=1
+            let path = parsed.hostname + parsed.pathname;
+            if (!path.startsWith('/')) path = '/' + path;
+            return path + parsed.search + parsed.hash;
+        }
+        // Reject anything else (e.g., ftp, javascript)
+        console.warn('[DeepLink] Unsupported scheme:', url);
+        return null;
     } catch (_) {
         console.error('[DeepLink] Invalid URL:', url);
         return null;
@@ -68,7 +77,8 @@ function normalizeMedHubUrl(url) {
 
 function isRootDestination(destination) {
     try {
-        const parsed = new URL(destination, 'https://medhub.edgeone.app');
+        // Use current origin as base – works on any domain
+        const parsed = new URL(destination, window.location.origin);
         return parsed.pathname === '/' || parsed.pathname === '/index.html';
     } catch {
         return false;
@@ -79,6 +89,16 @@ function isRootDestination(destination) {
 // CAPACITOR DEEP‑LINK CAPTURE
 // ============================================================
 async function captureLaunchUrl() {
+    // First, check if we already have a deep link stored by the inline script
+    const storedDeepLink = sessionStorage.getItem('deepLink');
+    if (storedDeepLink) {
+        console.log('[DeepLink] Using stored deep link:', storedDeepLink);
+        pendingAppUrl = storedDeepLink;
+        sessionStorage.removeItem('deepLink'); // clear it
+        return;
+    }
+
+    // Otherwise, try to get the launch URL from Capacitor
     if (!App) return;
     try {
         const result = await App.getLaunchUrl();
@@ -101,6 +121,8 @@ function registerAppUrlListener() {
         console.log('[DeepLink] App URL opened:', url);
         const destination = normalizeMedHubUrl(url);
         if (!destination) return;
+        // Clear any old stored deep link to avoid duplicates
+        sessionStorage.removeItem('deepLink');
         if (appInitialized) {
             processDestination(destination);
         } else {
@@ -110,7 +132,7 @@ function registerAppUrlListener() {
 }
 
 // ============================================================
-// DESTINATION PROCESSOR
+// DESTINATION PROCESSOR (runs only after app is initialized)
 // ============================================================
 function processDestination(destination) {
     if (!destination) return;
@@ -121,11 +143,11 @@ function processDestination(destination) {
     console.log('[DeepLink] Processing destination:', destination);
     if (appAuthenticated) {
         console.log('[DeepLink] Authenticated → navigating to:', destination);
-        safeRedirect(destination);
+        navigateTo(destination);
     } else {
         console.log('[DeepLink] Auth required – storing for later.');
         sessionStorage.setItem('redirectAfterLogin', destination);
-        safeRedirect('/pages/welcome.html');
+        // The bootstrap will redirect to welcome (or login) after router init
     }
 }
 
@@ -144,36 +166,38 @@ async function initOrientation() {
 }
 
 // ============================================================
-// SAFE REDIRECT (uses SPA router)
+// SAFE REDIRECT (used only before router is ready – fallback)
 // ============================================================
 function safeRedirect(targetPath) {
     if (screenOrientation) {
         screenOrientation.unlock().catch(() => {});
     }
     let target = targetPath;
-    // Remove leading '/pages/' if present – router expects clean URLs
+    // Clean URL for SPA router
     if (target.startsWith('/pages/')) {
         target = target.replace('/pages/', '');
     }
-    // If it's still a full URL (with .html), strip extension
     if (target.endsWith('.html')) {
         target = target.replace('.html', '');
     }
-    // Append referral code if not already present
+    // Append referral code if present
     if (referralCode && !target.includes('ref=')) {
         const sep = target.includes('?') ? '&' : '?';
         target += sep + 'ref=' + encodeURIComponent(referralCode);
     }
-    console.log('[App] Redirecting to:', target);
-    // Use the SPA router
-    navigateTo(target);
+    console.log('[App] Redirecting (safe) to:', target);
+    // Use router if available, otherwise set window.location (should rarely happen)
+    if (typeof navigateTo === 'function') {
+        navigateTo(target);
+    } else {
+        window.location.href = target;
+    }
 }
 
 // ============================================================
 // PROGRESS BAR HELPER
 // ============================================================
 let progressFill = null;
-let loadInterval = null;
 let progressResolve = null;
 
 function getProgressFill() {
@@ -190,7 +214,7 @@ function updateProgress(percent) {
     }
 }
 
-// Create a promise that resolves when progress reaches 100%
+// Promise that resolves when progress reaches 100%
 const progressReady = new Promise((resolve) => {
     progressResolve = resolve;
 });
@@ -225,13 +249,11 @@ export async function initializeApp() {
     try {
         // 1. Check for referral code in URL
         if (!utils.getLocalStorage('accessToken')) {
-            // FIX: Check pendingAppUrl first (for Capacitor), fallback to window URL
+            // Use pendingAppUrl directly – it's already a path, append to current origin
             const urlToCheck = pendingAppUrl 
-                ? 'https://medhub.edgeone.app' + pendingAppUrl 
+                ? new URL(pendingAppUrl, window.location.origin).href
                 : undefined;
-                
             const refCode = referral.detectReferralFromURL(urlToCheck);
-            
             if (refCode) {
                 console.log('[App] Referral code detected from URL:', refCode);
                 referral.validateReferralCode(refCode).then(result => {
@@ -343,13 +365,25 @@ async function bootstrap() {
         await captureLaunchUrl();
         registerAppUrlListener();
 
+        // ============================================================
+        // WEB DEEP‑LINK FALLBACK – when not running in Capacitor
+        // ============================================================
+        if (!pendingAppUrl) {
+            const currentPath = window.location.pathname;
+            // Exclude root and index.html – they are handled as default destinations
+            if (currentPath && currentPath !== '/' && currentPath !== '/index.html') {
+                pendingAppUrl = currentPath + window.location.search + window.location.hash;
+                console.log('[App] Deep link from browser URL:', pendingAppUrl);
+            }
+        }
+
         // 3. Orientation lock
         await initOrientation();
 
         // 4. Detect referral from URL or storage
         let initialReferral = null;
         if (pendingAppUrl) {
-            const fullUrl = 'https://medhub.edgeone.app' + pendingAppUrl;
+            const fullUrl = new URL(pendingAppUrl, window.location.origin).href;
             initialReferral = referral.detectReferralFromURL(fullUrl);
         } else {
             initialReferral = referral.detectReferralFromURL();
@@ -379,8 +413,8 @@ async function bootstrap() {
             console.log('[App] Incoming deep-link:', destination);
 
             if (isRootDestination(destination)) {
-                // FIX: Keep the query string (e.g. ?ref=...) when redirecting from root
-                const parsed = new URL(destination, 'https://medhub.edgeone.app');
+                // Root: go to subjects or welcome, but preserve query/hash
+                const parsed = new URL(destination, window.location.origin);
                 target = appAuthenticated ? 'subjects' : 'welcome';
                 if (parsed.search) {
                     target += parsed.search;
@@ -406,10 +440,18 @@ async function bootstrap() {
         // 8. Apply theme
         if (ui.applyTheme) ui.applyTheme();
 
-        // 9. Start the router – this loads the first page
+        // 9. Set the URL via history API (so the router loads the intended page)
+        const currentFull = window.location.pathname + window.location.search + window.location.hash;
+        if (target && target !== currentFull) {
+            // Ensure target is a full path (starts with /)
+            const fullTarget = target.startsWith('/') ? target : '/' + target;
+            window.history.replaceState({}, '', fullTarget);
+        }
+
+        // 10. Start the router – this loads the page based on the current URL
         initRouter();
 
-        // 10. Wait for the first page to be rendered
+        // 11. Wait for the first page to be rendered
         const appRoot = document.getElementById('app-root');
         if (appRoot && !appRoot.children.length) {
             await new Promise((resolve) => {
@@ -423,20 +465,12 @@ async function bootstrap() {
             });
         }
 
-        // 11. Application is ready – remove splash
+        // 12. Application is ready – remove splash
         document.documentElement.classList.add('app-ready');
         const splash = document.getElementById('app-bootstrap');
         if (splash) {
             splash.style.opacity = '0';
             setTimeout(() => splash.remove(), 500);
-        }
-
-        // 12. Navigate to the determined target (if not already there)
-        // Compare full URL (path + query + hash) to avoid redundant navigation
-        const currentFullPath = window.location.pathname + window.location.search + window.location.hash;
-        const cleanTarget = target.replace(/^\/+|\/+$/g, '');
-        if (!currentFullPath.includes(cleanTarget)) {
-            navigateTo(target);
         }
 
         // 13. Register service worker
