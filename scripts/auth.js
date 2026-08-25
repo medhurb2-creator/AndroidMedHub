@@ -15,7 +15,7 @@ import * as sync from './sync.js';
 import * as subscription from './subscription.js';
 import * as examEngine from './exam-engine.js';
 import { convexHttpClient } from './convex-client.js';
-import { navigateTo } from './router.js';  // ← for clean navigation
+import { navigateTo } from './router.js';
 
 // ==================== TOKEN MANAGEMENT ====================
 
@@ -265,7 +265,6 @@ export async function login(identifier, password, deviceInfo) {
 
         await sync.syncUserData();
 
-        // ✅ Refresh subscription immediately after login
         try {
             await subscription.refreshSubscription();
             console.log('[Auth] Subscription refreshed after login.');
@@ -329,7 +328,6 @@ export async function register(userData) {
 
         await sync.syncUserData();
 
-        // ✅ Refresh subscription immediately after registration
         try {
             await subscription.refreshSubscription();
             console.log('[Auth] Subscription refreshed after registration.');
@@ -413,7 +411,6 @@ export async function resetPassword(identifier, newPassword) {
         }
         sessionStorage.removeItem('resetToken');
         ui.showToast('Password reset successfully. Please login.', 'success');
-        // ✅ Clean SPA redirect
         setTimeout(() => {
             navigateTo('login');
         }, 2000);
@@ -533,33 +530,146 @@ export async function exportData() {
     }
 }
 
+// ==================== CLEAR ALL LOCAL DATA ====================
+
+/**
+ * Clear all local data (IndexedDB + localStorage + sessionStorage).
+ * Used after account deletion to ensure no residual data remains.
+ */
+async function clearAllLocalData() {
+    console.log('[Auth] Clearing all local data...');
+
+    // 1. Clear all IndexedDB stores
+    try {
+        if (typeof db.clearDatabase === 'function') {
+            await db.clearDatabase();
+            console.log('[Auth] IndexedDB cleared.');
+        } else {
+            console.warn('[Auth] db.clearDatabase not available; skipping IndexedDB wipe.');
+        }
+    } catch (e) {
+        console.warn('[Auth] Failed to clear IndexedDB:', e);
+    }
+
+    // 2. Clear all known localStorage keys used by the app
+    const localStorageKeys = [
+        'accessToken',
+        'sessionId',
+        'user',
+        'subscription',
+        'ai_chats',
+        'ai_usage_count',
+        'referral_code',
+        'sync_state',
+        'sync_timer',
+        'deviceFingerprint',
+        'examConfig',
+        'examState',
+        'selectedPlan',
+        'currentTransaction',
+        'rememberedEmail',
+        'appSettings',
+        'favorite_resources',
+        'lastExam',
+        'downloadedExams',
+        'securityViolations',
+        'lockStatus',
+        'userStats',
+        'notes_fallback',
+        'conversations_fallback',
+        'chatHistory_fallback',
+        'notifications_fallback',
+        'publicAssetVersions',
+        'referral_cache_referral',
+        'referral_cache_agent',
+        'convex_session'
+    ];
+
+    for (const key of localStorageKeys) {
+        try {
+            localStorage.removeItem(key);
+        } catch (e) {
+            // ignore
+        }
+    }
+    console.log('[Auth] localStorage cleared.');
+
+    // 3. Clear sessionStorage keys
+    try {
+        sessionStorage.clear();
+        console.log('[Auth] sessionStorage cleared.');
+    } catch (e) {
+        // ignore
+    }
+}
+
+// ==================== ACCOUNT DELETION ====================
+
+/**
+ * Permanently delete the user's account.
+ * - Requires a valid JWT and the user's password.
+ * - Calls the backend action `users/mutations:deleteAccount`.
+ * - On success, clears all local data and redirects to the welcome page.
+ * - If the password is incorrect, throws an error with a clear message.
+ * - Uses handleTokenError to recover from session expiry.
+ *
+ * @param {string} password - The user's current password (for re‑authentication).
+ * @returns {Promise<void>}
+ */
 export async function deleteAccount(password) {
     requireOnline();
+
+    const token = getToken();
+    if (!token) {
+        throw new Error('Not authenticated. Please log in again.');
+    }
+
     const user = getUser();
-    if (!user) throw new Error('Not authenticated');
+    if (!user) {
+        throw new Error('User data not found. Please log in again.');
+    }
 
     try {
         const result = await convexHttpClient.action("users/mutations:deleteAccount", {
-            token: getToken(),
+            token,
             password
         });
+
         if (!result.success) {
+            // Check if this is a token-related error (e.g., session expired)
             if (result.error === 'invalid_token' || result.message?.includes('token')) {
                 await handleTokenError(new Error(result.message));
-                return;
+                return; // handleTokenError will have cleared the token and shown a toast
             }
+            // Otherwise, propagate the error (e.g., invalid password)
             throw new Error(result.message);
         }
-        await logout();
-        ui.showToast('Account deleted', 'info');
+
+        // ✅ Clear all local data first
+        await clearAllLocalData();
+
+        // Then reset in-memory state and remaining local keys
+        currentUser = null;
+        clearToken();
+        utils.removeLocalStorage('sessionId');
+        await subscription.clearSubscription();
+        examEngine.clearExamConfig();
+        examEngine.clearExamState();
+
+        ui.showToast('Account permanently deleted.', 'success');
+        navigateTo('welcome.html');
+
     } catch (error) {
         console.error('[Auth] Delete account failed', error);
+        // If it's a token error, let handleTokenError attempt to recover
         if (await handleTokenError(error)) return;
+
+        // Otherwise, rethrow with a user-friendly message
         const msg = getErrorMessage(error);
-        if (msg.includes('Invalid password')) {
-            throw new Error('Password incorrect');
+        if (msg.includes('Invalid password') || msg.toLowerCase().includes('password')) {
+            throw new Error('The password you entered is incorrect. Please try again.');
         }
-        throw new Error(msg || 'Account deletion failed');
+        throw new Error(msg || 'Account deletion failed. Please try again later.');
     }
 }
 

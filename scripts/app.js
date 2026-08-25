@@ -170,7 +170,7 @@ async function initOrientation() {
 // ============================================================
 function safeRedirect(targetPath) {
     if (screenOrientation) {
-        screenOrientation.unlock().catch(() => {});
+        screenOrientation.unlock().catch(() => { });
     }
     let target = targetPath;
     // Clean URL for SPA router
@@ -250,7 +250,7 @@ export async function initializeApp() {
         // 1. Check for referral code in URL
         if (!utils.getLocalStorage('accessToken')) {
             // Use pendingAppUrl directly – it's already a path, append to current origin
-            const urlToCheck = pendingAppUrl 
+            const urlToCheck = pendingAppUrl
                 ? new URL(pendingAppUrl, window.location.origin).href
                 : undefined;
             const refCode = referral.detectReferralFromURL(urlToCheck);
@@ -464,6 +464,9 @@ async function bootstrap() {
                 observer.observe(appRoot, { childList: true });
             });
         }
+
+        // ⭐ Allow the page to finish initialising (150ms is enough for IndexedDB reads)
+        await new Promise(resolve => setTimeout(resolve, 150));
 
         // 12. Application is ready – remove splash
         document.documentElement.classList.add('app-ready');

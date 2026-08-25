@@ -26,11 +26,13 @@ export async function init(context) {
   }
 
   // ============================================================
-  // ✅ Load subscription from cache (no backend refresh)
+  // ✅ Get cached subscription and compute actual active status
   // ============================================================
   let currentSub = null;
+  let isActive = false;
   try {
-    currentSub = await subscription.getSubscription(); // returns cached object
+    currentSub = await subscription.getSubscription(); // cached object
+    isActive = await subscription.hasActiveSubscription(); // real-time expiry check
   } catch (e) {
     console.warn('[Subscription] Failed to get subscription:', e);
   }
@@ -40,6 +42,8 @@ export async function init(context) {
     try {
       currentSub = await db.getSubscription();
       if (currentSub) await subscription.setSubscription(currentSub);
+      // Re-check active status after loading from DB
+      isActive = await subscription.hasActiveSubscription();
     } catch (e) { /* ignore */ }
   }
 
@@ -47,7 +51,7 @@ export async function init(context) {
   plansList = await subscription.getSubscriptionPlans();
 
   // Render header status
-  await renderHeaderStatus(currentSub);
+  await renderHeaderStatus(currentSub, isActive);
 
   // Hide shimmer, show real content
   $('#shimmer-content').style.display = 'none';
@@ -57,11 +61,9 @@ export async function init(context) {
   switchBodyView('method-selection');
 
   // Check trial eligibility ONLY if online and no active subscription
-  if (navigator.onLine && !(currentSub && currentSub.isActive)) {
+  if (navigator.onLine && !isActive) {
     try {
       trialEligible = await subscription.checkTrialEligibility();
-      // If trial eligible, update UI; but we don't refresh subscription from backend here
-      // because we only need eligibility flag, not the subscription object.
     } catch (e) {
       console.warn('Trial eligibility check failed', e);
       trialEligible = false;
@@ -151,15 +153,25 @@ function switchBodyView(viewName) {
 }
 
 // ==================== HEADER STATUS ====================
-async function renderHeaderStatus(sub) {
+async function renderHeaderStatus(sub, isActive) {
   const container = $('#status-area');
   if (!container) return;
-  if (sub && sub.isActive) {
+  if (isActive && sub) {
     const remaining = await subscription.formatRemainingTime(); // uses cached expiry
     container.innerHTML = `<span class="status-text">Plan: ${sub.plan} · expires ${utils.formatDate(sub.expiryDate)}</span><span class="status-text">(${remaining} left)</span>`;
     return;
   }
-  if (trialEligible) {
+  // Check trial eligibility only if not active – we already have trialEligible variable, but we can't use it here because it's not set yet.
+  // We'll use the global trialEligible after it's set, but this function is called before trialEligible is computed.
+  // So we'll rely on the caller to pass trialEligible or we can recompute.
+  // Let's recompute briefly if online.
+  let trialAvailable = false;
+  if (navigator.onLine) {
+    try {
+      trialAvailable = await subscription.checkTrialEligibility();
+    } catch (e) {}
+  }
+  if (trialAvailable) {
     container.innerHTML = `<span class="status-text">No active plan</span><button id="trialHeaderBtn" class="trial-btn">Start Free Trial</button>`;
     const trialHeaderBtn = $('#trialHeaderBtn');
     if (trialHeaderBtn) {

@@ -1,4 +1,4 @@
-// scripts/referral.js
+// frontend-user/scripts/referral.js
 
 /**
  * Referral System Module – Convex Integration
@@ -262,7 +262,8 @@ export async function requestWithdrawal(amount, phoneNumber) {
     }
 
     try {
-        const result = await convexHttpClient.mutation("referrals/mutations:requestWithdrawal", {
+        // ✅ Fixed: Use `.action` instead of `.mutation` because backend is an action
+        const result = await convexHttpClient.action("referrals/mutations:requestWithdrawal", {
             token,
             amount,
             phoneNumber: formattedPhone

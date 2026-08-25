@@ -40,21 +40,24 @@ export async function init(context) {
   }
 
   // ============================================================
-  // ✅ Use cached subscription – no backend calls
+  // ✅ Get cached subscription and compute actual active status
   // ============================================================
   let sub = null;
+  let isActive = false;
   try {
-    sub = await subscription.getSubscription(); // returns cached object
+    sub = await subscription.getSubscription(); // cached object
+    isActive = await subscription.hasActiveSubscription(); // real-time expiry check
   } catch (err) {
     console.warn('[AI] Failed to get subscription:', err);
     sub = null;
+    isActive = false;
   }
 
   // --- Update subscription status ---
   const statusEl = $('#header-status');
   const subscribeBtn = $('#subscribeBtn');
 
-  if (sub && sub.isActive) {
+  if (isActive && sub) {
     const remaining = await subscription.formatRemainingTime(); // uses cached expiry
     statusEl.innerHTML =
       `<span class="status-text">${sub.plan} · expires ${utils.formatDate(sub.expiryDate)} (${remaining})</span>`;

@@ -1,5 +1,5 @@
 // public/service-worker.js
-const CACHE_VERSION = 'v3.0';
+const CACHE_VERSION = 'v3.1';
 const CACHE_NAME = `medexam-${CACHE_VERSION}`;
 
 // ====== DECRYPTION KEY (MUST match encrypt-json.js) ======
