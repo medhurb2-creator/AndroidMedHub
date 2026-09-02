@@ -23,7 +23,7 @@ const STORAGE_KEY_REFERRAL_DATA = 'referral_data';
 const STORAGE_KEY_AGENT_DATA = 'agent_data';
 
 // Base URL for referral links (production)
-const BASE_URL = 'https://medhub.edgeone.app';
+const BASE_URL = 'https://medvix.edgeone.app';
 
 // ==================== TOKEN ERROR HANDLER ====================
 
@@ -303,8 +303,8 @@ export function copyReferralLink(referralCode) {
 export function shareReferralLink(referralCode) {
     const link = generateReferralLink(referralCode);
     const shareData = {
-        title: 'Join MedHub and ace your medical exams!',
-        text: 'Use my referral link to join MedHub and get started with premium medical exam prep:',
+        title: 'Join MedVix and ace your medical exams!',
+        text: 'Use my referral link to join MedVix and get started with premium medical exam prep:',
         url: link
     };
 

@@ -5,9 +5,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes" />
     <meta name="theme-color" content="#ffffff" />
-    <meta name="application-name" content="MedHub" />
-    <meta name="description" content="MedHub — Learn. Practice. Connect. Grow. Achieve." />
-    <title>MedHub</title>
+    <meta name="application-name" content="MedVix" />
+    <meta name="description" content="MedVix — Learn. Practice. Connect. Grow. Achieve." />
+    <title>MedVix</title>
+    <!-- High-resolution favicon (modern browsers) -->
+<link rel="icon" type="image/png" sizes="192x192" href="/assets/images/logo.png">
+
+<!-- Apple touch icon (iOS home screen) -->
+<link rel="apple-touch-icon" href="/assets/images/logo.png">
+<link rel="icon" type="image/png" sizes="512x512" href="/assets/images/logo.png">
 
     <!-- Global CSS (shared by all pages) -->
     <link rel="stylesheet" href="./css/common.css" />
@@ -25,10 +31,11 @@
         pdfjsLib.GlobalWorkerOptions.workerSrc = '/libs/pdfjs/pdf.worker.min.js';
     </script>
     <script src="/libs/pdfkit.standalone.js"></script>
+
     <!-- ============================================================
          SPLASH‑SPECIFIC CSS – only what’s needed for the overlay
          ============================================================ -->
-    <style>
+    <style id="medvix-splash-css">
         /* ===== Splash overlay ===== */
         #app-bootstrap {
             position: fixed;
@@ -37,9 +44,7 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            /* ← center horizontally */
             justify-content: flex-end;
-            /* ← keep at bottom */
             padding-bottom: 60px;
             background-image: url('/assets/images/splash.png');
             background-size: 100% 100%;
@@ -62,7 +67,7 @@
         }
 
         /* Referral badge */
-        .referral-badge {
+        #app-bootstrap .referral-badge {
             position: relative;
             z-index: 1;
             margin-bottom: 1.2rem;
@@ -74,18 +79,17 @@
             font-size: 0.85rem;
             color: #60a5fa;
             letter-spacing: 0.5px;
-            animation: badgePulse 2s ease-in-out infinite;
+            animation: medvixSplashBadgePulse 2s ease-in-out infinite;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-            display: none;
-            /* shown by JS if referral exists */
+            display: none; /* shown by JS if referral exists */
         }
 
-        .referral-badge span {
+        #app-bootstrap .referral-badge span {
             font-weight: 600;
             color: #fff;
         }
 
-        @keyframes badgePulse {
+        @keyframes medvixSplashBadgePulse {
 
             0%,
             100% {
@@ -100,7 +104,7 @@
         }
 
         /* Loading section */
-        .loading-section {
+        #app-bootstrap .loading-section {
             position: relative;
             z-index: 1;
             display: flex;
@@ -112,47 +116,43 @@
             margin-bottom: 1.5rem;
         }
 
-        .spinner {
+        #app-bootstrap .spinner {
             width: 36px;
             height: 36px;
             border: 3px solid rgba(255, 255, 255, 0.15);
             border-top-color: #60a5fa;
             border-radius: 50%;
-            animation: spin 0.8s linear infinite;
+            animation: medvixSplashSpin 0.8s linear infinite;
         }
 
-        @keyframes spin {
+        @keyframes medvixSplashSpin {
             to {
                 transform: rotate(360deg);
             }
         }
 
-        .progress-track {
+        #app-bootstrap .progress-track {
             width: 100%;
             height: 12px;
-            /* thicker */
             background: rgba(255, 255, 255, 0.15);
             border-radius: 9999px;
-            /* fully rounded */
             overflow: hidden;
             position: relative;
             box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
-
         }
 
-        .progress-fill {
+        #app-bootstrap .progress-fill {
             height: 100%;
             width: 0%;
             background: linear-gradient(90deg, #2563eb, #60a5fa, #2563eb);
             background-size: 200% 100%;
             border-radius: 9999px;
-            animation: progressShimmer 1.5s linear infinite;
+            animation: medvixSplashProgressShimmer 1.5s linear infinite;
             transition: width 0.3s ease;
             box-shadow: 0 0 12px rgba(96, 165, 250, 0.4);
-            /* soft glow */
         }
 
-        @keyframes progressShimmer {
+        @keyframes medvixSplashProgressShimmer {
             0% {
                 background-position: 0% 0%;
             }
@@ -162,7 +162,7 @@
             }
         }
 
-        .loading-text {
+        #app-bootstrap .loading-text {
             font-size: 0.85rem;
             color: rgba(255, 255, 255, 0.7);
             font-weight: 300;
@@ -172,20 +172,20 @@
             min-height: 1.5em;
         }
 
-        .loading-text .dot {
+        #app-bootstrap .loading-text .dot {
             display: inline-block;
-            animation: dotPulse 1.4s ease-in-out infinite;
+            animation: medvixSplashDotPulse 1.4s ease-in-out infinite;
         }
 
-        .loading-text .dot:nth-child(2) {
+        #app-bootstrap .loading-text .dot:nth-child(2) {
             animation-delay: 0.2s;
         }
 
-        .loading-text .dot:nth-child(3) {
+        #app-bootstrap .loading-text .dot:nth-child(3) {
             animation-delay: 0.4s;
         }
 
-        @keyframes dotPulse {
+        @keyframes medvixSplashDotPulse {
 
             0%,
             60%,
@@ -200,7 +200,7 @@
             }
         }
 
-        .version-info {
+        #app-bootstrap .version-info {
             position: relative;
             z-index: 1;
             text-align: center;
@@ -232,7 +232,7 @@
     <!-- ============================================================
          TEMPORARY SPLASH SCREEN – removed after first page loads
          ============================================================ -->
-    <div id="app-bootstrap" aria-live="polite" aria-label="Loading MedHub">
+    <div id="app-bootstrap" aria-live="polite" aria-label="Loading MedVix">
         <div class="referral-badge" id="referralBadge">
             🎯 Referral: <span id="refBadgeCode">—</span>
         </div>
@@ -247,57 +247,41 @@
             </div>
         </div>
 
-        <div class="version-info">v1.0.1</div>
+        <div class="version-info">v1.0.2</div>
     </div>
 
     <!-- ============================================================
          SPA APPLICATION HOST – page HTML is injected here
          ============================================================ -->
-    <div id="app-root" data-app="medhub"></div>
+    <div id="app-root" data-app="medvix"></div>
+
     <!-- ============================================================
-     DEEP‑LINK CAPTURE (Capacitor)
-     ============================================================ -->
+         DEEP‑LINK CAPTURE (Capacitor)
+         ============================================================ -->
     <script>
-        // ============================================================
-        // EARLY DEEP‑LINK CAPTURE (runs before app.js loads)
-        // ============================================================
         if (window.Capacitor?.Plugins?.App) {
             const App = window.Capacitor.Plugins.App;
-
-            function normalizeDeepLink(url) {
-                try {
-                    const parsed = new URL(url);
-                    if (parsed.protocol === 'https:') {
-                        return parsed.pathname + parsed.search + parsed.hash;
-                    }
-                    if (parsed.protocol === 'medhub:') {
-                        let path = parsed.hostname + parsed.pathname;
-                        if (!path.startsWith('/')) path = '/' + path;
-                        return path + parsed.search + parsed.hash;
-                    }
-                    return null;
-                } catch (_) {
-                    return null;
-                }
-            }
-
+            // Capture launch URL (app opened via deep‑link)
             App.getLaunchUrl().then(result => {
                 if (result?.url) {
-                    const normalized = normalizeDeepLink(result.url);
-                    if (normalized) {
-                        sessionStorage.setItem('deepLink', normalized);
-                    }
+                    console.log('[DeepLink] Launch URL:', result.url);
+                    sessionStorage.setItem('deepLink', result.url);
                 }
             }).catch(err => console.warn('[DeepLink] getLaunchUrl error:', err));
 
+            // Listen for deep‑links while app is already running
             App.addListener('appUrlOpen', (data) => {
-                const normalized = normalizeDeepLink(data.url);
-                if (normalized) {
-                    sessionStorage.setItem('deepLink', normalized);
+                console.log('[DeepLink] appUrlOpen:', data.url);
+                // If router is ready, navigate immediately; otherwise store for later
+                if (window.router && typeof window.router.navigateTo === 'function') {
+                    window.router.navigateTo(data.url);
+                } else {
+                    sessionStorage.setItem('deepLink', data.url);
                 }
             });
         }
     </script>
+
     <!-- ============================================================
          SINGLE ENTRY POINT – app.js bootstraps everything
          ============================================================ -->

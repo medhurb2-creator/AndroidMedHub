@@ -6,13 +6,17 @@
  * All data is derived from exam results stored in IndexedDB.
  * Integrates with the Performance Rating Engine for user ratings and rankings.
  * Also uses AI to generate personalized insights and recommendations.
+ *
+ * Now uses cached performance/leaderboard from db.js (populated by sync.js)
+ * to provide offline capabilities.
  */
 
 import * as utils from './utils.js';
 import * as db from './db.js';
 import * as sync from './sync.js';
 import * as performanceRating from './performance-rating-v2.js';
-import * as auth from './auth.js';              // ✅ ADDED
+import * as auth from './auth.js';
+import { convexHttpClient } from './convex-client.js';
 import { generateAIInsightsFromRaw } from './performance-ai.js';
 
 // ==================== CONSTANTS ====================
@@ -226,6 +230,9 @@ export async function calculateAllAnalytics(results = null) {
             }
         }
 
+        // Get rating info from cache or local user
+        const ratingInfo = await getUserRatingInfo();
+
         return {
             summary: calculateSummary(exams),
             trends: calculateTrends(exams),
@@ -233,7 +240,7 @@ export async function calculateAllAnalytics(results = null) {
             studyPatterns: analyzeStudyPatterns(exams),
             weakAreas: await identifyWeakAreas(),
             recommendations: generateRecommendations(exams, aiInsights),
-            rating: await getUserRatingInfo(),
+            rating: ratingInfo,
             aiInsights: aiInsights,
             exams: exams
         };
@@ -264,11 +271,29 @@ export async function refreshAnalytics(forceSync = false) {
     return await calculateAllAnalytics();
 }
 
-// ==================== USER RATING INFO ====================
+// ==================== USER RATING INFO (cached-first) ====================
 
 export async function getUserRatingInfo() {
     try {
-        const user = auth.getUser();               // ✅ Use auth directly
+        // 1. Try cached performance from IndexedDB (populated by sync.js)
+        const cachedPerf = await db.getUserPerformance();
+        if (cachedPerf) {
+            return {
+                rating: cachedPerf.rating || 100,
+                rank: cachedPerf.rank || { rank: 1, label: 'Seed', title: 'Starting Out' },
+                historyEWMA: cachedPerf.historyEWMA || 0.5,
+                completedExams: cachedPerf.completedExams || 0,
+                reliability: cachedPerf.startedExams ? Math.min(1, (cachedPerf.completedExams || 0) / (cachedPerf.startedExams || 1)) : 1,
+                lastExamPR: cachedPerf.lastExamPR || null,
+                leaderboardPoints: cachedPerf.leaderboardPoints || 0,
+                completedChallenges: cachedPerf.completedChallenges || 0,
+                integrityScore: cachedPerf.integrityScore || 1,
+                achievements: cachedPerf.achievements || []
+            };
+        }
+
+        // 2. Fallback to local user object
+        const user = auth.getUser();
         if (!user) return null;
 
         const rating = user.rating || 100;
@@ -284,7 +309,11 @@ export async function getUserRatingInfo() {
             historyEWMA,
             completedExams,
             reliability,
-            lastExamPR: user.lastExamPR || null
+            lastExamPR: user.lastExamPR || null,
+            leaderboardPoints: user.leaderboardPoints || 0,
+            completedChallenges: user.completedChallenges || 0,
+            integrityScore: user.integrityScore || 1,
+            achievements: user.achievements || []
         };
     } catch (e) {
         console.warn('getUserRatingInfo failed', e);
@@ -292,10 +321,30 @@ export async function getUserRatingInfo() {
     }
 }
 
-// ==================== LEADERBOARD ====================
+// ==================== LEADERBOARD (cached-first) ====================
 
 export async function getLeaderboard(limit = 100) {
     try {
+        // 1. Try cached leaderboard from IndexedDB (populated by sync.js)
+        const cached = await db.getLeaderboard();
+        if (cached && cached.length > 0) {
+            // If online, we may want to refresh, but for now use cache
+            return cached.slice(0, limit);
+        }
+
+        // 2. If online, fetch from backend and cache
+        if (navigator.onLine && auth.getToken()) {
+            const result = await convexHttpClient.action("users/queries:getLeaderboard", {
+                token: auth.getToken(),
+                limit
+            });
+            if (result.success && result.data) {
+                await db.saveLeaderboard(result.data);
+                return result.data.slice(0, limit);
+            }
+        }
+
+        // 3. Fallback to local users
         const users = await db.getAllUsers();
         return users
             .filter(u => u.rating && u.rating > 0)
@@ -315,9 +364,11 @@ export async function getLeaderboard(limit = 100) {
     }
 }
 
+// ==================== RATING HISTORY ====================
+
 export async function getRatingHistory(userId = null, limit = 30) {
     try {
-        const targetUserId = userId || auth.getUser()?._id;   // ✅ Use auth
+        const targetUserId = userId || auth.getUser()?._id;
         if (!targetUserId) return [];
 
         const exams = await db.getAllExamResults();

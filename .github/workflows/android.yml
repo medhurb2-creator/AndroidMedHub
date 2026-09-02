@@ -35,11 +35,11 @@ jobs:
         run: npx cap sync android
 
       - name: Decode Keystore
-        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/medhub-keystore.jks
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/medvix-keystore.jks
 
       - name: Create keystore.properties
         run: |
-          echo "keystorePath=../medhub-keystore.jks" > android/keystore.properties
+          echo "keystorePath=../medvix-keystore.jks" > android/keystore.properties
           echo "keystorePassword=${{ secrets.KEYSTORE_PASSWORD }}" >> android/keystore.properties
           echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/keystore.properties
           echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/keystore.properties

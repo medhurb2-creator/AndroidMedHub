@@ -1,7 +1,7 @@
 // frontend-user/scripts/help.js
 
 /**
- * MedHub Help System
+ * MedVix Help System
  * Manages the help overlay with FAQ, tutorials, and contact support.
  * Completely independent from notifications.js.
  */
@@ -169,7 +169,7 @@ export function renderHelp(container) {
     notes.style.marginTop = '1.5rem';
     notes.style.fontSize = '0.8rem';
     notes.style.color = 'var(--text-muted)';
-    notes.textContent = 'MedHub v1.0.0 • Built with ❤️ in Kenya';
+    notes.textContent = 'MedVix v1.0.0 • Built with ❤️ in Kenya';
     panel.appendChild(notes);
     
     container.appendChild(panel);

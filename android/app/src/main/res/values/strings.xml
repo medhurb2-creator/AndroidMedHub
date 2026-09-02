@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">MedHub</string>
-    <string name="title_activity_main">MedHub</string>
+    <string name="app_name">MedVix</string>
+    <string name="title_activity_main">MedVix</string>
     <string name="package_name">com.medhurb.app</string>
     <string name="custom_url_scheme">com.medhurb.app</string>
 </resources>

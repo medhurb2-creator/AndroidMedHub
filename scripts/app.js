@@ -50,25 +50,16 @@ let redirectTarget = null;
 let screenOrientation = null;
 
 // ============================================================
-// DEEP‑LINK HELPERS (dynamic – accepts any scheme/host)
+// DEEP‑LINK HELPERS
 // ============================================================
-function normalizeMedHubUrl(url) {
+function normalizeMedVixUrl(url) {
     try {
         const parsed = new URL(url);
-        // Accept any HTTPS link – Capacitor has already vetted it
-        if (parsed.protocol === 'https:') {
-            return parsed.pathname + parsed.search + parsed.hash;
+        if (parsed.protocol !== 'https:' || parsed.hostname !== 'medvex.edgeone.app') {
+            console.warn('[DeepLink] Rejected external URL:', url);
+            return null;
         }
-        // Accept custom scheme (e.g., medhub://subjects -> /subjects)
-        if (parsed.protocol === 'medhub:') {
-            // medhub://subjects/foo?x=1 -> /subjects/foo?x=1
-            let path = parsed.hostname + parsed.pathname;
-            if (!path.startsWith('/')) path = '/' + path;
-            return path + parsed.search + parsed.hash;
-        }
-        // Reject anything else (e.g., ftp, javascript)
-        console.warn('[DeepLink] Unsupported scheme:', url);
-        return null;
+        return parsed.pathname + parsed.search + parsed.hash;
     } catch (_) {
         console.error('[DeepLink] Invalid URL:', url);
         return null;
@@ -77,8 +68,7 @@ function normalizeMedHubUrl(url) {
 
 function isRootDestination(destination) {
     try {
-        // Use current origin as base – works on any domain
-        const parsed = new URL(destination, window.location.origin);
+        const parsed = new URL(destination, 'https://medvex.edgeone.app');
         return parsed.pathname === '/' || parsed.pathname === '/index.html';
     } catch {
         return false;
@@ -89,22 +79,12 @@ function isRootDestination(destination) {
 // CAPACITOR DEEP‑LINK CAPTURE
 // ============================================================
 async function captureLaunchUrl() {
-    // First, check if we already have a deep link stored by the inline script
-    const storedDeepLink = sessionStorage.getItem('deepLink');
-    if (storedDeepLink) {
-        console.log('[DeepLink] Using stored deep link:', storedDeepLink);
-        pendingAppUrl = storedDeepLink;
-        sessionStorage.removeItem('deepLink'); // clear it
-        return;
-    }
-
-    // Otherwise, try to get the launch URL from Capacitor
     if (!App) return;
     try {
         const result = await App.getLaunchUrl();
         if (result?.url) {
             console.log('[DeepLink] Launch URL:', result.url);
-            const normalized = normalizeMedHubUrl(result.url);
+            const normalized = normalizeMedVixUrl(result.url);
             if (normalized) {
                 pendingAppUrl = normalized;
                 console.log('[DeepLink] Pending destination:', pendingAppUrl);
@@ -119,10 +99,8 @@ function registerAppUrlListener() {
     if (!App) return;
     App.addListener('appUrlOpen', ({ url }) => {
         console.log('[DeepLink] App URL opened:', url);
-        const destination = normalizeMedHubUrl(url);
+        const destination = normalizeMedVixUrl(url);
         if (!destination) return;
-        // Clear any old stored deep link to avoid duplicates
-        sessionStorage.removeItem('deepLink');
         if (appInitialized) {
             processDestination(destination);
         } else {
@@ -170,7 +148,7 @@ async function initOrientation() {
 // ============================================================
 function safeRedirect(targetPath) {
     if (screenOrientation) {
-        screenOrientation.unlock().catch(() => { });
+        screenOrientation.unlock().catch(() => {});
     }
     let target = targetPath;
     // Clean URL for SPA router
@@ -214,17 +192,54 @@ function updateProgress(percent) {
     }
 }
 
-// Promise that resolves when progress reaches 100%
-const progressReady = new Promise((resolve) => {
-    progressResolve = resolve;
-});
-
 function completeProgress() {
-    if (progressResolve) {
-        progressResolve();
-        progressResolve = null;
-    }
     updateProgress(100);
+}
+
+// ============================================================
+// COMPLETE SPLASH CLEANUP
+// ============================================================
+async function destroySplash() {
+    console.log('[Splash] Destroying splash resources...');
+
+    const splash = document.getElementById('app-bootstrap');
+
+    // 1. Fade out the splash
+    if (splash) {
+        splash.style.opacity = '0';
+
+        // Allow the CSS opacity transition to complete.
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // 2. Remove splash DOM completely
+        splash.remove();
+    }
+
+    // 3. Remove splash CSS completely
+    const splashCss = document.getElementById('medvex-splash-css');
+
+    if (splashCss) {
+        splashCss.remove();
+        console.log('[Splash] Splash CSS removed.');
+    }
+
+    // 4. Remove splash-related document classes
+    document.documentElement.classList.remove(
+        'app-ready',
+        'medvex-app-ready'
+    );
+
+    // 5. Remove any splash-related body classes
+    document.body.classList.remove(
+        'splash-active',
+        'medvex-splash-active'
+    );
+
+    // 6. Clear splash-specific JS references
+    progressFill = null;
+    progressResolve = null;
+
+    console.log('[Splash] Splash completely destroyed.');
 }
 
 // ============================================================
@@ -249,9 +264,8 @@ export async function initializeApp() {
     try {
         // 1. Check for referral code in URL
         if (!utils.getLocalStorage('accessToken')) {
-            // Use pendingAppUrl directly – it's already a path, append to current origin
-            const urlToCheck = pendingAppUrl
-                ? new URL(pendingAppUrl, window.location.origin).href
+            const urlToCheck = pendingAppUrl 
+                ? 'https://medvex.edgeone.app' + pendingAppUrl 
                 : undefined;
             const refCode = referral.detectReferralFromURL(urlToCheck);
             if (refCode) {
@@ -365,25 +379,13 @@ async function bootstrap() {
         await captureLaunchUrl();
         registerAppUrlListener();
 
-        // ============================================================
-        // WEB DEEP‑LINK FALLBACK – when not running in Capacitor
-        // ============================================================
-        if (!pendingAppUrl) {
-            const currentPath = window.location.pathname;
-            // Exclude root and index.html – they are handled as default destinations
-            if (currentPath && currentPath !== '/' && currentPath !== '/index.html') {
-                pendingAppUrl = currentPath + window.location.search + window.location.hash;
-                console.log('[App] Deep link from browser URL:', pendingAppUrl);
-            }
-        }
-
         // 3. Orientation lock
         await initOrientation();
 
         // 4. Detect referral from URL or storage
         let initialReferral = null;
         if (pendingAppUrl) {
-            const fullUrl = new URL(pendingAppUrl, window.location.origin).href;
+            const fullUrl = 'https://medvex.edgeone.app' + pendingAppUrl;
             initialReferral = referral.detectReferralFromURL(fullUrl);
         } else {
             initialReferral = referral.detectReferralFromURL();
@@ -414,7 +416,7 @@ async function bootstrap() {
 
             if (isRootDestination(destination)) {
                 // Root: go to subjects or welcome, but preserve query/hash
-                const parsed = new URL(destination, window.location.origin);
+                const parsed = new URL(destination, 'https://medvex.edgeone.app');
                 target = appAuthenticated ? 'subjects' : 'welcome';
                 if (parsed.search) {
                     target += parsed.search;
@@ -465,16 +467,8 @@ async function bootstrap() {
             });
         }
 
-        // ⭐ Allow the page to finish initialising (150ms is enough for IndexedDB reads)
-        await new Promise(resolve => setTimeout(resolve, 150));
-
-        // 12. Application is ready – remove splash
-        document.documentElement.classList.add('app-ready');
-        const splash = document.getElementById('app-bootstrap');
-        if (splash) {
-            splash.style.opacity = '0';
-            setTimeout(() => splash.remove(), 500);
-        }
+        // 12. Application is ready – completely destroy splash
+        await destroySplash();
 
         // 13. Register service worker
         if ('serviceWorker' in navigator) {
@@ -482,16 +476,43 @@ async function bootstrap() {
         }
     } catch (error) {
         console.error('[App] Bootstrap failed:', error);
-        document.documentElement.classList.add('app-ready');
+
+        // Completely destroy splash even when bootstrap fails.
         const splash = document.getElementById('app-bootstrap');
-        if (splash) splash.remove();
+
+        if (splash) {
+            splash.remove();
+        }
+
+        const splashCss = document.getElementById('medvex-splash-css');
+
+        if (splashCss) {
+            splashCss.remove();
+        }
+
+        document.documentElement.classList.remove(
+            'app-ready',
+            'medvex-app-ready'
+        );
+
+        document.body.classList.remove(
+            'splash-active',
+            'medvex-splash-active'
+        );
+
+        progressFill = null;
+        progressResolve = null;
+
         const appRoot = document.getElementById('app-root');
+
         if (appRoot) {
             appRoot.innerHTML = `
                 <section class="page error-page" data-page="error">
                     <h1>Application Error</h1>
                     <p>${error.message || 'Unknown error'}</p>
-                    <button onclick="router.navigateTo('welcome')">Go to Welcome</button>
+                    <button onclick="router.navigateTo('welcome')">
+                        Go to Welcome
+                    </button>
                 </section>
             `;
         }

@@ -519,3 +519,289 @@
         font-size: 1.2rem;
     }
 }
+
+/* ===== STYLING FOR BACKEND HTML (UNSTYLED) ===== */
+
+/* Base typography inside the notification body */
+.notif-card p,
+.notif-card .card-body p {
+  margin: 0.35rem 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--text-primary, #1e293b);
+}
+
+.notif-card strong,
+.notif-card .card-body strong {
+  font-weight: 600;
+}
+
+.notif-card a,
+.notif-card .card-body a {
+  color: var(--accent, #2563eb);
+  text-decoration: underline;
+  word-break: break-all;
+}
+
+.notif-card ul,
+.notif-card .card-body ul {
+  margin: 0.35rem 0;
+  padding-left: 1.2rem;
+}
+
+.notif-card li,
+.notif-card .card-body li {
+  margin-bottom: 0.3rem;
+}
+
+/* Buttons that carry data-action (from backend HTML) */
+.notif-card button[data-action],
+.notif-card .card-body button[data-action] {
+  display: inline-block;
+  background: var(--accent, #2563eb);
+  color: #fff;
+  border: none;
+  padding: 0.5rem 1.2rem;
+  border-radius: 30px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 0.4rem;
+  margin-right: 0.4rem;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.notif-card button[data-action]:hover,
+.notif-card .card-body button[data-action]:hover {
+  background: var(--accent-dark, #1d4ed8);
+  transform: scale(1.02);
+}
+
+/* ===== TYPE-SPECIFIC ACCENT COLOUR ===== */
+/* These classes are added by the JS to the .notif-card element.
+   They only set the border-left and a subtle background tint.
+   The base .notif-card layout is NOT changed. */
+
+.notif-card.type-payment_success {
+  --accent: #22c55e;
+  border-left: 4px solid #22c55e;
+  background: #f0fdf4;
+}
+
+.notif-card.type-payment_failed {
+  --accent: #ef4444;
+  border-left: 4px solid #ef4444;
+  background: #fef2f2;
+}
+
+.notif-card.type-trial_started {
+  --accent: #3b82f6;
+  border-left: 4px solid #3b82f6;
+  background: #eff6ff;
+}
+
+.notif-card.type-exam_result {
+  --accent: #eab308;
+  border-left: 4px solid #eab308;
+  background: #fefce8;
+}
+
+.notif-card.type-challenge_invite {
+  --accent: #a855f7;
+  border-left: 4px solid #a855f7;
+  background: #f3e8ff;
+}
+
+.notif-card.type-challenge_created {
+  --accent: #a855f7;
+  border-left: 4px solid #a855f7;
+  background: #f3e8ff;
+}
+
+.notif-card.type-challenge_results {
+  --accent: #10b981;
+  border-left: 4px solid #10b981;
+  background: #ecfdf5;
+}
+
+.notif-card.type-challenge_timeout {
+  --accent: #f59e0b;
+  border-left: 4px solid #f59e0b;
+  background: #fefce8;
+}
+
+.notif-card.type-note_shared {
+  --accent: #10b981;
+  border-left: 4px solid #10b981;
+  background: #ecfdf5;
+}
+
+.notif-card.type-note_shared_with_user {
+  --accent: #10b981;
+  border-left: 4px solid #10b981;
+  background: #ecfdf5;
+}
+
+.notif-card.type-subscription_expiry_warning {
+  --accent: #f59e0b;
+  border-left: 4px solid #f59e0b;
+  background: #fefce8;
+}
+
+.notif-card.type-subscription_expiry_reminder {
+  --accent: #f59e0b;
+  border-left: 4px solid #f59e0b;
+  background: #fefce8;
+}
+
+.notif-card.type-subscription_cancelled {
+  --accent: #f59e0b;
+  border-left: 4px solid #f59e0b;
+  background: #fef2f2;
+}
+
+.notif-card.type-subscription_updated {
+  --accent: #22c55e;
+  border-left: 4px solid #22c55e;
+  background: #f0fdf4;
+}
+
+.notif-card.type-referral_reward {
+  --accent: #3b82f6;
+  border-left: 4px solid #3b82f6;
+  background: #eff6ff;
+}
+
+.notif-card.type-exam_shared {
+  --accent: #3b82f6;
+  border-left: 4px solid #3b82f6;
+  background: #eff6ff;
+}
+
+.notif-card.type-account_created {
+  --accent: #3b82f6;
+  border-left: 4px solid #3b82f6;
+  background: #eff6ff;
+}
+
+.notif-card.type-new_device {
+  --accent: #f59e0b;
+  border-left: 4px solid #f59e0b;
+  background: #fefce8;
+}
+
+.notif-card.type-password_changed {
+  --accent: #22c55e;
+  border-left: 4px solid #22c55e;
+  background: #f0fdf4;
+}
+
+.notif-card.type-password_reset_requested {
+  --accent: #ef4444;
+  border-left: 4px solid #ef4444;
+  background: #fef2f2;
+}
+
+.notif-card.type-password_reset_completed {
+  --accent: #22c55e;
+  border-left: 4px solid #22c55e;
+  background: #f0fdf4;
+}
+
+.notif-card.type-admin_locked {
+  --accent: #ef4444;
+  border-left: 4px solid #ef4444;
+  background: #fef2f2;
+}
+
+.notif-card.type-admin_unlocked {
+  --accent: #22c55e;
+  border-left: 4px solid #22c55e;
+  background: #f0fdf4;
+}
+
+.notif-card.type-admin_role_changed {
+  --accent: #3b82f6;
+  border-left: 4px solid #3b82f6;
+  background: #eff6ff;
+}
+
+.notif-card.type-admin_force_logout {
+  --accent: #f59e0b;
+  border-left: 4px solid #f59e0b;
+  background: #fefce8;
+}
+
+.notif-card.type-admin_reset_password {
+  --accent: #f59e0b;
+  border-left: 4px solid #f59e0b;
+  background: #fefce8;
+}
+
+.notif-card.type-admin_extended_subscription {
+  --accent: #22c55e;
+  border-left: 4px solid #22c55e;
+  background: #f0fdf4;
+}
+
+.notif-card.type-admin_terminated_subscription {
+  --accent: #ef4444;
+  border-left: 4px solid #ef4444;
+  background: #fef2f2;
+}
+
+.notif-card.type-admin_granted_trial {
+  --accent: #3b82f6;
+  border-left: 4px solid #3b82f6;
+  background: #eff6ff;
+}
+
+.notif-card.type-admin_manual_payment {
+  --accent: #22c55e;
+  border-left: 4px solid #22c55e;
+  background: #f0fdf4;
+}
+
+.notif-card.type-admin_processed_withdrawal {
+  --accent: #22c55e;
+  border-left: 4px solid #22c55e;
+  background: #f0fdf4;
+}
+
+.notif-card.type-admin_rejected_withdrawal {
+  --accent: #ef4444;
+  border-left: 4px solid #ef4444;
+  background: #fef2f2;
+}
+
+.notif-card.type-admin_processed_reversal {
+  --accent: #22c55e;
+  border-left: 4px solid #22c55e;
+  background: #f0fdf4;
+}
+
+.notif-card.type-admin_rejected_reversal {
+  --accent: #ef4444;
+  border-left: 4px solid #ef4444;
+  background: #fef2f2;
+}
+
+.notif-card.type-admin_verified_agent {
+  --accent: #3b82f6;
+  border-left: 4px solid #3b82f6;
+  background: #eff6ff;
+}
+
+.notif-card.type-admin_system_lockdown {
+  --accent: #f59e0b;
+  border-left: 4px solid #f59e0b;
+  background: #fefce8;
+}
+
+/* ===== DARK MODE ADAPTATION ===== */
+@media (prefers-color-scheme: dark) {
+  .notif-card[class*="type-"] {
+    background: #1e293b; /* fallback to dark card background */
+    border-left-color: var(--accent);
+  }
+}

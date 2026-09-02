@@ -38,7 +38,7 @@ function isSyncAllowed() {
 let syncState = {
     lastFullSync: 0,
     lastPush: { exams: 0, notes: 0 },
-    lastPull: { exams: 0, notes: 0 }
+    lastPull: { exams: 0, notes: 0, performance: 0, leaderboard: 0, challengeHistory: 0 }
 };
 
 function loadSyncState() {
@@ -58,7 +58,7 @@ function getDefaultSyncState() {
     return {
         lastFullSync: 0,
         lastPush: { exams: 0, notes: 0 },
-        lastPull: { exams: 0, notes: 0 }
+        lastPull: { exams: 0, notes: 0, performance: 0, leaderboard: 0, challengeHistory: 0 }
     };
 }
 
@@ -95,14 +95,6 @@ function getAuthToken() {
     return token;
 }
 
-async function ensureValidToken() {
-    let token = getAuthToken();
-    if (!token) return null;
-
-    // Try using current token first; if it fails, we'll refresh in the caller.
-    return token;
-}
-
 async function refreshTokenIfNeeded() {
     console.log('[Sync] Attempting to refresh token...');
     const refreshed = await auth.refreshSession();
@@ -114,7 +106,6 @@ async function refreshTokenIfNeeded() {
     return null;
 }
 
-// Helper to execute an action with retry after token refresh
 async function withTokenRetry(action) {
     let token = getAuthToken();
     if (!token) throw new Error('No authentication token');
@@ -142,11 +133,8 @@ async function withTokenRetry(action) {
         console.warn('[Sync] Token error detected, attempting refresh...');
         const newToken = await refreshTokenIfNeeded();
         if (!newToken) {
-            // Refresh failed, throw original error
             throw error;
         }
-        // Retry once with new token
-        console.log('[Sync] Retrying with refreshed token...');
         return await action(newToken);
     }
 }
@@ -191,7 +179,6 @@ export async function syncData(force = false) {
             return;
         }
 
-        // Use withTokenRetry for each step to handle token refresh
         await withTokenRetry(async (token) => {
             await pushAllData(user, token);
         });
@@ -212,7 +199,6 @@ export async function syncData(force = false) {
         console.log('[Sync] Full sync completed successfully.');
     } catch (err) {
         console.error('[Sync] Sync failed:', err);
-        // Only force logout if token refresh also failed and it's a token error
         const message = err?.message || err?.toString() || '';
         if (message.includes('token') || message.includes('Unauthorized')) {
             console.warn('[Sync] Token error and refresh failed, logging out.');
@@ -233,10 +219,15 @@ async function pushAllData(user, token) {
 async function pushExamResults(user, token) {
     const lastPushTime = syncState.lastPush.exams;
     const exams = await db.getAllExamResults();
+    // Skip challenge results (submitted separately) and already‑submitted ones
     const newExams = exams.filter(e => {
+        const isChallengeMode = e.mode === 'challenge' || e.mode === 'shared';
+        if (isChallengeMode) return false;
+        if (e.challengeResultSubmitted === true) return false;
         const date = new Date(e.date).getTime();
         return (date > lastPushTime || (e.updatedAt && e.updatedAt > lastPushTime)) && e.downloaded === true;
     });
+
     if (newExams.length === 0) {
         console.log('[Sync] No new downloaded exam results to push.');
         return;
@@ -440,6 +431,9 @@ export async function pushSingleNote(noteId) {
 async function pullAllData(user, token) {
     await pullExamResults(user, token);
     await pullNotes(user, token);
+    await pullUserPerformance(user, token);
+    await pullLeaderboard(user, token);
+    await pullChallengeHistory(user, token);
 }
 
 async function pullExamResults(user, token) {
@@ -572,6 +566,71 @@ async function pullNotes(user, token) {
     }
 }
 
+// Pull user performance data and cache it in IndexedDB
+async function pullUserPerformance(user, token) {
+    try {
+        const result = await convexHttpClient.action("users/queries:getUserPerformance", { token });
+        if (result.success && result.data) {
+            // Cache in IndexedDB
+            await db.saveUserPerformance(result.data);
+            // Also update user object in auth if possible
+            const currentUser = auth.getUser();
+            if (currentUser) {
+                currentUser.rating = result.data.rating;
+                currentUser.historyEWMA = result.data.historyEWMA;
+                currentUser.completedExams = result.data.completedExams;
+                currentUser.startedExams = result.data.startedExams;
+                currentUser.leaderboardPoints = result.data.leaderboardPoints;
+                currentUser.rank = result.data.rank;
+                currentUser.completedChallenges = result.data.completedChallenges;
+                currentUser.integrityScore = result.data.integrityScore;
+                await auth.setUser(currentUser);
+            }
+            syncState.lastPull.performance = Date.now();
+            saveSyncState();
+            console.log('[Sync] Pulled performance data.');
+        }
+    } catch (err) {
+        console.error('[Sync] Pull performance failed:', err);
+    }
+}
+
+// Pull leaderboard data and cache it in IndexedDB
+async function pullLeaderboard(user, token) {
+    try {
+        const result = await convexHttpClient.action("users/queries:getLeaderboard", {
+            token,
+            limit: 50
+        });
+        if (result.success && result.data) {
+            await db.saveLeaderboard(result.data);
+            syncState.lastPull.leaderboard = Date.now();
+            saveSyncState();
+            console.log('[Sync] Pulled leaderboard data.');
+        }
+    } catch (err) {
+        console.error('[Sync] Pull leaderboard failed:', err);
+    }
+}
+
+// Pull challenge history and cache it in IndexedDB
+async function pullChallengeHistory(user, token) {
+    try {
+        const result = await convexHttpClient.action("challenges/queries:getUserChallengeHistory", {
+            token,
+            limit: 50
+        });
+        if (result.success && result.data) {
+            await db.saveChallengeHistory(result.data);
+            syncState.lastPull.challengeHistory = Date.now();
+            saveSyncState();
+            console.log('[Sync] Pulled challenge history data.');
+        }
+    } catch (err) {
+        console.error('[Sync] Pull challenge history failed:', err);
+    }
+}
+
 // ==================== SYNC QUEUE PROCESSING ====================
 
 async function processSyncQueue(token) {
@@ -609,6 +668,9 @@ async function processSyncItem(item, token) {
             break;
         case 'exam_results':
             await pushExamResultsForItem(item.data, token);
+            break;
+        case 'challenge_result':
+            await processChallengeResult(item.data, token);
             break;
         case 'profile_update':
             await convexHttpClient.mutation("users/mutations:updateProfile", {
@@ -654,6 +716,20 @@ async function pushExamResultsForItem(data, token) {
         results: [data]
     });
     if (!result.success) throw new Error(result.message);
+}
+
+// Process challenge result from queue
+async function processChallengeResult(data, token) {
+    if (!data || !data.challengeId) return;
+    await convexHttpClient.mutation("challenges/mutations:submitResult", {
+        token,
+        challengeId: data.challengeId,
+        score: data.score,
+        totalQuestions: data.totalQuestions,
+        percentage: data.percentage,
+        timeSpent: data.timeSpent,
+        difficultyFactor: data.difficultyFactor,
+    });
 }
 
 async function processSubscriptionItem(data, token) {
@@ -724,7 +800,7 @@ export async function syncUserData() {
 
 export async function triggerFullSync() {
     console.log('[Sync] Triggering full sync...');
-    await syncData();
+    await syncData(true);
 }
 
 // ==================== LEGACY SYNC FUNCTIONS ====================

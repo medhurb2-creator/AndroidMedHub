@@ -392,3 +392,14 @@ small, .small {
     from { opacity: 0; transform: translateY(20px); }
     to { opacity: 1; transform: translateY(0); }
 }
+:root {
+  --notif-text: #1e293b;
+  --notif-shadow: rgba(0, 0, 0, 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --notif-text: #f1f5f9;
+    --notif-shadow: rgba(0, 0, 0, 0.4);
+  }
+}

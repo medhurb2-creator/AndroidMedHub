@@ -1779,6 +1779,138 @@ export async function getReferralData(key) {
         return cached ? cached.data : null;
     }
 }
+
+// ==================== PERFORMANCE & LEADERBOARD CACHE ====================
+
+/**
+ * Save user performance data to IndexedDB.
+ * @param {Object} data - performance data from users/queries:getUserPerformance
+ */
+export async function saveUserPerformance(data) {
+    try {
+        const store = await getStore('analytics', 'readwrite');
+        const entry = {
+            id: 'userPerformance',
+            data,
+            updatedAt: Date.now()
+        };
+        return new Promise((resolve, reject) => {
+            const request = store.put(entry);
+            request.onsuccess = () => resolve();
+            request.onerror = (err) => reject(err);
+        });
+    } catch (e) {
+        console.warn('[DB] saveUserPerformance failed, using localStorage fallback', e);
+        utils.setLocalStorage('userPerformance', data);
+    }
+}
+
+/**
+ * Retrieve user performance data from IndexedDB.
+ * @returns {Promise<Object|null>} cached performance data
+ */
+export async function getUserPerformance() {
+    try {
+        const store = await getStore('analytics', 'readonly');
+        return new Promise((resolve, reject) => {
+            const request = store.get('userPerformance');
+            request.onsuccess = () => {
+                resolve(request.result?.data || null);
+            };
+            request.onerror = (err) => reject(err);
+        });
+    } catch (e) {
+        console.warn('[DB] getUserPerformance failed, using localStorage fallback', e);
+        return utils.getLocalStorage('userPerformance', null);
+    }
+}
+
+/**
+ * Save leaderboard data to IndexedDB.
+ * @param {Array} data - leaderboard array from users/queries:getLeaderboard
+ */
+export async function saveLeaderboard(data) {
+    try {
+        const store = await getStore('analytics', 'readwrite');
+        const entry = {
+            id: 'leaderboard',
+            data,
+            updatedAt: Date.now()
+        };
+        return new Promise((resolve, reject) => {
+            const request = store.put(entry);
+            request.onsuccess = () => resolve();
+            request.onerror = (err) => reject(err);
+        });
+    } catch (e) {
+        console.warn('[DB] saveLeaderboard failed, using localStorage fallback', e);
+        utils.setLocalStorage('leaderboard', data);
+    }
+}
+
+/**
+ * Retrieve leaderboard data from IndexedDB.
+ * @returns {Promise<Array|null>} cached leaderboard array
+ */
+export async function getLeaderboard() {
+    try {
+        const store = await getStore('analytics', 'readonly');
+        return new Promise((resolve, reject) => {
+            const request = store.get('leaderboard');
+            request.onsuccess = () => {
+                resolve(request.result?.data || null);
+            };
+            request.onerror = (err) => reject(err);
+        });
+    } catch (e) {
+        console.warn('[DB] getLeaderboard failed, using localStorage fallback', e);
+        return utils.getLocalStorage('leaderboard', null);
+    }
+}
+
+/**
+ * Save challenge history data to IndexedDB.
+ * @param {Object} data - challenge history from challenges/queries:getUserChallengeHistory
+ */
+export async function saveChallengeHistory(data) {
+    try {
+        const store = await getStore('analytics', 'readwrite');
+        const entry = {
+            id: 'challengeHistory',
+            data,
+            updatedAt: Date.now()
+        };
+        return new Promise((resolve, reject) => {
+            const request = store.put(entry);
+            request.onsuccess = () => resolve();
+            request.onerror = (err) => reject(err);
+        });
+    } catch (e) {
+        console.warn('[DB] saveChallengeHistory failed, using localStorage fallback', e);
+        utils.setLocalStorage('challengeHistory', data);
+    }
+}
+
+/**
+ * Retrieve challenge history data from IndexedDB.
+ * @returns {Promise<Object|null>} cached challenge history
+ */
+export async function getChallengeHistory() {
+    try {
+        const store = await getStore('analytics', 'readonly');
+        return new Promise((resolve, reject) => {
+            const request = store.get('challengeHistory');
+            request.onsuccess = () => {
+                resolve(request.result?.data || null);
+            };
+            request.onerror = (err) => reject(err);
+        });
+    } catch (e) {
+        console.warn('[DB] getChallengeHistory failed, using localStorage fallback', e);
+        return utils.getLocalStorage('challengeHistory', null);
+    }
+}
+
 // ==================== CLEAR DATABASE ====================
 export async function clearDatabase() {
     try {

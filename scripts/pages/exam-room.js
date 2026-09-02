@@ -242,13 +242,7 @@ function initSharedMode() {
 
   const config = examEngine.getConfig() || JSON.parse(localStorage.getItem('pendingExamConfig') || '{}');
 
-  // Compute total exam time
-  const DIFFICULTY_SECONDS = { 1: 21, 2: 30, 3: 42, 4: 54, 5: 54 };
-  let totalExamSeconds = 0;
-  questionsList.forEach(q => {
-    const diff = q.difficulty || 3;
-    totalExamSeconds += DIFFICULTY_SECONDS[diff] || 42;
-  });
+const totalExamSeconds = timer.getTotalTimeForQuestions(questionsList);
 
   // Start global countdown
   if (globalTimerInstance) globalTimerInstance.stop();

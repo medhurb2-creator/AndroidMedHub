@@ -1,4 +1,4 @@
-// frontend-user/scripts/timer.js
+// scripts/timer.js
 
 /**
  * Adaptive Timer Module
@@ -24,10 +24,28 @@ const COLOR_THRESHOLDS = {
     RED: 0.05     // <5% -> red flashing
 };
 
+// ==================== EXPORT THE MAP ====================
+export { DIFFICULTY_TIMES };
+
 /**
- * Timer class for a single question.
- * @private
+ * Calculate total time (in seconds) for a list of questions.
+ * Each question's difficulty determines its time (from DIFFICULTY_TIMES).
+ * If a question is missing difficulty, defaults to 3 (42s).
+ * @param {Array} questions - array of question objects
+ * @returns {number} total seconds
  */
+export function getTotalTimeForQuestions(questions) {
+    if (!Array.isArray(questions) || questions.length === 0) return 0;
+    let totalSeconds = 0;
+    questions.forEach(q => {
+        const diff = q.difficulty || 3;
+        const ms = DIFFICULTY_TIMES[diff] || DIFFICULTY_TIMES[3];
+        totalSeconds += ms / 1000;
+    });
+    return totalSeconds;
+}
+
+// ==================== Timer Class ====================
 class Timer {
     constructor(difficulty, timingMode, customTime) {
         this.difficulty = difficulty;

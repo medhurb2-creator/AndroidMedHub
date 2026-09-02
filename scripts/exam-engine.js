@@ -19,6 +19,7 @@ import * as db from './db.js';
 import * as ui from './ui.js';
 import * as performanceRating from './performance-rating-v2.js';
 import * as auth from './auth.js';
+import { convexHttpClient } from './convex-client.js';
 
 // Internal state (not exported)
 let examState = {
@@ -155,6 +156,10 @@ export function getAnswer(index) {
 
 export function getSubject() {
     return examState.config?.subject || 'Unknown';
+}
+
+export function getConfig() {
+    return examState.config;
 }
 
 export function totalQuestions() {
@@ -514,8 +519,8 @@ export async function endExam() {
         const user = auth.getUser();
         if (user && user._id) {
             const prResult = await performanceRating.computeFullPerformance(
-                results.examId,          // ✅ examId string
-                user._id,                // ✅ userId string
+                results.examId,          // examId string
+                user._id,                // userId string
                 examState.lobbyAvgPR || 0.5,
                 examState.opponentRating || 100
             );
@@ -542,16 +547,22 @@ export async function endExam() {
         }
     } catch (err) {
         console.warn('Performance Rating computation failed:', err);
-        // The exam is already saved, so we continue
     }
 
     // ============================================================
-    // 3. UPDATE THE EXAM RECORD WITH RATING DATA
+    // 3. SUBMIT CHALLENGE RESULT (if mode is challenge/shared)
+    // ============================================================
+    if (examState.config.mode === 'challenge' || examState.config.mode === 'shared') {
+        await submitChallengeResult(results);
+    }
+
+    // ============================================================
+    // 4. UPDATE THE EXAM RECORD WITH RATING DATA (already saved)
     // ============================================================
     await db.saveExamResult(results);
 
     // ============================================================
-    // 4. RECORD SEEN QUESTIONS (except challenge mode)
+    // 5. RECORD SEEN QUESTIONS (except challenge mode)
     // ============================================================
     if (examState.config.mode !== 'challenge') {
         const questionIds = results.questions.map(q => q.id);
@@ -568,12 +579,73 @@ export async function endExam() {
     return results;
 }
 
+
+// ==================== Challenge Result Submission ====================
+
 /**
- * Get the current exam configuration.
- * @returns {Object|null}
+ * Submit challenge result to backend, or queue if offline.
+ * @param {Object} results - exam results object
  */
-export function getConfig() {
-    return examState.config;
+async function submitChallengeResult(results) {
+    const token = auth.getToken();
+    if (!token) return;
+
+    // Use challengeId if available, otherwise fall back to challengeCode
+    const challengeId = examState.challengeId || examState.challengeCode;
+    if (!challengeId) return;
+
+    const totalQuestions = results.totalQuestions;
+    const correctCount = results.correctAnswers;
+    const percentage = results.scorePercentage;
+    const timeSpent = results.timeSpent / 1000; // convert to seconds
+
+    // Compute mean difficulty from all questions
+    let difficultySum = 0;
+    let difficultyCount = 0;
+    results.questions.forEach(q => {
+        if (typeof q.difficulty === 'number' && q.difficulty > 0) {
+            difficultySum += q.difficulty;
+            difficultyCount++;
+        }
+    });
+    const difficultyFactor = difficultyCount > 0 ? (difficultySum / difficultyCount) : 1;
+
+    const payload = {
+        token,
+        challengeId,          // ✅ backend expects challengeId
+        score: correctCount,
+        totalQuestions,
+        percentage,
+        timeSpent,
+        difficultyFactor,
+    };
+
+    if (navigator.onLine) {
+        try {
+            // Use the correct Convex mutation name
+            await convexHttpClient.mutation("challenges/mutations:submitResult", payload);
+            console.log('Challenge result submitted successfully');
+            // Mark as submitted to prevent duplicate push via sync
+            results.challengeResultSubmitted = true;
+            // Re‑save the exam with this flag
+            await db.saveExamResult(results);
+        } catch (err) {
+            console.error('Challenge result submission failed:', err);
+            // Queue for later sync
+            await queueChallengeResult(payload);
+        }
+    } else {
+        console.warn('Offline – queuing challenge result for later');
+        await queueChallengeResult(payload);
+    }
+}
+
+/**
+ * Queue challenge result for later submission.
+ * @param {Object} payload - challenge result payload
+ */
+async function queueChallengeResult(payload) {
+    await db.addToSyncQueue('challenge_result', payload);
 }
 
 // ==================== Exam Config Management ====================
@@ -655,6 +727,7 @@ export const config = new Proxy({}, {
   }
 });
 
+// Standard object literal – uses function hoisting, no issues
 export const examEngine = {
     createExam,
     startExam,

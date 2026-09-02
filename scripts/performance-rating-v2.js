@@ -1,7 +1,7 @@
 // scripts/performance-rating-v2.js
 
 /**
- * MedHub Performance Rating Engine v2 (MPREv2) – Final Production Version
+ * MedVix Performance Rating Engine v2 (MPREv2) – Final Production Version
  * 
  * Based on extensive review and feedback, this version incorporates:
  *   - 10 ranks (Seed → Luminary)

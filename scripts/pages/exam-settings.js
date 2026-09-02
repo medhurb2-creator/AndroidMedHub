@@ -148,7 +148,7 @@ export async function init(context) {
 // ==================== HELPER FUNCTIONS ====================
 
 function getShareableLink(code) {
-  const BASE_URL = 'https://medhub.edgeone.app';
+  const BASE_URL = 'https://medvix.edgeone.app';
   const PAGE_PATH = '/exam-settings/';
   return `${BASE_URL}${PAGE_PATH}?exam=${encodeURIComponent(code)}`;
 }
@@ -156,8 +156,8 @@ function getShareableLink(code) {
 function shareChallengeLink(code) {
   const link = getShareableLink(code);
   const shareData = {
-    title: 'Join my MedHub Challenge!',
-    text: 'Join my medical exam challenge on MedHub!',
+    title: 'Join my MedVix Challenge!',
+    text: 'Join my medical exam challenge on MedVix!',
     url: link
   };
 

@@ -4,7 +4,7 @@ import { join, extname } from 'path';
 import { createCipheriv, randomBytes } from 'crypto';
 
 // Exactly 32 bytes
-const SECRET_KEY = Buffer.from('MedHubSecretKey2026!!32bytesXXKE', 'utf-8');
+const SECRET_KEY = Buffer.from('MedVixSecretKey2026!!32bytesXXKE', 'utf-8');
 const ALGORITHM = 'aes-256-cbc';
 
 console.log(`[Encrypt] Key length: ${SECRET_KEY.length} bytes`);

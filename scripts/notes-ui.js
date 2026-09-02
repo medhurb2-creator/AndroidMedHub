@@ -495,7 +495,7 @@ async function exportPDFHandler(noteId = null) {
         if (!note) throw new Error('Note not found');
 
         const user = auth.getUser();
-        const authorName = user?.name || user?.email || 'MedHub User';
+        const authorName = user?.name || user?.email || 'MedVix User';
         const exportId = 'MH-' + Math.random().toString(36).substr(2, 6).toUpperCase();
 
         // Build data object exactly as buildNotesHTML expects

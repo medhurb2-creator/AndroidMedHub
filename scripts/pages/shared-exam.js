@@ -158,8 +158,8 @@ export async function init(context) {
     const url = window.location.href;
     if (navigator.share) {
       navigator.share({
-        title: 'MedHub Shared Exam',
-        text: 'Check out this exam I shared on MedHub!',
+        title: 'MedVix Shared Exam',
+        text: 'Check out this exam I shared on MedVix!',
         url: url
       }).catch(() => {});
     } else {

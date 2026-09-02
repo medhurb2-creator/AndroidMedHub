@@ -1,5 +1,5 @@
 // /scripts/performance-ai.js
-// MedHub Performance AI – handles plan generation, adoption, regeneration, amendments, cancellation,
+// MedVix Performance AI – handles plan generation, adoption, regeneration, amendments, cancellation,
 // and AI‑powered insights generation from raw performance data.
 
 // ============================================================================
@@ -80,7 +80,7 @@ function buildPrompt(raw) {
   const streak = studyPatterns.streak || 0;
 
   return `
-You are MedHub AI, a medical exam performance coach. The user has provided the following raw performance data:
+You are MedVix AI, a medical exam performance coach. The user has provided the following raw performance data:
 
 - Total exams: ${totalExams}
 - Total questions: ${totalQuestions}
@@ -174,12 +174,12 @@ export class PerformanceAI {
     }
 
     // Save each module to localStorage using the same keys as the main planner
-    this._saveToLocalStorage('medhub_planner_timetable', planData.timetable || {});
-    this._saveToLocalStorage('medhub_planner_topics', planData.topics || []);
-    this._saveToLocalStorage('medhub_planner_checklist', planData.checklist || []);
+    this._saveToLocalStorage('medvix_planner_timetable', planData.timetable || {});
+    this._saveToLocalStorage('medvix_planner_topics', planData.topics || []);
+    this._saveToLocalStorage('medvix_planner_checklist', planData.checklist || []);
     // Reminders are static in the UI; we could store them but they are not persisted now.
     // If you want dynamic reminders, uncomment the next line and adapt the UI.
-    // this._saveToLocalStorage('medhub_planner_reminders', planData.reminders || []);
+    // this._saveToLocalStorage('medvix_planner_reminders', planData.reminders || []);
 
     this.adopted = true;
     this.onPlanAdopted();

@@ -43,12 +43,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- ✅ DEEP LINKS for medhub.edgeone.app -->
+            <!-- ✅ DEEP LINKS for medvix.edgeone.app -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="medhub.edgeone.app" />
+                <data android:scheme="https" android:host="medvix.edgeone.app" />
             </intent-filter>
         </activity>
 

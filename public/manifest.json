@@ -1,6 +1,6 @@
 {
-  "name": "MedHub",
-  "short_name": "MedHub",
+  "name": "MedVix",
+  "short_name": "MedVix",
   "description": "Medical exam preparation app for Kenyan medical students. Study 10,000+ questions across 8 subjects & many more. 100% offline. M-Pesa payments.",
   "start_url": "/index.html",
   "display": "standalone",
@@ -190,12 +190,12 @@
   "related_applications": [
     {
       "platform": "play",
-      "url": "https://play.google.com/store/apps/details?id=com.medicalexamroom.pro",
-      "id": "com.medicalexamroom.pro"
+      "url": "https://play.google.com/store/apps/details?id=com.medhurb.app",
+      "id": "com.medhurb.app"
     },
     {
       "platform": "webapp",
-      "url": "https://medicalexamroompro.com/manifest.json"
+      "url": "https://medvix.com/manifest.json"
     }
   ]
 }

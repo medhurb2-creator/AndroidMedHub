@@ -146,7 +146,7 @@ export async function init(context) {
       try {
         const result = await referral.validateReferralCode(refCode);
         if (result.valid) {
-          referralStatus.textContent = `✅ Referred by ${result.referrerName || 'a MedHub user'}`;
+          referralStatus.textContent = `✅ Referred by ${result.referrerName || 'a MedVix user'}`;
           referralStatus.style.color = 'var(--success)';
           formData.referralCode = refCode;
         } else {

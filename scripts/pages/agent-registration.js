@@ -412,7 +412,7 @@ async function handleLogin(e) {
         $('#agent-name-after').textContent = displayName;
         $('#upgrade-section').classList.add('hidden');
         $('#after-upgrade-view').classList.remove('hidden');
-        ui.showToast('🎉 Congratulations! You are now a MedHub Agent.', 'success');
+        ui.showToast('🎉 Congratulations! You are now a MedVix Agent.', 'success');
       } else {
         ui.showToast(result.message || 'Upgrade failed', 'error');
         hideModal();
@@ -600,7 +600,7 @@ async function validateReferralCode(code) {
   try {
     const result = await referral.validateReferralCode(code);
     if (result.valid) {
-      statusEl.textContent = `✅ Referred by ${result.referrerName || 'a MedHub user'}`;
+      statusEl.textContent = `✅ Referred by ${result.referrerName || 'a MedVix user'}`;
       statusEl.style.color = 'var(--success)';
     } else {
       statusEl.textContent = '⚠️ Invalid referral code. You can still sign up without one.';
@@ -625,7 +625,7 @@ async function upgradeToAgent() {
 
   const confirmed = await ui.showConfirmationDialog(
     'Become an Agent',
-    'Are you sure you want to become a MedHub Agent? Your account will be reviewed by admin within 24 hours.',
+    'Are you sure you want to become a MedVix Agent? Your account will be reviewed by admin within 24 hours.',
     'warning'
   );
   if (!confirmed) return;

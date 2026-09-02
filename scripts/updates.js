@@ -45,7 +45,7 @@ export function showUpdatePrompt() {
     updateModal.innerHTML = `
         <div class="modal">
             <h3>Update Available</h3>
-            <p>A new version of MedHub is available. Refresh to get the latest features.</p>
+            <p>A new version of MedVix is available. Refresh to get the latest features.</p>
             <div style="display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem;">
                 <button id="update-refresh" class="btn-primary">Refresh Now</button>
                 <button id="update-later" class="btn-secondary">Later</button>

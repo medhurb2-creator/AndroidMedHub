@@ -3,7 +3,7 @@ const CACHE_VERSION = 'v3.1';
 const CACHE_NAME = `medexam-${CACHE_VERSION}`;
 
 // ====== DECRYPTION KEY (MUST match encrypt-json.js) ======
-const SECRET_KEY = 'MedHubSecretKey2026!!32bytesXXKE'; // 32 bytes
+const SECRET_KEY = 'MedVixSecretKey2026!!32bytesXXKE'; // 32 bytes
 
 // ====== HELPER: hex to Uint8Array ======
 function hexToBytes(hex) {

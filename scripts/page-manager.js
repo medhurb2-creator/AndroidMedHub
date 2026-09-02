@@ -54,7 +54,7 @@ export async function navigateTo(pageName, params = {}, query = new URLSearchPar
         appRoot.innerHTML = pageMeta.html;
 
         // 7. Set the page title
-        document.title = pageMeta.title || 'MedHub';
+        document.title = pageMeta.title || 'MedVix';
 
         // 8. Use the already imported module from pageMeta
         const module = pageMeta.module;
