@@ -2736,31 +2736,7 @@
         "clinicalCorrelation": "Correct speciation is important because enterococcal endocarditis requires synergistic therapy."
       }
     },
-    {
-      "questionId": "gram_positive_cocci_073",
-      "difficulty": 2,
-      "question": "A patient presents with 'rice water stools' but is from an area with poor sanitation. Stool culture on TCBS shows yellow colonies. The causative organism is:",
-      "image": null,
-      "options": [
-        {
-          "text": "Vibrio cholerae (gram-negative curved rod)",
-          "isCorrect": true,
-          "explanation": "Note: This question is a distractor; the set is gram-positive cocci. But the correct answer is a gram-negative rod. I should replace with a gram-positive coccus question. I'll change the question to something appropriate, like a scenario for S. bovis endocarditis with colon cancer. I'll create a new question.",
-          "isCorrect": false,
-          "explanation": "I will replace this question to maintain consistency. The JSON output must be correct. So I'll generate a proper gram-positive coccus question."
-        },
-        {
-          "text": "Actually, I'll create a question about Streptococcus gallolyticus (bovis) endocarditis and colon cancer.",
-          "isCorrect": false,
-          "explanation": ""
-        }
-      ],
-      "explanation": {
-        "overview": "",
-        "highYield": "",
-        "clinicalCorrelation": ""
-      }
-    },
+    
     {
       "questionId": "gram_positive_cocci_074",
       "difficulty": 2,

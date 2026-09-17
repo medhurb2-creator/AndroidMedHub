@@ -1,735 +1,545 @@
-/* ========== Agent Registration Page Styles ========== */
+/* ==========================================================================
+   AGENT REGISTRATION — page-specific styles
+   Requires common.css (tokens, buttons, alerts, header-row base, modal-overlay,
+   utilities, keyframes). This file adds ONLY what's unique to this page.
+   ========================================================================== */
 
-/* Agent badge */
+/* ---------- Agent badge ---------- */
 .agent-badge {
-  display: inline-block;
-  background: var(--accent);
-  color: white;
-  padding: 0.2rem 0.8rem;
-  border-radius: 20px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  margin-bottom: 1rem;
+    display: inline-block;
+    background: var(--accent);
+    color: #fff;
+    padding: 0.2rem 0.8rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
 }
 
-/* Benefits list */
+/* ---------- Benefits list ---------- */
 .benefits-list {
-  margin: 1rem 0;
-  padding-left: 1.5rem;
+    margin: 1rem 0;
+    padding-left: 1.5rem;
 }
-
 .benefits-list li {
-  margin-bottom: 0.5rem;
+    margin-bottom: 0.5rem;
 }
 
-/* Upgrade / notification sections */
+/* ---------- Upgrade / status section ---------- */
 .upgrade-section {
-  text-align: center;
-  padding: 2rem;
-  background: var(--bg-card);
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
+    text-align: center;
+    padding: 2rem;
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
 }
-
 .upgrade-section .btn-primary {
-  font-size: 1.2rem;
-  padding: 0.8rem 2.5rem;
+    font-size: 1.2rem;
+    padding: 0.8rem 2.5rem;
+}
+#status-message { margin-top: 1rem; }
+
+/* ---------- Fixed header (page-specific sticky) ----------
+   NOTE: .header-row, .header-row.top, .header-row .btn-outline and
+   .header-row .btn-outline:hover are all provided by common.css. */
+.fixed-header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    padding: 0.5rem 1rem;
+}
+.header-row .logo-area {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.header-row .logo-area img {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+}
+.header-row .logo-area span {
+    font-weight: 600;
+    font-size: 1.2rem;
+}
+.header-row .nav-link {
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 0.9rem;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0.3rem 0.6rem;
+}
+.header-row .nav-link:hover {
+    color: var(--text-primary);
+    text-decoration: underline;
+}
+.header-row .agent-program-badge {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--accent);
+    /* ⚠️ hardcoded indigo — flagged for review */
+    background: rgba(99, 102, 241, 0.12);
+    padding: 0.3rem 1rem;
+    border-radius: 30px;
+    border: 1px solid rgba(99, 102, 241, 0.25);
+    white-space: nowrap;
 }
 
-/* Form layout */
-.form-section {
-  max-width: 500px;
-  margin: 0 auto;
+/* ---------- Page container override (common = 1200px) ---------- */
+.page-container {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 1rem 1.5rem 2rem;
+    min-height: calc(100vh - 120px);
+    overflow-y: auto;
 }
 
-/* Toggle link (e.g., switch between register/upgrade) */
-.toggle-link {
-  cursor: pointer;
-  color: var(--accent);
-  text-decoration: underline;
+/* ---------- Neon upgrade button ---------- */
+/* ⚠️ shadows use hardcoded indigo rgba(99, 102, 241) — see note above */
+.btn-neon {
+    position: relative;
+    font-size: 1.2rem;
+    padding: 0.9rem 2.8rem;
+    border-radius: 60px;
+    border: 2px solid var(--accent);
+    background: transparent;
+    color: var(--accent);
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 0 8px rgba(99, 102, 241, 0.2),
+                0 0 20px rgba(99, 102, 241, 0.08);
+    animation: neonPulse 2.2s ease-in-out infinite;
+    letter-spacing: 0.5px;
+}
+.btn-neon:hover {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 0 16px rgba(99, 102, 241, 0.5),
+                0 0 40px rgba(99, 102, 241, 0.25);
+    transform: scale(1.02);
+}
+.btn-neon:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    animation: none;
+    box-shadow: none;
+}
+@keyframes neonPulse {
+    0%, 100% {
+        box-shadow: 0 0 6px  rgba(99, 102, 241, 0.2),
+                    0 0 16px rgba(99, 102, 241, 0.08);
+    }
+    50% {
+        box-shadow: 0 0 14px rgba(99, 102, 241, 0.5),
+                    0 0 36px rgba(99, 102, 241, 0.2);
+    }
 }
 
-/* Security question rows */
-.question-row {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-  flex-wrap: wrap;
+/* ---------- Agent terms checkbox ---------- */
+.agent-terms-wrap {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    margin: 1.2rem 0 1.8rem;
+    text-align: left;
+    font-size: 0.92rem;
+}
+.agent-terms-wrap input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent);
+    margin-top: 2px;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+.agent-terms-wrap label {
+    cursor: pointer;
+    line-height: 1.5;
+}
+.agent-terms-wrap a {
+    color: var(--accent);
+    text-decoration: underline;
 }
 
-.question-row select {
-  flex: 1 1 200px;
-  padding: 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-}
-
-.question-row input[type="text"] {
-  flex: 1 1 200px;
-  padding: 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-}
-
-/* Status message area */
-#status-message {
-  margin-top: 1rem;
-}
-
-/* Alert boxes (used by showStatus) */
-.alert {
-  padding: 0.75rem 1rem;
-  border-radius: var(--radius-sm);
-  margin-bottom: 0.5rem;
-}
-
-.alert-info {
-  background: var(--brand-primary-light);
-  color: var(--brand-primary-dark);
-}
-
-.alert-error {
-  background: rgba(239, 68, 68, 0.12);
-  color: #ef4444;
-}
-
-.alert-success {
-  background: rgba(16, 185, 129, 0.12);
-  color: #10b981;
-}
-
-.alert-warning {
-  background: rgba(245, 158, 11, 0.12);
-  color: #f59e0b;
-}
-
-/* ===== SHIMMER OVERLAY ===== */
+/* ---------- Shimmer overlay ---------- */
 #shimmer-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 99999;
-  background: #0d0f14;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  transition: opacity 0.6s ease;
-  pointer-events: none;
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    background: #0d0f14;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.6s ease;
+    pointer-events: none;
 }
-
 #shimmer-overlay.hidden {
-  opacity: 0;
+    opacity: 0;
 }
-
 #shimmer-overlay .shimmer-logo {
-  width: 72px;
-  height: 72px;
-  border-radius: 16px;
-  background: linear-gradient(135deg, #1a1f2a 30%, #2a3140 60%, #1a1f2a 90%);
-  background-size: 300% 300%;
-  animation: shimmerPulse 1.8s ease-in-out infinite;
-  margin-bottom: 1.5rem;
+    width: 72px;
+    height: 72px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #1a1f2a 30%, #2a3140 60%, #1a1f2a 90%);
+    background-size: 300% 300%;
+    animation: shimmerPulse 1.8s ease-in-out infinite;
+    margin-bottom: 1.5rem;
 }
-
 #shimmer-overlay .shimmer-text {
-  width: 200px;
-  height: 18px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #1a1f2a 30%, #2a3140 60%, #1a1f2a 90%);
-  background-size: 300% 300%;
-  animation: shimmerPulse 1.8s ease-in-out infinite;
-  margin-bottom: 0.6rem;
+    width: 200px;
+    height: 18px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #1a1f2a 30%, #2a3140 60%, #1a1f2a 90%);
+    background-size: 300% 300%;
+    animation: shimmerPulse 1.8s ease-in-out infinite;
+    margin-bottom: 0.6rem;
 }
-
-#shimmer-overlay .shimmer-text.short {
-  width: 140px;
-}
-
-#shimmer-overlay .shimmer-text.long {
-  width: 260px;
-}
+#shimmer-overlay .shimmer-text.short { width: 140px; }
+#shimmer-overlay .shimmer-text.long  { width: 260px; }
 
 @keyframes shimmerPulse {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+    0%   { background-position:   0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position:   0% 50%; }
 }
 
-/* ===== FIXED HEADER ===== */
-.fixed-header {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  background: var(--bg-card);
-  border-bottom: 1px solid var(--border);
-  padding: 0.5rem 1rem;
-}
-
-.header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.header-row.top {
-  margin-bottom: 0.3rem;
-}
-
-.header-row .logo-area {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.header-row .logo-area img {
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-}
-
-.header-row .logo-area span {
-  font-weight: 600;
-  font-size: 1.2rem;
-}
-
-.header-row .btn-outline {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  padding: 0.3rem 0.6rem;
-  border-radius: 30px;
-  font-size: 1.2rem;
-  cursor: pointer;
-  line-height: 1;
-  transition: background 0.2s, color 0.2s, border-color 0.2s;
-}
-
-.header-row .btn-outline:hover {
-  background: var(--accent);
-  color: white;
-  border-color: var(--accent);
-}
-
-.header-row .nav-link {
-  color: var(--text-secondary);
-  text-decoration: none;
-  font-size: 0.9rem;
-  cursor: pointer;
-  background: none;
-  border: none;
-  padding: 0.3rem 0.6rem;
-}
-
-.header-row .nav-link:hover {
-  color: var(--text-primary);
-  text-decoration: underline;
-}
-
-.header-row .agent-program-badge {
-  font-weight: 600;
-  font-size: 0.95rem;
-  color: var(--accent);
-  background: rgba(99, 102, 241, 0.12);
-  padding: 0.3rem 1rem;
-  border-radius: 30px;
-  border: 1px solid rgba(99, 102, 241, 0.25);
-  white-space: nowrap;
-}
-
-/* ===== MAIN LAYOUT ===== */
-.page-container {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 1rem 1.5rem 2rem;
-  min-height: calc(100vh - 120px);
-  overflow-y: auto;
-}
-
-/* ===== NEON BUTTON ===== */
-.btn-neon {
-  position: relative;
-  font-size: 1.2rem;
-  padding: 0.9rem 2.8rem;
-  border-radius: 60px;
-  border: 2px solid var(--accent);
-  background: transparent;
-  color: var(--accent);
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  box-shadow: 0 0 8px rgba(99, 102, 241, 0.2), 0 0 20px rgba(99, 102, 241, 0.08);
-  animation: neonPulse 2.2s ease-in-out infinite;
-  letter-spacing: 0.5px;
-}
-
-.btn-neon:hover {
-  background: var(--accent);
-  color: #fff;
-  box-shadow: 0 0 16px rgba(99, 102, 241, 0.5), 0 0 40px rgba(99, 102, 241, 0.25);
-  transform: scale(1.02);
-}
-
-.btn-neon:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  animation: none;
-  box-shadow: none;
-}
-
-@keyframes neonPulse {
-  0%, 100% { box-shadow: 0 0 6px rgba(99, 102, 241, 0.2), 0 0 16px rgba(99, 102, 241, 0.08); }
-  50% { box-shadow: 0 0 14px rgba(99, 102, 241, 0.5), 0 0 36px rgba(99, 102, 241, 0.2); }
-}
-
-/* ===== TERMS CHECKBOX ===== */
-.agent-terms-wrap {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.6rem;
-  margin: 1.2rem 0 1.8rem;
-  text-align: left;
-  font-size: 0.92rem;
-}
-
-.agent-terms-wrap input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--accent);
-  margin-top: 2px;
-  flex-shrink: 0;
-  cursor: pointer;
-}
-
-.agent-terms-wrap label {
-  cursor: pointer;
-  line-height: 1.5;
-}
-
-.agent-terms-wrap a {
-  color: var(--accent);
-  text-decoration: underline;
-}
-
-/* ===== AUTH MODAL ===== */
+/* ---------- Auth modal (page-specific ids, not common .modal) ---------- */
 #auth-modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(6px);
-  z-index: 9999;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    z-index: 9999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
 }
-
-#auth-modal-overlay.active {
-  display: flex;
-}
+#auth-modal-overlay.active { display: flex; }
 
 .auth-modal-card {
-  background: var(--bg-card);
-  border-radius: var(--radius);
-  border: 1px solid var(--border);
-  max-width: 500px;
-  width: 100%;
-  padding: 2rem 1.8rem 1.8rem;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-  animation: modalFadeIn 0.3s ease;
-  position: relative;
-  max-height: 90vh;
-  overflow-y: auto;
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    max-width: 500px;
+    width: 100%;
+    padding: 2rem 1.8rem 1.8rem;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    animation: modalFadeIn 0.3s ease;
+    position: relative;
+    max-height: 90vh;
+    overflow-y: auto;
 }
-
 @keyframes modalFadeIn {
-  0% { opacity: 0; transform: scale(0.94) translateY(12px); }
-  100% { opacity: 1; transform: scale(1) translateY(0); }
+    0%   { opacity: 0; transform: scale(0.94) translateY(12px); }
+    100% { opacity: 1; transform: scale(1)    translateY(0);    }
 }
 
 .auth-modal-card .close-modal {
-  position: absolute;
-  top: 0.6rem;
-  right: 1rem;
-  font-size: 1.6rem;
-  cursor: pointer;
-  color: var(--text-muted);
-  background: none;
-  border: none;
-  line-height: 1;
-  padding: 0.2rem 0.5rem;
-  transition: color 0.2s;
+    position: absolute;
+    top: 0.6rem;
+    right: 1rem;
+    font-size: 1.6rem;
+    cursor: pointer;
+    color: var(--text-muted);
+    background: none;
+    border: none;
+    line-height: 1;
+    padding: 0.2rem 0.5rem;
+    transition: color 0.2s;
 }
-
-.auth-modal-card .close-modal:hover {
-  color: var(--text-primary);
-}
+.auth-modal-card .close-modal:hover { color: var(--text-primary); }
 
 .auth-modal-card h2 {
-  margin-bottom: 0.5rem;
-  font-size: 1.4rem;
+    margin-bottom: 0.5rem;
+    font-size: 1.4rem;
 }
-
 .auth-modal-card .modal-sub {
-  color: var(--text-muted);
-  margin-bottom: 1.5rem;
-  font-size: 0.95rem;
+    color: var(--text-muted);
+    margin-bottom: 1.5rem;
+    font-size: 0.95rem;
 }
 
 .auth-modal-card .choice-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: 0.8rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
 }
-
 .auth-modal-card .choice-buttons button {
-  width: 100%;
-  padding: 0.8rem;
-  border-radius: var(--radius-sm);
-  font-size: 1rem;
-  font-weight: 600;
-  border: 2px solid var(--border);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  cursor: pointer;
-  transition: all 0.2s;
+    width: 100%;
+    padding: 0.8rem;
+    border-radius: var(--radius-sm);
+    font-size: 1rem;
+    font-weight: 600;
+    border: 2px solid var(--border);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.2s;
 }
-
 .auth-modal-card .choice-buttons button:hover {
-  border-color: var(--accent);
-  background: rgba(99, 102, 241, 0.08);
+    border-color: var(--accent);
+    /* ⚠️ hardcoded indigo — flagged */
+    background: rgba(99, 102, 241, 0.08);
 }
-
 .auth-modal-card .choice-buttons .btn-primary-choice {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
 }
-
 .auth-modal-card .choice-buttons .btn-primary-choice:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
+    background: var(--accent-dark);
+    border-color: var(--accent-dark);
 }
 
-/* ===== LOGIN SHEET ===== */
+/* ---------- Login sheet ---------- */
 #login-sheet {
-  display: none;
-  margin-top: 0.5rem;
+    display: none;
+    margin-top: 0.5rem;
 }
+#login-sheet.active { display: block; }
 
-#login-sheet.active {
-  display: block;
-}
-
-#login-sheet .form-group {
-  margin-bottom: 1rem;
-}
-
+#login-sheet .form-group { margin-bottom: 1rem; }
 #login-sheet .form-group label {
-  display: block;
-  font-weight: 500;
-  margin-bottom: 0.3rem;
-  font-size: 0.9rem;
+    display: block;
+    font-weight: 500;
+    margin-bottom: 0.3rem;
+    font-size: 0.9rem;
 }
-
 #login-sheet .form-group input {
-  width: 100%;
-  padding: 0.7rem 0.9rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  font-size: 0.95rem;
+    width: 100%;
+    padding: 0.7rem 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 0.95rem;
 }
-
 #login-sheet .form-group input:focus {
-  outline: 2px solid var(--accent);
-  border-color: transparent;
+    outline: 2px solid var(--accent);
+    border-color: transparent;
 }
 
 #login-sheet .form-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin: 0.2rem 0 1.2rem;
-  font-size: 0.88rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0.2rem 0 1.2rem;
+    font-size: 0.88rem;
 }
-
 #login-sheet .form-row label {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    cursor: pointer;
 }
-
 #login-sheet .form-row .btn-link {
-  background: none;
-  border: none;
-  color: var(--accent);
-  cursor: pointer;
-  text-decoration: underline;
-  font-size: 0.88rem;
-  padding: 0;
+    background: none;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    text-decoration: underline;
+    font-size: 0.88rem;
+    padding: 0;
 }
-
 #login-sheet .form-row .btn-link:hover {
-  color: var(--accent-hover);
+    color: var(--accent-dark);
 }
 
 #login-sheet .btn-primary {
-  width: 100%;
-  padding: 0.8rem;
-  border-radius: var(--radius-sm);
-  font-size: 1rem;
-  font-weight: 600;
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  cursor: pointer;
-  transition: background 0.2s;
+    width: 100%;
+    padding: 0.8rem;
+    border-radius: var(--radius-sm);
+    font-size: 1rem;
+    font-weight: 600;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    transition: background 0.2s;
 }
-
-#login-sheet .btn-primary:hover {
-  background: var(--accent-hover);
-}
+#login-sheet .btn-primary:hover { background: var(--accent-dark); }
 
 #login-sheet .alt-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  margin-top: 1rem;
-  text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin-top: 1rem;
+    text-align: center;
 }
-
 #login-sheet .alt-actions .btn-text {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  text-decoration: underline;
-  font-size: 0.88rem;
-  padding: 0.2rem;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    text-decoration: underline;
+    font-size: 0.88rem;
+    padding: 0.2rem;
 }
-
 #login-sheet .alt-actions .btn-text:hover {
-  color: var(--text-primary);
+    color: var(--text-primary);
 }
 
-/* ===== REGISTRATION FLOW ===== */
+/* ---------- Registration flow ---------- */
 #registration-flow {
-  display: none;
-  margin-top: 0.5rem;
+    display: none;
+    margin-top: 0.5rem;
 }
-
-#registration-flow.active {
-  display: block;
-}
+#registration-flow.active { display: block; }
 
 #registration-flow .step-indicator {
-  font-size: 0.88rem;
-  color: var(--text-muted);
-  margin-bottom: 1rem;
+    font-size: 0.88rem;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
 }
+#registration-flow .step        { display: none; }
+#registration-flow .step.active { display: block; }
 
-#registration-flow .step {
-  display: none;
-}
-
-#registration-flow .step.active {
-  display: block;
-}
-
-#registration-flow .form-group {
-  margin-bottom: 1rem;
-}
-
+#registration-flow .form-group { margin-bottom: 1rem; }
 #registration-flow .form-group label {
-  display: block;
-  font-weight: 500;
-  margin-bottom: 0.3rem;
-  font-size: 0.9rem;
+    display: block;
+    font-weight: 500;
+    margin-bottom: 0.3rem;
+    font-size: 0.9rem;
 }
-
 #registration-flow .form-group input,
 #registration-flow .form-group select {
-  width: 100%;
-  padding: 0.7rem 0.9rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  font-size: 0.95rem;
+    width: 100%;
+    padding: 0.7rem 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 0.95rem;
 }
-
 #registration-flow .form-group input:focus,
 #registration-flow .form-group select:focus {
-  outline: 2px solid var(--accent);
-  border-color: transparent;
+    outline: 2px solid var(--accent);
+    border-color: transparent;
 }
 
 #registration-flow .form-row {
-  display: flex;
-  gap: 1rem;
-  flex-wrap: wrap;
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
 }
-
 #registration-flow .form-row .half {
-  flex: 1 1 180px;
+    flex: 1 1 180px;
 }
 
 #registration-flow .button-group {
-  display: flex;
-  gap: 0.8rem;
-  margin-top: 1rem;
-  flex-wrap: wrap;
+    display: flex;
+    gap: 0.8rem;
+    margin-top: 1rem;
+    flex-wrap: wrap;
 }
-
 #registration-flow .button-group .btn-primary {
-  flex: 1;
-  padding: 0.7rem;
-  border-radius: var(--radius-sm);
-  font-weight: 600;
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  cursor: pointer;
-  transition: background 0.2s;
+    flex: 1;
+    padding: 0.7rem;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    transition: background 0.2s;
 }
-
 #registration-flow .button-group .btn-primary:hover {
-  background: var(--accent-hover);
+    background: var(--accent-dark);
 }
-
 #registration-flow .button-group .btn-secondary {
-  flex: 0 0 auto;
-  padding: 0.7rem 1.4rem;
-  border-radius: var(--radius-sm);
-  font-weight: 500;
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  border: 1px solid var(--border);
-  cursor: pointer;
-  transition: background 0.2s;
+    flex: 0 0 auto;
+    padding: 0.7rem 1.4rem;
+    border-radius: var(--radius-sm);
+    font-weight: 500;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.2s;
 }
-
 #registration-flow .button-group .btn-secondary:hover {
-  background: var(--border);
+    background: var(--border);
 }
 
 #registration-flow .checkbox-group {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-  font-size: 0.88rem;
-  margin: 0.5rem 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    font-size: 0.88rem;
+    margin: 0.5rem 0;
 }
-
 #registration-flow .checkbox-group input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--accent);
-  margin-top: 2px;
-  flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent);
+    margin-top: 2px;
+    flex-shrink: 0;
 }
-
 #registration-flow .checkbox-group label {
-  cursor: pointer;
-  line-height: 1.5;
+    cursor: pointer;
+    line-height: 1.5;
 }
-
 #registration-flow .checkbox-group a {
-  color: var(--accent);
-  text-decoration: underline;
+    color: var(--accent);
+    text-decoration: underline;
 }
 
 #registration-flow .success-step {
-  text-align: center;
-  padding: 1rem 0;
+    text-align: center;
+    padding: 1rem 0;
 }
-
 #registration-flow .success-step .success-icon {
-  font-size: 3.2rem;
-  margin-bottom: 0.5rem;
+    font-size: 3.2rem;
+    margin-bottom: 0.5rem;
 }
-
 #registration-flow .success-step h3 {
-  font-size: 1.3rem;
-  margin-bottom: 0.3rem;
+    font-size: 1.3rem;
+    margin-bottom: 0.3rem;
 }
-
 #registration-flow .success-step p {
-  color: var(--text-muted);
-  margin-bottom: 1.2rem;
+    color: var(--text-muted);
+    margin-bottom: 1.2rem;
 }
 
-/* ===== RESPONSIVE ===== */
+/* ---------- Responsive ---------- */
 @media (max-width: 500px) {
-  .fixed-header {
-    padding: 0.4rem 0.8rem;
-  }
-  .header-row .logo-area span {
-    font-size: 1rem;
-  }
-  .header-row .agent-program-badge {
-    font-size: 0.78rem;
-    padding: 0.2rem 0.7rem;
-  }
-  .page-container {
-    padding: 0.8rem 1rem 1.5rem;
-  }
-  .auth-modal-card {
-    padding: 1.5rem 1.2rem;
-    max-height: 85vh;
-  }
-  .upgrade-section {
-    padding: 1.5rem 1rem;
-  }
-  .btn-neon {
-    font-size: 1rem;
-    padding: 0.7rem 2rem;
-  }
-  #registration-flow .form-row {
-    flex-direction: column;
-    gap: 0;
-  }
-  #registration-flow .form-row .half {
-    flex: 1 1 auto;
-  }
+    .fixed-header { padding: 0.4rem 0.8rem; }
+    .header-row .logo-area span { font-size: 1rem; }
+    .header-row .agent-program-badge {
+        font-size: 0.78rem;
+        padding: 0.2rem 0.7rem;
+    }
+    .page-container { padding: 0.8rem 1rem 1.5rem; }
+    .auth-modal-card {
+        padding: 1.5rem 1.2rem;
+        max-height: 85vh;
+    }
+    .upgrade-section { padding: 1.5rem 1rem; }
+    .btn-neon {
+        font-size: 1rem;
+        padding: 0.7rem 2rem;
+    }
+    #registration-flow .form-row {
+        flex-direction: column;
+        gap: 0;
+    }
+    #registration-flow .form-row .half { flex: 1 1 auto; }
 }
 
-/* ===== UTILITY ===== */
-.hidden {
-  display: none !important;
-}
-
-.mt-1 { margin-top: 0.5rem; }
-.mt-2 { margin-top: 1rem; }
-.text-muted { color: var(--text-muted); }
-.text-center { text-align: center; }
-
-/* ===== SCROLL FIXES ===== */
-.auth-modal-card::-webkit-scrollbar {
-  width: 6px;
-}
-.auth-modal-card::-webkit-scrollbar-track {
-  background: var(--bg-secondary);
-}
+/* ---------- Modal scrollbar tweak (overrides common's accent scrollbar) ---------- */
+.auth-modal-card::-webkit-scrollbar       { width: 6px; }
+.auth-modal-card::-webkit-scrollbar-track { background: var(--bg-secondary); }
 .auth-modal-card::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
-}
-
-body {
-  overflow-y: auto;
-  min-height: 100vh;
+    background: var(--border);
+    border-radius: 4px;
 }

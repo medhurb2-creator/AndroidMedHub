@@ -1756,7 +1756,7 @@
       "options": [
         {
           "text": "Appendix testis (hydatid of Morgagni)",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "The appendix testis is a remnant of the cranial Müllerian duct; the prostatic utricle is the caudal remnant."
         },
         {
@@ -1770,7 +1770,7 @@
           "explanation": "Appendix epididymis is a Wolffian remnant."
         },
         {
-          "text": "Both A and B",
+          "text": "Both Appendix testis and Sinus pocularis",
           "isCorrect": true,
           "explanation": "Both appendix testis and prostatic utricle are Müllerian remnants."
         },

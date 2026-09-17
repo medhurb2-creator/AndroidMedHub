@@ -1,19 +1,26 @@
-/* ===== PAYMENT PAGE – MOBILE‑FIRST ===== */
+/* ==========================================================================
+   PAYMENT — page-specific styles
+   Requires common.css (tokens, form primitives, buttons base, .error-message,
+   keyframes shimmer, --transition).
+   Adds ONLY: page shell, order summary, payment instructions, status area,
+   retry button, two-row pay header, shimmer skeleton, retry button,
+   neutral-pill button overrides, responsive.
+   ========================================================================== */
 
+/* ---------- Page shell ---------- */
 .payment-container {
     max-width: 600px;
     margin: 1.5rem auto;
     padding: 0 1rem;
 }
 
-/* ---- Order Summary ---- */
+/* ---------- Order summary ---------- */
 .order-summary {
     background: var(--bg-secondary);
     border-radius: var(--radius);
     padding: 1.5rem;
     margin-bottom: 2rem;
 }
-
 .order-summary h3 {
     margin-bottom: 1rem;
     padding-bottom: 0.5rem;
@@ -21,7 +28,6 @@
     font-size: 1.2rem;
     color: var(--text-primary);
 }
-
 .order-summary p {
     display: flex;
     justify-content: space-between;
@@ -29,14 +35,13 @@
     font-size: 1rem;
     color: var(--text-primary);
 }
-
 .amount {
     font-size: 1.25rem;
     font-weight: 700;
     color: var(--accent);
 }
 
-/* ---- Payment Instructions ---- */
+/* ---------- Payment instructions ---------- */
 .payment-instructions {
     background: var(--bg-card);
     border-left: 4px solid var(--accent);
@@ -44,22 +49,35 @@
     margin: 1.5rem 0;
     border-radius: 0 var(--radius) var(--radius) 0;
 }
-
 .payment-instructions p {
     margin-bottom: 0.5rem;
     font-size: 0.9rem;
     color: var(--text-secondary);
 }
 
-/* ---- Payment Status ---- */
+/* ---------- Payment status ----------
+   Original file declared #payment-status twice with conflicting
+   margin-top (1.5rem then 1rem). Consolidated to the effective value. */
 #payment-status {
-    margin-top: 1.5rem;
+    margin-top: 1rem;
     padding: 1rem;
     border-radius: var(--radius);
     text-align: center;
 }
+#status-message {
+    padding: 0.75rem;
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+}
+.poll-attempt {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
 
-/* ---- Buttons ---- */
+/* ---------- Button overrides ---------- */
+/* Overrides common's .btn-large */
 .btn-large {
     width: 100%;
     padding: 0.9rem;
@@ -67,6 +85,8 @@
     margin-bottom: 0.75rem;
 }
 
+/* Retry button — see note: original selector #retry-btn does not match
+   HTML's id="retryBtn". Kept as-is to preserve current output. */
 #retry-btn {
     width: 100%;
     padding: 0.8rem;
@@ -76,318 +96,13 @@
     color: var(--text-primary);
     border: 1px solid var(--border);
 }
-
 #retry-btn:hover {
     background: var(--bg-card);
     border-color: var(--accent);
 }
 
-/* ===== TWO-ROW HEADER (used in payment.html) ===== */
-.pay-header {
-    background: var(--bg-card);
-    border-bottom: 1px solid var(--border);
-    padding: 0.5rem 1rem;
-    margin-bottom: 0.5rem;
-}
-
-.pay-header-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.pay-header-top .left-group {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-}
-
-.pay-header-top .left-group img {
-    width: 36px;
-    height: 36px;
-    border-radius: 6px;
-}
-
-.pay-header-top .left-group .brand {
-    font-weight: 600;
-    font-size: 1.2rem;
-    color: var(--text-primary);
-}
-
-.pay-header-top .right-group {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.change-plan-btn {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: 30px;
-    padding: 0.25rem 0.8rem;
-    font-size: 0.8rem;
-    cursor: pointer;
-    color: var(--text-primary);
-    transition: background 0.2s;
-}
-
-.change-plan-btn:hover {
-    background: var(--border);
-}
-
-.pay-header-bottom {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 0.3rem;
-}
-
-.pay-header-bottom h2 {
-    font-size: 1.4rem;
-    margin: 0;
-    color: var(--text-primary);
-}
-
-.pay-header-bottom .plan-summary {
-    font-size: 0.9rem;
-    color: var(--text-secondary);
-}
-
-.pay-header-bottom .plan-summary strong {
-    color: var(--text-primary);
-}
-
-/* Hide old standalone "Change Plan" button (now in header) */
-.old-change-plan {
-    display: none !important;
-}
-
-/* ---- Form elements (theme‑aware) ---- */
-.form-group label {
-    color: var(--text-secondary);
-}
-.form-group input {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    border: 1px solid var(--border);
-}
-.form-group input:focus {
-    border-color: var(--accent);
-}
-.form-group small {
-    color: var(--text-muted);
-}
-.error-message {
-    color: var(--danger);
-}
-
-/* ===== Responsive ===== */
-@media (max-width: 640px) {
-    .payment-container {
-        margin: 1rem auto;
-        padding: 0 0.75rem;
-    }
-    .pay-header-bottom {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 0.3rem;
-    }
-    .pay-header-bottom h2 {
-        font-size: 1.2rem;
-    }
-    .pay-header-bottom .plan-summary {
-        font-size: 0.8rem;
-    }
-    .order-summary {
-        padding: 1rem;
-    }
-}
-/* ===== SHIMMER OVERLAY ===== */
-#shimmer-content {
-    /* Shimmer container styles */
-    padding: 1rem;
-    display: block;
-}
-.shimmer-header {
-    padding: 0.5rem 1rem;
-    background: #1e1e2f;
-    border-bottom: 1px solid #333;
-}
-.shimmer-header-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-.shimmer-header-bottom {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 0.5rem;
-}
-.shimmer-logo {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-.shimmer-logo-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 6px;
-    background: #3a3a4e;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
-}
-.shimmer-logo-text {
-    width: 80px;
-    height: 20px;
-    background: #3a3a4e;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
-    border-radius: 4px;
-}
-.shimmer-btn-sm {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: #3a3a4e;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
-    display: inline-block;
-}
-.shimmer-title {
-    height: 28px;
-    width: 180px;
-    background: #3a3a4e;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
-    border-radius: 4px;
-}
-.shimmer-card {
-    background: #2a2a3e;
-    border: 1px solid #444;
-    border-radius: var(--radius);
-    padding: 1.5rem;
-    margin-bottom: 1.5rem;
-}
-.shimmer-line {
-    height: 16px;
-    background: #3a3a4e;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
-    border-radius: 4px;
-    margin-bottom: 0.75rem;
-}
-.shimmer-line-lg {
-    height: 32px;
-    width: 60%;
-}
-.shimmer-input {
-    height: 44px;
-    border-radius: var(--radius-sm);
-    background: #3a3a4e;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
-}
-.shimmer-btn-full {
-    height: 48px;
-    width: 100%;
-    border-radius: var(--radius-sm);
-    background: #3a3a4e;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
-    margin-top: 1rem;
-}
-#real-content { display: none; }
-
-/* ===== TWO-ROW HEADER (additional) ===== */
-.pay-header {
-    background: var(--bg-card);
-    border-bottom: 1px solid var(--border);
-    padding: 0.5rem 1rem;
-    margin-bottom: 0.5rem;
-}
-
-.pay-header-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.pay-header-top .left-group {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-}
-
-.pay-header-top .left-group img {
-    width: 36px;
-    height: 36px;
-    border-radius: 6px;
-}
-
-.pay-header-top .left-group .brand {
-    font-weight: 600;
-    font-size: 1.2rem;
-    color: var(--text-primary);
-}
-
-.pay-header-top .right-group {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.change-plan-btn {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    border-radius: 30px;
-    padding: 0.25rem 0.8rem;
-    font-size: 0.8rem;
-    cursor: pointer;
-    color: var(--text-primary);
-    transition: background 0.2s;
-}
-
-.change-plan-btn:hover {
-    background: var(--border);
-}
-
-.pay-header-bottom {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 0.3rem;
-}
-
-.pay-header-bottom h2 {
-    font-size: 1.4rem;
-    margin: 0;
-    color: var(--text-primary);
-}
-
-.pay-header-bottom .plan-summary {
-    font-size: 0.9rem;
-    color: var(--text-secondary);
-}
-
-.pay-header-bottom .plan-summary strong {
-    color: var(--text-primary);
-}
-
-/* ===== Animations ===== */
-@keyframes shimmer {
-    0% { background-position: -200px 0; }
-    100% { background-position: calc(200px + 100%) 0; }
-}
-
-/* ===== UTILITY ===== */
+/* Neutral-pill overrides for header buttons
+   (common's .btn-text is a text-link, .btn-outline is accent-bordered). */
 .btn-text {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
@@ -415,17 +130,185 @@
     background: var(--bg-card);
     border-color: var(--accent);
 }
-.poll-attempt {
+
+/* ---------- Two-row pay header ---------- */
+.pay-header {
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    padding: 0.5rem 1rem;
+    margin-bottom: 0.5rem;
+}
+.pay-header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.pay-header-top .left-group {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+.pay-header-top .left-group img {
+    width: 36px;
+    height: 36px;
+    border-radius: 6px;
+}
+.pay-header-top .left-group .brand {
+    font-weight: 600;
+    font-size: 1.2rem;
+    color: var(--text-primary);
+}
+.pay-header-top .right-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.change-plan-btn {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 30px;
+    padding: 0.25rem 0.8rem;
+    font-size: 0.8rem;
+    cursor: pointer;
+    color: var(--text-primary);
+    transition: background 0.2s;
+}
+.change-plan-btn:hover {
+    background: var(--border);
+}
+.pay-header-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.3rem;
+}
+.pay-header-bottom h2 {
+    font-size: 1.4rem;
+    margin: 0;
+    color: var(--text-primary);
+}
+.pay-header-bottom .plan-summary {
     font-size: 0.9rem;
     color: var(--text-secondary);
 }
-#payment-status {
+.pay-header-bottom .plan-summary strong {
+    color: var(--text-primary);
+}
+
+/* Legacy standalone "Change Plan" button — kept hidden for backwards compat */
+.old-change-plan {
+    display: none !important;
+}
+
+/* ---------- Shimmer skeleton ---------- */
+#shimmer-content {
+    padding: 1rem;
+    display: block;
+}
+#real-content { display: none; }
+
+.shimmer-header {
+    padding: 0.5rem 1rem;
+    background: #1e1e2f;
+    border-bottom: 1px solid #333;
+}
+.shimmer-header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.shimmer-header-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.5rem;
+}
+.shimmer-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.shimmer-logo-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
+    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
+    background-size: 200px 100%;
+    animation: shimmer 1.5s infinite;
+}
+.shimmer-logo-text {
+    width: 80px;
+    height: 20px;
+    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
+    background-size: 200px 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 4px;
+}
+.shimmer-btn-sm {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
+    background-size: 200px 100%;
+    animation: shimmer 1.5s infinite;
+    display: inline-block;
+}
+.shimmer-title {
+    height: 28px;
+    width: 180px;
+    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
+    background-size: 200px 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 4px;
+}
+.shimmer-card {
+    background: #2a2a3e;
+    border: 1px solid #444;
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+.shimmer-line {
+    height: 16px;
+    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
+    background-size: 200px 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 4px;
+    margin-bottom: 0.75rem;
+}
+.shimmer-line-lg {
+    height: 32px;
+    width: 60%;
+}
+.shimmer-input {
+    height: 44px;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
+    background-size: 200px 100%;
+    animation: shimmer 1.5s infinite;
+}
+.shimmer-btn-full {
+    height: 48px;
+    width: 100%;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
+    background-size: 200px 100%;
+    animation: shimmer 1.5s infinite;
     margin-top: 1rem;
 }
-#status-message {
-    padding: 0.75rem;
-    border-radius: 6px;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    color: var(--text-primary);
+
+/* ---------- Responsive ---------- */
+@media (max-width: 640px) {
+    .payment-container {
+        margin: 1rem auto;
+        padding: 0 0.75rem;
+    }
+    .pay-header-bottom {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.3rem;
+    }
+    .pay-header-bottom h2 { font-size: 1.2rem; }
+    .pay-header-bottom .plan-summary { font-size: 0.8rem; }
+    .order-summary { padding: 1rem; }
 }

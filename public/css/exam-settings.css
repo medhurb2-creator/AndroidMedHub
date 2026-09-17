@@ -1,15 +1,18 @@
-/* frontend-user/css/exam-settings.css */
+/* ==========================================================================
+   EXAM SETTINGS — page-specific styles
+   Requires common.css (tokens, header-row base, buttons, hidden, keyframes spin).
+   Adds: shimmer overlay, inline loader, page-sticky fixed header, floating
+   bottom card with multi-step wizard, stepper, challenge/revision groups.
+   ========================================================================== */
 
-/* ============================================================
-   SHIMMER OVERLAY (Full‑screen, dark theme fallback)
-   ============================================================ */
+/* ---------- Shimmer overlay (fullscreen dark fallback) ---------- */
 .shimmer-overlay {
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
-    background: #1a1a2e; /* dark fallback */
+    background: #1a1a2e;
     z-index: 9999;
     display: flex;
     flex-direction: column;
@@ -36,9 +39,7 @@
     pointer-events: none;
 }
 
-/* ============================================================
-   INLINE LOADER (for async actions like sending invites)
-   ============================================================ */
+/* ---------- Inline loader ---------- */
 .inline-loader {
     display: inline-flex;
     align-items: center;
@@ -58,9 +59,7 @@
     display: none;
 }
 
-/* ============================================================
-   FIXED HEADER (2 rows)
-   ============================================================ */
+/* ---------- Fixed header (page-sticky wrapper; .header-row* is in common) ---------- */
 .fixed-header {
     position: sticky;
     top: 0;
@@ -70,64 +69,7 @@
     padding: 0.5rem 1rem;
 }
 
-.header-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-.header-row.top {
-    margin-bottom: 0.3rem;
-}
-
-.header-row .left-group {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-}
-.header-row .left-group img {
-    width: 32px;
-    height: 32px;
-    border-radius: 6px;
-}
-.header-row .left-group .brand {
-    font-weight: 600;
-    font-size: 1.2rem;
-}
-.header-row .left-group .btn-text {
-    font-size: 0.9rem;
-    padding: 0.3rem 0.6rem;
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    border-radius: 4px;
-    transition: background 0.2s, color 0.2s;
-}
-.header-row .left-group .btn-text:hover {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-}
-.header-row .right-group {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-.header-row .btn-outline {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    padding: 0.3rem 0.6rem;
-    border-radius: 30px;
-    font-size: 1.2rem;
-    cursor: pointer;
-    line-height: 1;
-    transition: background 0.2s, color 0.2s, border-color 0.2s;
-}
-.header-row .btn-outline:hover {
-    background: var(--accent);
-    color: white;
-    border-color: var(--accent);
-}
-
+/* Subject summary row (page-specific, replaces common's .page-title slot) */
 .header-row.bottom .subject-area {
     display: flex;
     align-items: center;
@@ -159,20 +101,17 @@
     border: 1px solid var(--border);
 }
 
-/* ============================================================
-   FLOATING BOTTOM CARD
-   ============================================================ */
+/* ---------- Floating bottom card ---------- */
 .bottom-card {
     position: fixed;
-    /* top is set dynamically by JS */
-    top: auto;                /* fallback, overridden by inline style */
+    top: auto;                    /* JS overrides to match header bottom */
     bottom: 0;
     left: 0;
     right: 0;
     background: var(--bg-card);
     border-top: 2px solid var(--accent);
     border-radius: 24px 24px 0 0;
-    box-shadow: 0 -10px 30px rgba(0,0,0,0.2);
+    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.2);
     padding: 1.5rem 1.5rem 1rem;
     height: auto;
     max-height: none;
@@ -185,19 +124,18 @@
     transform: translateY(100%);
 }
 
-.card-step {
-    display: none;
-}
+.card-step { display: none; }
 .card-step.active {
     display: block;
     animation: fadeUp 0.3s ease;
 }
+
 @keyframes fadeUp {
     from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
+    to   { opacity: 1; transform: translateY(0);    }
 }
 
-/* Step 1: Choose exam type */
+/* ---------- Step 1: exam type chooser ---------- */
 .mode-option {
     display: flex;
     align-items: center;
@@ -217,24 +155,13 @@
     border-color: var(--accent);
     background: rgba(37, 99, 235, 0.05);
 }
-.mode-option .icon {
-    font-size: 1.8rem;
-}
-.mode-option .info {
-    flex: 1;
-}
-.mode-option .info .title {
-    font-weight: 600;
-}
-.mode-option .info .desc {
-    font-size: 0.85rem;
-    color: var(--text-muted);
-}
+.mode-option .icon { font-size: 1.8rem; }
+.mode-option .info { flex: 1; }
+.mode-option .info .title { font-weight: 600; }
+.mode-option .info .desc  { font-size: 0.85rem; color: var(--text-muted); }
 
-/* Step 2 controls */
-.config-group {
-    margin-bottom: 1.2rem;
-}
+/* ---------- Step 2: configuration ---------- */
+.config-group { margin-bottom: 1.2rem; }
 .config-group label {
     display: block;
     font-weight: 500;
@@ -262,7 +189,7 @@
 }
 .question-stepper button:hover {
     background: var(--accent);
-    color: white;
+    color: #fff;
     border-color: var(--accent);
 }
 .question-stepper input {
@@ -287,17 +214,16 @@
     margin-left: 0.5rem;
     white-space: nowrap;
 }
+
 .validation-warning {
     color: var(--danger);
     font-size: 0.8rem;
     margin-top: 0.25rem;
     display: none;
 }
-.validation-warning.show {
-    display: block;
-}
+.validation-warning.show { display: block; }
 
-/* Difficulty group */
+/* Difficulty + challenge type button groups */
 .difficulty-group {
     display: flex;
     gap: 0.5rem;
@@ -316,11 +242,10 @@
 }
 .difficulty-group button.active {
     background: var(--accent);
-    color: white;
+    color: #fff;
     border-color: var(--accent);
 }
 
-/* Challenge type group */
 .challenge-type-group {
     display: flex;
     gap: 0.5rem;
@@ -337,11 +262,11 @@
 }
 .challenge-type-group button.active {
     background: var(--accent);
-    color: white;
+    color: #fff;
     border-color: var(--accent);
 }
 
-/* Challenge extra divs */
+/* ---------- Challenge extra panels ---------- */
 .challenge-extra {
     margin-top: 1rem;
     padding: 0.75rem;
@@ -349,9 +274,8 @@
     border-radius: var(--radius);
     display: none;
 }
-.challenge-extra.show {
-    display: block;
-}
+.challenge-extra.show { display: block; }
+
 .challenge-extra input[type="email"] {
     width: 100%;
     padding: 0.5rem;
@@ -360,6 +284,7 @@
     background: var(--bg-card);
     color: var(--text-primary);
 }
+
 .challenge-extra .user-list {
     max-height: 120px;
     overflow-y: auto;
@@ -378,12 +303,13 @@
 .challenge-extra .user-list button:hover {
     background: var(--bg-card);
 }
+
 #invite-status {
     margin-top: 0.5rem;
     font-size: 0.85rem;
 }
 
-/* Verification area (friend invite) */
+/* ---------- Verification area ---------- */
 .verification-area {
     margin-top: 0.75rem;
     padding: 0.75rem;
@@ -392,9 +318,8 @@
     border-radius: var(--radius);
     display: none;
 }
-.verification-area.show {
-    display: block;
-}
+.verification-area.show { display: block; }
+
 .verification-area .code-row {
     display: flex;
     align-items: center;
@@ -435,7 +360,7 @@
     accent-color: var(--accent);
 }
 
-/* Action row */
+/* ---------- Action row (back / primary) ---------- */
 .action-row {
     display: flex;
     gap: 0.75rem;
@@ -453,10 +378,10 @@
 }
 .action-row .btn-primary {
     background: var(--accent);
-    color: white;
+    color: #fff;
     border: 1px solid var(--accent);
 }
-.action-row .btn-primary:hover {
+.action-row .btn-primary:hover:not(:disabled) {
     background: var(--accent-dark);
     border-color: var(--accent-dark);
 }
@@ -473,7 +398,7 @@
     background: var(--border);
 }
 
-/* Feature list (revision) */
+/* ---------- Feature list (revision mode) ---------- */
 .feature-list {
     list-style: none;
     padding: 0;
@@ -492,7 +417,7 @@
     font-weight: bold;
 }
 
-/* Join code section */
+/* ---------- Join-by-code row ---------- */
 .join-code-row {
     margin-top: 1.5rem;
     padding-top: 1rem;
@@ -510,7 +435,7 @@
     border-color: var(--accent);
 }
 
-/* Share link area */
+/* ---------- Share-link area ---------- */
 .share-link-area {
     margin-top: 0.75rem;
     display: none;
@@ -541,7 +466,7 @@
     background: var(--border);
 }
 
-/* Challenge status */
+/* ---------- Challenge status + code display ---------- */
 #challenge-status {
     margin: 0.5rem 0;
     font-weight: 500;
@@ -567,14 +492,10 @@
     margin-right: 0.5rem;
 }
 
-/* ============================================================
-   RESPONSIVE
-   ============================================================ */
+/* ---------- Responsive ---------- */
 @media (max-width: 640px) {
     .bottom-card {
         padding: 1rem;
-        height: auto;
-        max-height: none;
     }
     .header-row.bottom .subject-area {
         flex-direction: column;
@@ -608,9 +529,7 @@
     }
 }
 
-/* ============================================================
-   DARK THEME ADJUSTMENTS
-   ============================================================ */
+/* ---------- Dark theme tweaks ---------- */
 body.dark-theme .bottom-card {
     background: var(--bg-card);
 }
@@ -624,15 +543,5 @@ body.dark-theme .challenge-type-group button {
 body.dark-theme .difficulty-group button.active,
 body.dark-theme .challenge-type-group button.active {
     background: var(--accent);
-    color: white;
-}
-
-/* ============================================================
-   UTILITY
-   ============================================================ */
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-.hidden {
-    display: none !important;
+    color: #fff;
 }

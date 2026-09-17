@@ -2174,7 +2174,7 @@
       "options": [
         {
           "text": "Clindamycin",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Clindamycin is one of the highest‑risk antibiotics, but cephalosporins and fluoroquinolones also carry risk. The original answer E 'All of the above' was marked correct, but the option texts list only clindamycin, penicillins, cephalosporins, fluoroquinolones, and 'All of the above'. I'll set the 'All of the above' as correct."
         },
         {

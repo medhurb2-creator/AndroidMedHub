@@ -426,16 +426,16 @@
       "options": [
         {
           "text": "Reduce salivary and bronchial secretions",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Atropine blocks M3 receptors on salivary and bronchial glands, reducing secretions that could cause aspiration or obstruct the airway."
         },
         {
           "text": "Prevent bradycardia during intubation",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Atropine blocks vagally mediated bradycardia that can occur during tracheal intubation or surgical manipulation."
         },
         {
-          "text": "Both A and B",
+          "text": "Both Prevent bradycardia during intubation and Reduce salivary and bronchial secretions",
           "isCorrect": true,
           "explanation": "Atropine is given pre‑anesthesia for both antisecretory and vagolytic effects."
         },
@@ -1376,17 +1376,17 @@
       "options": [
         {
           "text": "It can cause bradycardia and increased secretions",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Neostigmine increases ACh everywhere, causing muscarinic side effects (bradycardia, salivation, lacrimation, diarrhea). Atropine is co‑administered to block these."
         },
         {
           "text": "It does not cross the BBB",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "As a quaternary ammonium compound, neostigmine is excluded from the CNS."
         },
         {
           "text": "It is used to reverse neuromuscular blockade",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Neostigmine is combined with atropine or glycopyrrolate to reverse nondepolarizing neuromuscular blockers (e.g., rocuronium)."
         },
         {
@@ -1442,44 +1442,6 @@
         "overview": "Cholinergic side effects (muscarinic) are common with AChE inhibitors. In myasthenia gravis, the dose is titrated to balance muscarinic side effects with nicotinic benefit. Anticholinergics like propantheline or atropine can be used.",
         "highYield": "Neostigmine muscarinic side effects: bradycardia, ↑ secretions, diarrhea. Treat with anticholinergic (atropine).",
         "clinicalCorrelation": "A cholinergic crisis (excess AChE inhibition) can mimic myasthenic crisis with muscle weakness; a Tensilon test (if edrophonium available) or history helps distinguish."
-      }
-    },
-    {
-      "questionId": "pharma_cholinergic_039",
-      "difficulty": 3,
-      "question": "Glycopyrrolate is a quaternary ammonium anticholinergic used:",
-      "image": null,
-      "options": [
-        {
-          "text": "Preoperatively to reduce secretions",
-          "isCorrect": true,
-          "explanation": "Glycopyrrolate is given before surgery as a drying agent and to prevent vagal bradycardia, with less CNS penetration than atropine."
-        },
-        {
-          "text": "In COPD (inhaled)",
-          "isCorrect": true,
-          "explanation": "Inhaled glycopyrrolate (as a LAMA) is used for COPD maintenance bronchodilation."
-        },
-        {
-          "text": "For overactive bladder",
-          "isCorrect": false,
-          "explanation": "Oral glycopyrrolate is not typically used for OAB; other anticholinergics are used."
-        },
-        {
-          "text": "All of the above",
-          "isCorrect": false,
-          "explanation": "While it is used pre‑op and inhaled for COPD, it is not a standard treatment for overactive bladder. The original correct answer is 'All of the above'? Let's check: The original question's correct is D (All of the above). However, glycopyrrolate is not typically used for OAB; the options might reflect off‑label uses. I'll set D (All of the above) as correct as per the original. I'll adjust the explanation accordingly."
-        },
-        {
-          "text": "None of the above",
-          "isCorrect": false,
-          "explanation": "Glycopyrrolate is used preoperatively and in COPD."
-        }
-      ],
-      "explanation": {
-        "overview": "Glycopyrrolate is a synthetic quaternary ammonium muscarinic antagonist. It does not cross the blood‑brain barrier and has a slower onset and longer duration than atropine. It is used pre‑anesthesia, for COPD, and for hyperhidrosis/drooling.",
-        "highYield": "Glycopyrrolate = quaternary anticholinergic, no CNS. Pre‑op (dry secretions), COPD (LAMA), hyperhidrosis.",
-        "clinicalCorrelation": "Inhaled LAMA/LABA combinations (e.g., glycopyrrolate/indacaterol) are used for COPD. Oral formulations are used for excessive sweating and sialorrhea."
       }
     },
     {

@@ -1,61 +1,47 @@
-/* ============================================================
-   Resource Browser – Full Styles
-   Fixed header + responsive card grid
-   ============================================================ */
+/* ==========================================================================
+   RESOURCE BROWSER — page-specific styles
+   Requires common.css (tokens, reset, body, buttons, hidden, keyframes).
+   Adds: page theme override, 3-row fixed header, resource card grid,
+   card anatomy, card menu, shimmer skeleton, load-more, breakpoints.
+   The embedded #viewer is styled entirely by viewer.css.
+   ========================================================================== */
 
-/* ----- Reset & Base ----- */
-* {
-    box-sizing: border-box;
-}
-
-body {
-    margin: 0;
-    padding: 0;
-    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    transition: background 0.2s, color 0.2s;
-}
-
-/* ----- CSS Variables (light theme default) ----- */
+/* ---------- Page theme overrides ---------- */
 :root {
-    --bg-primary: #f5f7fa;
+    --bg-primary:   #f5f7fa;
     --bg-secondary: #e9ecf0;
-    --bg-card: #ffffff;
-    --text-primary: #1e1e2f;
+    --bg-card:      #ffffff;
+    --text-primary:   #1e1e2f;
     --text-secondary: #444;
-    --text-muted: #777;
-    --border: #d0d4dc;
+    --text-muted:     #777;
+    --border:       #d0d4dc;
     --border-light: #e0e4ea;
-    --accent: #2563eb;
-    --accent-dark: #1d4ed8;
+    --accent:       #2563eb;
+    --accent-dark:  #1d4ed8;
     --accent-light: #3b82f6;
-    --success: #16a34a;
+    --success:      #16a34a;
     --success-dark: #15803d;
-    --danger: #dc2626;
-    --danger-dark: #b91c1c;
-    --warning: #f59e0b;
-    --shadow: 0 4px 12px rgba(0,0,0,0.08);
+    --danger:       #dc2626;
+    --danger-dark:  #b91c1c;
+    --warning:      #f59e0b;
+    --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
     --radius: 12px;
-    --header-height: 130px;  /* ~3 rows */
+    --header-height: 130px;   /* 3 header rows */
 }
 
-/* ----- Dark Theme ----- */
 body.dark-theme {
-    --bg-primary: #1a1a2e;
+    --bg-primary:   #1a1a2e;
     --bg-secondary: #2a2a3e;
-    --bg-card: #25253a;
-    --text-primary: #eee;
+    --bg-card:      #25253a;
+    --text-primary:   #eee;
     --text-secondary: #ccc;
-    --text-muted: #999;
-    --border: #444;
+    --text-muted:     #999;
+    --border:       #444;
     --border-light: #3a3a4e;
-    --shadow: 0 4px 12px rgba(0,0,0,0.4);
+    --shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
-/* ============================================================
-   FIXED HEADER (3 rows)
-   ============================================================ */
+/* ---------- Fixed header (3 rows) ---------- */
 .fixed-header {
     position: fixed;
     top: 0;
@@ -64,24 +50,19 @@ body.dark-theme {
     z-index: 1000;
     background: var(--bg-card);
     border-bottom: 1px solid var(--border);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
     padding: 0.3rem 0.8rem;
     transition: background 0.2s;
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
 }
 
+/* Header row spacing — flexbox base is in common.css */
 .header-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
     padding: 0.2rem 0;
     min-height: 36px;
 }
-
-.header-row:last-child {
-    padding-bottom: 0.3rem;
-}
+.header-row:last-child { padding-bottom: 0.3rem; }
 
 .logo-area {
     display: flex;
@@ -91,9 +72,7 @@ body.dark-theme {
     font-size: 1.2rem;
     color: var(--text-primary);
 }
-.logo-area img {
-    border-radius: 8px;
-}
+.logo-area img { border-radius: 8px; }
 
 .nav-buttons {
     display: flex;
@@ -117,7 +96,7 @@ body.dark-theme {
 }
 .nav-buttons button:hover {
     background: var(--accent);
-    color: white;
+    color: #fff;
     border-color: var(--accent);
 }
 
@@ -133,7 +112,7 @@ body.dark-theme {
     letter-spacing: -0.3px;
 }
 
-/* Search & Filter Row */
+/* Search & filter row */
 .search-filter-row {
     display: flex;
     gap: 0.5rem;
@@ -152,8 +131,10 @@ body.dark-theme {
     outline: none;
     transition: border-color 0.2s;
 }
+/* Block common's input:focus blue ring */
 .search-filter-row input[type="text"]:focus {
     border-color: var(--accent);
+    box-shadow: none;
 }
 
 .filter-wrapper {
@@ -175,7 +156,7 @@ body.dark-theme {
 }
 .filter-btn:hover {
     background: var(--accent);
-    color: white;
+    color: #fff;
 }
 
 .filter-dropdown {
@@ -191,9 +172,7 @@ body.dark-theme {
     overflow: hidden;
     z-index: 100;
 }
-.filter-dropdown.open {
-    display: block;
-}
+.filter-dropdown.open { display: block; }
 .filter-dropdown button {
     display: block;
     width: 100%;
@@ -206,17 +185,13 @@ body.dark-theme {
     cursor: pointer;
     transition: background 0.15s;
 }
-.filter-dropdown button:hover {
-    background: var(--bg-secondary);
-}
+.filter-dropdown button:hover { background: var(--bg-secondary); }
 .filter-dropdown button.active-filter {
     background: var(--accent);
-    color: white;
+    color: #fff;
 }
 
-/* ============================================================
-   MAIN CONTENT (offset for fixed header)
-   ============================================================ */
+/* ---------- Main content (offset for fixed header) ---------- */
 .main-with-header {
     padding-top: calc(var(--header-height) + 0.5rem);
     padding-left: 0.5rem;
@@ -225,9 +200,7 @@ body.dark-theme {
     margin: 0 auto;
 }
 
-/* ============================================================
-   RESOURCE GRID
-   ============================================================ */
+/* ---------- Resource grid ---------- */
 .resource-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -235,9 +208,7 @@ body.dark-theme {
     margin-top: 0.5rem;
 }
 
-/* ============================================================
-   RESOURCE CARD – vertical, proportioned for ~8 per screen
-   ============================================================ */
+/* ---------- Resource card ---------- */
 .resource-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -247,14 +218,14 @@ body.dark-theme {
     display: flex;
     flex-direction: column;
     position: relative;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
 }
 .resource-card:hover {
     transform: translateY(-3px);
     box-shadow: var(--shadow);
 }
 
-/* Thumbnail – fixed aspect ratio */
+/* Thumbnail */
 .card-thumbnail {
     background: var(--bg-secondary);
     aspect-ratio: 16 / 10;
@@ -274,7 +245,7 @@ body.dark-theme {
     color: var(--text-muted);
 }
 
-/* Card info – flexible height */
+/* Card info */
 .card-info {
     padding: 0.5rem 0.6rem 0.4rem;
     flex: 1;
@@ -303,7 +274,7 @@ body.dark-theme {
 .type-badge {
     display: inline-block;
     background: var(--accent-light);
-    color: white;
+    color: #fff;
     padding: 0.1rem 0.5rem;
     border-radius: 9999px;
     font-size: 0.6rem;
@@ -322,22 +293,16 @@ body.dark-theme {
     padding-top: 0.3rem;
     border-top: 1px solid var(--border-light);
 }
-.downloaded-badge {
-    color: var(--success);
-    font-weight: 500;
-}
-.premium-badge {
-    color: var(--warning);
-    font-weight: 500;
-}
+.downloaded-badge { color: var(--success); font-weight: 500; }
+.premium-badge    { color: var(--warning); font-weight: 500; }
 
-/* Favorite badge (top-right) */
+/* Favorite badge */
 .favorite-badge {
     position: absolute;
     top: 4px;
     right: 4px;
     background: var(--warning);
-    color: white;
+    color: #fff;
     border-radius: 50%;
     width: 22px;
     height: 22px;
@@ -346,12 +311,12 @@ body.dark-theme {
     justify-content: center;
     font-size: 0.7rem;
     font-weight: bold;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
     pointer-events: none;
     z-index: 2;
 }
 
-/* ----- Card Actions ----- */
+/* Card actions */
 .card-actions {
     display: flex;
     gap: 0.4rem;
@@ -360,8 +325,6 @@ body.dark-theme {
     padding-top: 0.3rem;
     border-top: 1px solid var(--border-light);
 }
-
-/* Main action button (Download / Open) */
 .card-actions .main-btn {
     flex: 1;
     padding: 0.3rem 0.4rem;
@@ -377,20 +340,12 @@ body.dark-theme {
     align-items: center;
     justify-content: center;
     background: var(--accent);
-    color: white;
+    color: #fff;
 }
-.card-actions .main-btn:hover {
-    filter: brightness(1.1);
-}
-.card-actions .main-btn.btn-open {
-    background: var(--success);
-}
-.card-actions .main-btn.btn-download {
-    background: var(--accent);
-}
-.card-actions .main-btn.btn-cancel {
-    background: var(--danger);
-}
+.card-actions .main-btn:hover { filter: brightness(1.1); }
+.card-actions .main-btn.btn-open     { background: var(--success); }
+.card-actions .main-btn.btn-download { background: var(--accent); }
+.card-actions .main-btn.btn-cancel   { background: var(--danger); }
 
 /* 3-dot menu */
 .menu-wrapper {
@@ -409,9 +364,7 @@ body.dark-theme {
     display: flex;
     align-items: center;
 }
-.menu-btn:hover {
-    color: var(--text-primary);
-}
+.menu-btn:hover { color: var(--text-primary); }
 
 .menu-dropdown {
     position: absolute;
@@ -426,9 +379,7 @@ body.dark-theme {
     overflow: hidden;
     z-index: 50;
 }
-.menu-dropdown.open {
-    display: block;
-}
+.menu-dropdown.open { display: block; }
 .menu-dropdown button {
     display: block;
     width: 100%;
@@ -442,12 +393,8 @@ body.dark-theme {
     transition: background 0.15s;
     white-space: nowrap;
 }
-.menu-dropdown button:hover {
-    background: var(--bg-secondary);
-}
-.menu-dropdown .delete-btn {
-    color: var(--danger);
-}
+.menu-dropdown button:hover { background: var(--bg-secondary); }
+.menu-dropdown .delete-btn { color: var(--danger); }
 .menu-dropdown .favorite-btn.active {
     font-weight: 600;
     color: var(--warning);
@@ -462,8 +409,8 @@ body.dark-theme {
 .download-progress .spinner-small {
     width: 14px;
     height: 14px;
-    border: 2px solid rgba(255,255,255,0.3);
-    border-top-color: white;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #fff;
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
 }
@@ -472,13 +419,7 @@ body.dark-theme {
     font-size: 0.75rem;
 }
 
-@keyframes spin {
-    to { transform: rotate(360deg); }
-}
-
-/* ============================================================
-   SHIMMER (SKELETON) CARDS
-   ============================================================ */
+/* ---------- Shimmer skeleton (JS-rendered) ---------- */
 .shimmer-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -489,7 +430,6 @@ body.dark-theme {
 }
 .shimmer-thumbnail {
     aspect-ratio: 16 / 10;
-    background: var(--bg-secondary);
     background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--border) 50%, var(--bg-secondary) 75%);
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite;
@@ -502,14 +442,13 @@ body.dark-theme {
 }
 .shimmer-line {
     height: 10px;
-    background: var(--bg-secondary);
     background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--border) 50%, var(--bg-secondary) 75%);
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite;
     border-radius: 4px;
 }
 .shimmer-title { height: 14px; width: 80%; }
-.shimmer-meta { height: 10px; width: 60%; }
+.shimmer-meta  { height: 10px; width: 60%; }
 .shimmer-badge { height: 16px; width: 40%; border-radius: 9999px; }
 .shimmer-stats { height: 10px; width: 50%; }
 .shimmer-actions {
@@ -520,7 +459,6 @@ body.dark-theme {
 .shimmer-btn {
     height: 32px;
     flex: 1;
-    background: var(--bg-secondary);
     background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--border) 50%, var(--bg-secondary) 75%);
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite;
@@ -530,27 +468,17 @@ body.dark-theme {
     width: 28px;
     height: 28px;
     flex-shrink: 0;
-    background: var(--bg-secondary);
     background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--border) 50%, var(--bg-secondary) 75%);
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite;
     border-radius: 50%;
 }
 
-@keyframes shimmer {
-    0% { background-position: -200px 0; }
-    100% { background-position: calc(200px + 100%) 0; }
-}
-
-/* ============================================================
-   NO DATA / LOAD MORE
-   ============================================================ */
+/* ---------- No data / load more ---------- */
+/* .no-data base is in common.css; extend to span the grid row */
 .no-data {
-    text-align: center;
-    padding: 2rem;
-    color: var(--text-muted);
-    font-style: italic;
     grid-column: 1 / -1;
+    padding: 2rem;
 }
 
 #load-more-container {
@@ -569,7 +497,7 @@ body.dark-theme {
 }
 #load-more-btn:hover {
     background: var(--accent);
-    color: white;
+    color: #fff;
 }
 .loading-spinner-small {
     display: inline-block;
@@ -577,15 +505,11 @@ body.dark-theme {
     color: var(--text-muted);
 }
 
-/* ============================================================
-   RESPONSIVE BREAKPOINTS
-   ============================================================ */
+/* ---------- Responsive breakpoints ---------- */
 
 /* Phones: 2 columns (default) */
 @media (max-width: 639px) {
-    :root {
-        --header-height: 130px;
-    }
+    :root { --header-height: 130px; }
     .resource-grid {
         grid-template-columns: repeat(2, 1fr);
         gap: 0.6rem;
@@ -594,9 +518,7 @@ body.dark-theme {
 
 /* Tablets & small laptops: 3 columns */
 @media (min-width: 640px) and (max-width: 1023px) {
-    :root {
-        --header-height: 130px;
-    }
+    :root { --header-height: 130px; }
     .resource-grid {
         grid-template-columns: repeat(3, 1fr);
         gap: 0.8rem;
@@ -605,9 +527,7 @@ body.dark-theme {
 
 /* Desktops: 4 columns */
 @media (min-width: 1024px) {
-    :root {
-        --header-height: 135px;
-    }
+    :root { --header-height: 135px; }
     .resource-grid {
         grid-template-columns: repeat(4, 1fr);
         gap: 1rem;
@@ -620,53 +540,4 @@ body.dark-theme {
         grid-template-columns: repeat(5, 1fr);
         gap: 1.2rem;
     }
-}
-
-/* ============================================================
-   VIEWER MODAL (popup)
-   ============================================================ */
-.viewer-modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0,0,0,0.92);
-    display: flex;
-    flex-direction: column;
-    z-index: 2000;
-    backdrop-filter: blur(4px);
-}
-.viewer-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.6rem 1rem;
-    background: var(--bg-card);
-    border-bottom: 1px solid var(--border);
-    color: var(--text-primary);
-}
-.viewer-header button {
-    background: none;
-    border: none;
-    font-size: 1.8rem;
-    cursor: pointer;
-    color: var(--text-primary);
-    line-height: 1;
-    padding: 0 0.5rem;
-}
-.viewer-body {
-    flex: 1;
-    overflow: auto;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    padding: 1rem;
-}
-
-/* ============================================================
-   UTILITY HELPERS
-   ============================================================ */
-.hidden {
-    display: none !important;
 }

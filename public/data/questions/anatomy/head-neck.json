@@ -1679,7 +1679,7 @@
     "options": [
       {
         "text": "Auriculotemporal nerve (V3)",
-        "isCorrect": true,
+        "isCorrect": false,
         "explanation": "Multiple nerves supply the tympanic membrane, so all of the above is correct."
       },
       {
@@ -2510,7 +2510,7 @@
   {
     "questionId": "head-neck_067",
     "difficulty": 2,
-    "question": "The cricothyroid muscle is innervated by which nerve?",
+    "question": "The cricothyroid muscle is innervated by which nerve branch?",
     "image": null,
     "options": [
       {
@@ -2781,7 +2781,7 @@
     "options": [
       {
         "text": "Auriculotemporal (V3)",
-        "isCorrect": true,
+        "isCorrect": false,
         "explanation": "All of the listed nerves contribute to tympanic membrane sensation, making 'All of the above' correct."
       },
       {

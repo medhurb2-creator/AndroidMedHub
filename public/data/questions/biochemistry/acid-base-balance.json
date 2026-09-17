@@ -442,10 +442,10 @@
         {
           "text": "Na+ - Cl- - HCO3-",
           "isCorrect": false,
-          "explanation": "Same as option A."
+          "explanation": "This is the formula without K⁺; with K⁺ it's (Na⁺+K⁺) – (Cl⁻+HCO₃⁻). Both are used."
         },
         {
-          "text": "Both A and B (with or without K+)",
+          "text": "Both Na+ - (Cl- + HCO3-) and Na+ + K+ - (Cl- + HCO3-) (with or without K+)",
           "isCorrect": true,
           "explanation": "Anion gap = Na⁺ – (Cl⁻ + HCO₃⁻) or (Na⁺+K⁺) – (Cl⁻+HCO₃⁻). The normal range differs slightly."
         }
@@ -1207,1645 +1207,1648 @@
         {
           "text": "None",
           "isCorrect": false,
-          "explanation": {
-            "overview": "Type 1 (distal) RTA is characterized by an inability to acidify the urine (urine pH >5.5) despite systemic acidosis. It causes normal anion gap metabolic acidosis, hypokalemia, and often nephrolithiasis.",
-            "highYield": "Distal RTA: urine pH >5.5 in acidemia, hypokalemia, calcium phosphate stones.",
-            "clinicalCorrelation": "Causes include Sjögren syndrome, amphotericin B, and genetic disorders."
-          }
-        },
-        {
-          "questionId": "acid_base_033",
-          "difficulty": 2,
-          "question": "In proximal (type 2) renal tubular acidosis, the urine pH during severe acidosis is:",
-          "image": null,
-          "options": [
-            {
-              "text": "Usually <5.5",
-              "isCorrect": true,
-              "explanation": "In proximal RTA, distal acidification is intact; once plasma HCO₃⁻ falls below the threshold, urine can acidify normally."
-            },
-            {
-              "text": "Usually >5.5",
-              "isCorrect": false,
-              "explanation": "That is distal RTA."
-            },
-            {
-              "text": "Variable",
-              "isCorrect": false,
-              "explanation": "While variable early, during severe acidosis it acidifies."
-            },
-            {
-              "text": "Always alkaline",
-              "isCorrect": false,
-              "explanation": "Not always alkaline; it acidifies when serum HCO₃⁻ is low."
-            },
-            {
-              "text": "Not measurable",
-              "isCorrect": false,
-              "explanation": "It is measurable."
-            }
-          ],
-          "explanation": {
-            "overview": "Proximal RTA involves a reduced HCO₃⁻ reabsorption threshold. When plasma HCO₃⁻ falls below that threshold, the distal nephron can reabsorb HCO₃⁻ and acidify urine (pH <5.5).",
-            "highYield": "Proximal RTA: urine pH <5.5 when acidemic.",
-            "clinicalCorrelation": "Often part of Fanconi syndrome (phosphaturia, glucosuria, aminoaciduria)."
-          }
-        },
-        {
-          "questionId": "acid_base_034",
-          "difficulty": 2,
-          "question": "Which of the following is a cause of type 4 renal tubular acidosis (hyporeninemic hypoaldosteronism)?",
-          "image": null,
-          "options": [
-            {
-              "text": "Diabetes mellitus",
-              "isCorrect": false,
-              "explanation": "Diabetic nephropathy is a common cause."
-            },
-            {
-              "text": "Obstructive uropathy",
-              "isCorrect": false,
-              "explanation": "Can cause type 4 RTA."
-            },
-            {
-              "text": "Addison's disease",
-              "isCorrect": false,
-              "explanation": "Addison's is primary adrenal insufficiency with hypoaldosteronism, but more often causes type 4 RTA-like picture with hyperkalemia and acidosis."
-            },
-            {
-              "text": "All of the above",
-              "isCorrect": true,
-              "explanation": "All can cause type 4 RTA due to aldosterone deficiency or resistance."
-            },
-            {
-              "text": "None",
-              "isCorrect": false,
-              "explanation": "All are causes."
-            }
-          ],
-          "explanation": {
-            "overview": "Type 4 RTA results from aldosterone deficiency or resistance, leading to hyperkalemia and normal anion gap metabolic acidosis. Common causes include diabetic nephropathy, interstitial renal diseases, and adrenal insufficiency.",
-            "highYield": "Type 4 RTA = hyperkalemia + normal AG acidosis.",
-            "clinicalCorrelation": "Treat with fludrocortisone if hypoaldosteronism, or dietary K⁺ restriction and diuretics."
-          }
-        },
-        {
-          "questionId": "acid_base_035",
-          "difficulty": 2,
-          "question": "A patient with type 4 RTA typically has:",
-          "image": null,
-          "options": [
-            {
-              "text": "Hyperkalemia, normal anion gap acidosis",
-              "isCorrect": true,
-              "explanation": "Aldosterone deficiency or resistance impairs K⁺ and H⁺ excretion, causing hyperkalemia and hyperchloremic metabolic acidosis."
-            },
-            {
-              "text": "Hypokalemia, normal anion gap acidosis",
-              "isCorrect": false,
-              "explanation": "Hypokalemia is seen in types 1 and 2 RTA, not type 4."
-            },
-            {
-              "text": "Hyperkalemia, high anion gap acidosis",
-              "isCorrect": false,
-              "explanation": "The acidosis is normal anion gap (hyperchloremic)."
-            },
-            {
-              "text": "Hypokalemia, high anion gap acidosis",
-              "isCorrect": false,
-              "explanation": "Neither hypokalemia nor high AG is typical."
-            },
-            {
-              "text": "Normal electrolytes",
-              "isCorrect": false,
-              "explanation": "Type 4 RTA has distinct electrolyte abnormalities."
-            }
-          ],
-          "explanation": {
-            "overview": "Type 4 RTA is characterized by hyperkalemia and hyperchloremic metabolic acidosis due to impaired aldosterone action.",
-            "highYield": "Type 4 RTA = hyperkalemia + normal AG metabolic acidosis.",
-            "clinicalCorrelation": "Often the earliest sign of diabetic nephropathy affecting tubulointerstitium."
-          }
-        },
-        {
-          "questionId": "acid_base_036",
-          "difficulty": 2,
-          "question": "In metabolic acidosis, the appropriate renal response is:",
-          "image": null,
-          "options": [
-            {
-              "text": "Increased H+ excretion and increased HCO3- reabsorption",
-              "isCorrect": true,
-              "explanation": "The kidneys respond to acidosis by increasing H⁺ secretion (as titratable acid and ammonium) and reclaiming filtered HCO₃⁻."
-            },
-            {
-              "text": "Decreased H+ excretion and decreased HCO3- reabsorption",
-              "isCorrect": false,
-              "explanation": "That would worsen acidosis."
-            },
-            {
-              "text": "No change",
-              "isCorrect": false,
-              "explanation": "Renal compensation is essential."
-            },
-            {
-              "text": "Increased HCO3- excretion",
-              "isCorrect": false,
-              "explanation": "The kidney conserves HCO₃⁻, not excretes it."
-            },
-            {
-              "text": "Decreased ammonia production",
-              "isCorrect": false,
-              "explanation": "Ammonia production increases to buffer H⁺."
-            }
-          ],
-          "explanation": {
-            "overview": "In acidosis, the kidney increases H⁺ secretion via the Na⁺/H⁺ exchanger, increases ammonium excretion, and reabsorbs virtually all filtered HCO₃⁻.",
-            "highYield": "Acidosis → ↑H⁺ secretion, ↑NH₄⁺ excretion, ↑HCO₃⁻ reabsorption.",
-            "clinicalCorrelation": "The urine anion gap can assess whether the renal response is appropriate (negative = high NH₄⁺)."
-          }
-        },
-        {
-          "questionId": "acid_base_037",
-          "difficulty": 2,
-          "question": "Which of the following is a cause of respiratory acidosis with normal A-a gradient?",
-          "image": null,
-          "options": [
-            {
-              "text": "Opioid overdose",
-              "isCorrect": true,
-              "explanation": "Opioid overdose causes central hypoventilation with normal lungs, so the A‑a gradient is normal."
-            },
-            {
-              "text": "Severe COPD",
-              "isCorrect": false,
-              "explanation": "COPD has ventilation‑perfusion mismatch, increasing A‑a gradient."
-            },
-            {
-              "text": "Pulmonary edema",
-              "isCorrect": false,
-              "explanation": "Pulmonary edema impairs gas exchange, increasing A‑a gradient."
-            },
-            {
-              "text": "Pneumonia",
-              "isCorrect": false,
-              "explanation": "Pneumonia causes shunt, increasing A‑a gradient."
-            },
-            {
-              "text": "Pulmonary embolism",
-              "isCorrect": false,
-              "explanation": "PE increases dead space and A‑a gradient."
-            }
-          ],
-          "explanation": {
-            "overview": "Central nervous system depressants (opioids) cause pure hypoventilation without lung parenchymal disease, so the alveolar‑arterial O₂ gradient remains normal.",
-            "highYield": "Normal A‑a gradient + hypercapnia = central hypoventilation.",
-            "clinicalCorrelation": "Use the A‑a gradient to distinguish central from pulmonary causes of hypercapnia."
-          }
-        },
-        {
-          "questionId": "acid_base_038",
-          "difficulty": 2,
-          "question": "In salicylate poisoning, early findings include:",
-          "image": null,
-          "options": [
-            {
-              "text": "Respiratory alkalosis",
-              "isCorrect": false,
-              "explanation": "Early salicylate toxicity directly stimulates the respiratory center, causing respiratory alkalosis."
-            },
-            {
-              "text": "High anion gap metabolic acidosis",
-              "isCorrect": false,
-              "explanation": "Later, metabolic acidosis develops."
-            },
-            {
-              "text": "Both (mixed disorder)",
-              "isCorrect": true,
-              "explanation": "Salicylate poisoning causes a mixed acid‑base disorder: early respiratory alkalosis (hyperventilation) and later high AG metabolic acidosis."
-            },
-            {
-              "text": "Respiratory acidosis",
-              "isCorrect": false,
-              "explanation": "Salicylates cause hyperventilation, not hypoventilation."
-            },
-            {
-              "text": "Normal blood gases",
-              "isCorrect": false,
-              "explanation": "Blood gases will be abnormal."
-            }
-          ],
-          "explanation": {
-            "overview": "Salicylates stimulate the medullary respiratory center, causing respiratory alkalosis, and also uncouple oxidative phosphorylation, leading to lactic and ketoacid accumulation.",
-            "highYield": "Salicylate poisoning = respiratory alkalosis + high AG metabolic acidosis.",
-            "clinicalCorrelation": "The presence of both disorders in an adult is highly suggestive of salicylate poisoning."
-          }
-        },
-        {
-          "questionId": "acid_base_039",
-          "difficulty": 2,
-          "question": "The normal ammonium excretion by the kidney is approximately:",
-          "image": null,
-          "options": [
-            {
-              "text": "10-20 mEq/day",
-              "isCorrect": false,
-              "explanation": "That is below normal."
-            },
-            {
-              "text": "30-40 mEq/day",
-              "isCorrect": true,
-              "explanation": "Normal renal ammonium excretion is about 30–40 mEq/day, but can increase several‑fold in acidosis."
-            },
-            {
-              "text": "50-60 mEq/day",
-              "isCorrect": false,
-              "explanation": "Slightly higher than typical baseline."
-            },
-            {
-              "text": "80-100 mEq/day",
-              "isCorrect": false,
-              "explanation": "Too high for baseline."
-            },
-            {
-              "text": ">200 mEq/day",
-              "isCorrect": false,
-              "explanation": "This can be achieved in chronic acidosis, but not the baseline."
-            }
-          ],
-          "explanation": {
-            "overview": "Baseline ammonium excretion is ~30–40 mEq/day. In response to acidosis, it can rise to over 200–300 mEq/day, becoming the primary mechanism for net acid excretion.",
-            "highYield": "Normal NH₄⁺ excretion: 30–40 mEq/day; increases in acidosis.",
-            "clinicalCorrelation": "Impaired ammonium excretion is a hallmark of distal RTA."
-          }
-        },
-        {
-          "questionId": "acid_base_040",
-          "difficulty": 2,
-          "question": "In a patient with metabolic acidosis, a negative urine anion gap (urine Na + K - Cl) indicates:",
-          "image": null,
-          "options": [
-            {
-              "text": "Increased urinary ammonium excretion (appropriate renal response)",
-              "isCorrect": true,
-              "explanation": "Urine anion gap = Na + K – Cl. A negative value indicates high unmeasured cations, mainly ammonium (NH₄⁺), which is the appropriate renal response to acidosis."
-            },
-            {
-              "text": "Decreased ammonium excretion",
-              "isCorrect": false,
-              "explanation": "A positive urine anion gap suggests low ammonium excretion."
-            },
-            {
-              "text": "Renal tubular acidosis",
-              "isCorrect": false,
-              "explanation": "In RTA, ammonium excretion is impaired, leading to a positive urine AG."
-            },
-            {
-              "text": "Diarrhea",
-              "isCorrect": false,
-              "explanation": "Diarrhea causes extrarenal bicarbonate loss, so renal response (negative UAG) is appropriate."
-            },
-            {
-              "text": "Hyperaldosteronism",
-              "isCorrect": false,
-              "explanation": "Hyperaldosteronism typically causes metabolic alkalosis, not acidosis."
-            }
-          ],
-          "explanation": {
-            "overview": "In non‑renal metabolic acidosis, the kidney increases ammonium excretion, making the urine anion gap negative. A positive gap suggests impaired ammonium excretion (RTA).",
-            "highYield": "Negative urine anion gap = appropriate renal NH₄⁺ excretion.",
-            "clinicalCorrelation": "Use the urine anion gap to differentiate GI bicarbonate loss (negative UAG) from distal RTA (positive UAG)."
-          }
-        },
-        {
-          "questionId": "acid_base_041",
-          "difficulty": 2,
-          "question": "In distal RTA (type 1), the urine anion gap is typically:",
-          "image": null,
-          "options": [
-            {
-              "text": "Positive (low ammonium)",
-              "isCorrect": true,
-              "explanation": "Distal RTA impairs ammonium excretion, so NH₄⁺ in urine is low, making the urine anion gap positive."
-            },
-            {
-              "text": "Negative (high ammonium)",
-              "isCorrect": false,
-              "explanation": "Negative UAG indicates high NH₄⁺, as in diarrhea."
-            },
-            {
-              "text": "Zero",
-              "isCorrect": false,
-              "explanation": "Usually positive or negative, not zero."
-            },
-            {
-              "text": "Variable",
-              "isCorrect": false,
-              "explanation": "It is characteristically positive."
-            },
-            {
-              "text": "Cannot be measured",
-              "isCorrect": false,
-              "explanation": "It can be measured from urine electrolytes."
-            }
-          ],
-          "explanation": {
-            "overview": "Distal RTA: inability to excrete H⁺ as NH₄⁺, so urine ammonium is low → urine anion gap (Na+K–Cl) is positive.",
-            "highYield": "Distal RTA → positive urine anion gap.",
-            "clinicalCorrelation": "Confirms the diagnosis of distal RTA in a patient with normal AG metabolic acidosis."
-          }
-        },
-        {
-          "questionId": "acid_base_042",
-          "difficulty": 2,
-          "question": "Which of the following drugs can cause metabolic alkalosis?",
-          "image": null,
-          "options": [
-            {
-              "text": "Thiazide diuretics",
-              "isCorrect": false,
-              "explanation": "Yes."
-            },
-            {
-              "text": "Loop diuretics",
-              "isCorrect": false,
-              "explanation": "Yes."
-            },
-            {
-              "text": "Mineralocorticoids",
-              "isCorrect": false,
-              "explanation": "Yes."
-            },
-            {
-              "text": "All of the above",
-              "isCorrect": true,
-              "explanation": "Thiazides, loop diuretics, and mineralocorticoids all promote renal H⁺ loss, leading to metabolic alkalosis."
-            },
-            {
-              "text": "None",
-              "isCorrect": false,
-              "explanation": "All can cause alkalosis."
-            }
-          ],
-          "explanation": {
-            "overview": "Loop and thiazide diuretics increase distal Na⁺ delivery, promoting H⁺ and K⁺ secretion. Mineralocorticoids directly stimulate H⁺-ATPase activity, causing alkalosis.",
-            "highYield": "Diuretics and mineralocorticoids → metabolic alkalosis.",
-            "clinicalCorrelation": "Check urine chloride: high (>20) in diuretic use; treat by volume repletion and potassium replacement."
-          }
-        },
-        {
-          "questionId": "acid_base_043",
-          "difficulty": 2,
-          "question": "A patient with pyloric stenosis presents with metabolic alkalosis. The urine chloride is likely:",
-          "image": null,
-          "options": [
-            {
-              "text": "Low (<20 mEq/L)",
-              "isCorrect": true,
-              "explanation": "Pyloric stenosis causes gastric acid loss and volume depletion; urine chloride is low (chloride‑responsive alkalosis)."
-            },
-            {
-              "text": "High (>20 mEq/L)",
-              "isCorrect": false,
-              "explanation": "High urine Cl is seen in mineralocorticoid excess or diuretic use."
-            },
-            {
-              "text": "Normal",
-              "isCorrect": false,
-              "explanation": "Typically low."
-            },
-            {
-              "text": "Variable",
-              "isCorrect": false,
-              "explanation": "Characteristically low."
-            },
-            {
-              "text": "Zero",
-              "isCorrect": false,
-              "explanation": "Not zero, but low."
-            }
-          ],
-          "explanation": {
-            "overview": "Chloride‑responsive metabolic alkalosis (urine Cl <20) is due to volume and chloride depletion, as in vomiting or nasogastric suction.",
-            "highYield": "Pyloric stenosis → urine Cl <20, metabolic alkalosis.",
-            "clinicalCorrelation": "Treat with NaCl and KCl to restore volume and chloride."
-          }
-        },
-        {
-          "questionId": "acid_base_044",
-          "difficulty": 2,
-          "question": "In a patient with mineralocorticoid excess (e.g., Conn's syndrome), the urine chloride is typically:",
-          "image": null,
-          "options": [
-            {
-              "text": "High (>20 mEq/L)",
-              "isCorrect": true,
-              "explanation": "Mineralocorticoid excess causes hypertension, hypokalemia, and metabolic alkalosis with high urine chloride (chloride‑resistant)."
-            },
-            {
-              "text": "Low (<20 mEq/L)",
-              "isCorrect": false,
-              "explanation": "Low urine Cl is chloride‑responsive."
-            },
-            {
-              "text": "Normal",
-              "isCorrect": false,
-              "explanation": "Typically high."
-            },
-            {
-              "text": "Zero",
-              "isCorrect": false,
-              "explanation": "Not zero."
-            },
-            {
-              "text": "Not measurable",
-              "isCorrect": false,
-              "explanation": "Measurable."
-            }
-          ],
-          "explanation": {
-            "overview": "Chloride‑resistant metabolic alkalosis: urine Cl >20, due to renal causes such as mineralocorticoid excess, licorice ingestion, or severe hypokalemia.",
-            "highYield": "Mineralocorticoid excess → urine Cl >20, metabolic alkalosis, hypertension.",
-            "clinicalCorrelation": "Treatment includes spironolactone or removal of the mineralocorticoid source."
-          }
-        },
-        {
-          "questionId": "acid_base_045",
-          "difficulty": 1,
-          "question": "The normal range for PCO2 is:",
-          "image": null,
-          "options": [
-            {
-              "text": "25-35 mmHg",
-              "isCorrect": false,
-              "explanation": "This range is low, indicating hyperventilation."
-            },
-            {
-              "text": "35-45 mmHg",
-              "isCorrect": true,
-              "explanation": "Normal arterial PCO₂ is 35–45 mmHg."
-            },
-            {
-              "text": "45-55 mmHg",
-              "isCorrect": false,
-              "explanation": "Mild hypercapnia."
-            },
-            {
-              "text": "20-30 mmHg",
-              "isCorrect": false,
-              "explanation": "Too low."
-            },
-            {
-              "text": "50-60 mmHg",
-              "isCorrect": false,
-              "explanation": "Significant hypercapnia."
-            }
-          ],
-          "explanation": {
-            "overview": "Arterial PCO₂ reflects the balance between CO₂ production and alveolar ventilation. Normal range: 35–45 mmHg.",
-            "highYield": "Normal PCO₂ = 35–45 mmHg.",
-            "clinicalCorrelation": "Values >45 indicate hypoventilation; <35 indicate hyperventilation."
-          }
-        },
-        {
-          "questionId": "acid_base_046",
-          "difficulty": 2,
-          "question": "A patient has pH 7.30, PCO2 30 mmHg, HCO3- 15 mEq/L. What is the primary disorder?",
-          "image": null,
-          "options": [
-            {
-              "text": "Metabolic acidosis with appropriate respiratory compensation",
-              "isCorrect": true,
-              "explanation": "pH low, HCO₃ low, PCO₂ low. Expected PCO₂ = 1.5×15+8 ±2 = 30.5. Measured 30 is appropriate compensation."
-            },
-            {
-              "text": "Metabolic acidosis with inadequate compensation",
-              "isCorrect": false,
-              "explanation": "The PCO₂ is exactly at the expected value, so compensation is adequate."
-            },
-            {
-              "text": "Respiratory alkalosis",
-              "isCorrect": false,
-              "explanation": "Respiratory alkalosis would have high pH."
-            },
-            {
-              "text": "Mixed metabolic acidosis and respiratory alkalosis",
-              "isCorrect": false,
-              "explanation": "A mixed disorder would show PCO₂ lower than expected for the HCO₃."
-            },
-            {
-              "text": "Normal",
-              "isCorrect": false,
-              "explanation": "pH is low."
-            }
-          ],
-          "explanation": {
-            "overview": "Low pH, low HCO₃⁻ (primary metabolic acidosis), and PCO₂ appropriately reduced per Winter's formula = simple metabolic acidosis with appropriate respiratory compensation.",
-            "highYield": "Winter's formula: expected PCO₂ = 1.5 × HCO₃⁻ + 8 ±2.",
-            "clinicalCorrelation": "If PCO₂ is higher than expected, a concurrent respiratory acidosis exists."
-          }
-        },
-        {
-          "questionId": "acid_base_047",
-          "difficulty": 2,
-          "question": "Which of the following can cause a mixed high AG metabolic acidosis and respiratory alkalosis?",
-          "image": null,
-          "options": [
-            {
-              "text": "Salicylate poisoning",
-              "isCorrect": false,
-              "explanation": "Yes."
-            },
-            {
-              "text": "Sepsis with lactic acidosis",
-              "isCorrect": false,
-              "explanation": "Sepsis causes hyperventilation and lactic acidosis."
-            },
-            {
-              "text": "Hepatic failure with lactic acidosis",
-              "isCorrect": false,
-              "explanation": "Liver failure can cause hyperventilation and lactic acidosis."
-            },
-            {
-              "text": "All of the above",
-              "isCorrect": true,
-              "explanation": "All three conditions can cause a mixed picture of high AG metabolic acidosis and respiratory alkalosis."
-            },
-            {
-              "text": "None",
-              "isCorrect": false,
-              "explanation": "All are correct."
-            }
-          ],
-          "explanation": {
-            "overview": "Salicylate poisoning, sepsis, and hepatic failure can all present with a mixed disorder: respiratory alkalosis due to hyperventilation and high anion gap metabolic acidosis.",
-            "highYield": "Mixed respiratory alkalosis + high AG acidosis = salicylates, sepsis, liver failure.",
-            "clinicalCorrelation": "Recognizing mixed disorders prevents misattribution of compensation as a primary disorder."
-          }
-        },
-        {
-          "questionId": "acid_base_048",
-          "difficulty": 2,
-          "question": "In a patient with metabolic alkalosis and hypokalemia, the hypokalemia is due to:",
-          "image": null,
-          "options": [
-            {
-              "text": "Shift of K+ into cells (H+ exit) and renal K+ loss",
-              "isCorrect": true,
-              "explanation": "In alkalosis, H⁺ moves out of cells to buffer the alkaline pH, and K⁺ shifts into cells. Additionally, bicarbonaturia and increased distal Na⁺ delivery promote renal K⁺ loss."
-            },
-            {
-              "text": "Decreased intake",
-              "isCorrect": false,
-              "explanation": "Decreased intake alone is rarely the cause."
-            },
-            {
-              "text": "GI loss",
-              "isCorrect": false,
-              "explanation": "GI losses can cause hypokalemia, but in metabolic alkalosis the primary mechanism is transcellular shift and renal loss."
-            },
-            {
-              "text": "All of the above",
-              "isCorrect": false,
-              "explanation": "Not all apply as primary mechanisms."
-            },
-            {
-              "text": "None",
-              "isCorrect": false,
-              "explanation": "Shift and renal loss are key."
-            }
-          ],
-          "explanation": {
-            "overview": "Metabolic alkalosis causes hypokalemia via intracellular K⁺ shift in exchange for H⁺ and increased renal K⁺ wasting, especially if associated with hyperaldosteronism or diuretics.",
-            "highYield": "Alkalosis → K⁺ moves into cells; renal K⁺ loss → hypokalemia.",
-            "clinicalCorrelation": "Correcting the alkalosis and repleting potassium are essential; hypokalemia perpetuates alkalosis."
-          }
-        },
-        {
-          "questionId": "acid_base_049",
-          "difficulty": 2,
-          "question": "The most potent stimulus for aldosterone secretion is:",
-          "image": null,
-          "options": [
-            {
-              "text": "Hyperkalemia",
-              "isCorrect": true,
-              "explanation": "While angiotensin II is a major regulator, a rise in plasma potassium is the most potent direct stimulus for aldosterone secretion from the zona glomerulosa."
-            },
-            {
-              "text": "Angiotensin II",
-              "isCorrect": false,
-              "explanation": "Angiotensin II is a powerful stimulus, but potassium is considered the most potent."
-            },
-            {
-              "text": "Hyponatremia",
-              "isCorrect": false,
-              "explanation": "Sodium concentration has a less potent effect."
-            },
-            {
-              "text": "ACTH",
-              "isCorrect": false,
-              "explanation": "ACTH can stimulate aldosterone acutely, but potassium is the primary chronic regulator."
-            },
-            {
-              "text": "Hypotension",
-              "isCorrect": false,
-              "explanation": "Hypotension activates the renin‑angiotensin system."
-            }
-          ],
-          "explanation": {
-            "overview": "Hyperkalemia directly stimulates aldosterone secretion by depolarizing the adrenal cell membrane, leading to increased calcium influx. It is the most potent regulator.",
-            "highYield": "Most potent aldosterone stimulus: hyperkalemia.",
-            "clinicalCorrelation": "Aldosterone promotes K⁺ secretion and Na⁺ reabsorption; in type 4 RTA, aldosterone deficiency leads to hyperkalemia and acidosis."
-          }
-        },
-        {
-          "questionId": "acid_base_050",
-          "difficulty": 2,
-          "question": "In a patient with ethylene glycol poisoning, characteristic findings include:",
-          "image": null,
-          "options": [
-            {
-              "text": "High anion gap acidosis, elevated osmolal gap, calcium oxalate crystals in urine",
-              "isCorrect": true,
-              "explanation": "Ethylene glycol is metabolized to glycolic and oxalic acids, causing high AG acidosis, an osmolal gap early, and calcium oxalate crystalluria."
-            },
-            {
-              "text": "Normal anion gap acidosis, hypocalcemia",
-              "isCorrect": false,
-              "explanation": "Ethylene glycol causes high AG acidosis, not normal AG."
-            },
-            {
-              "text": "Respiratory alkalosis, elevated lactate",
-              "isCorrect": false,
-              "explanation": "Not the primary picture."
-            },
-            {
-              "text": "Metabolic alkalosis, hyperkalemia",
-              "isCorrect": false,
-              "explanation": "It's acidosis, not alkalosis."
-            },
-            {
-              "text": "Normal labs",
-              "isCorrect": false,
-              "explanation": "Laboratory abnormalities are prominent."
-            }
-          ],
-          "explanation": {
-            "overview": "Ethylene glycol poisoning: high anion gap acidosis, elevated osmolal gap, and calcium oxalate crystals (envelope‑shaped) in urine. Hypocalcemia may occur due to calcium oxalate formation.",
-            "highYield": "Ethylene glycol = high AG + osmolal gap + oxalate crystals.",
-            "clinicalCorrelation": "Treatment with fomepizole or ethanol, and hemodialysis for severe cases."
-          }
-        },
-        {
-          "questionId": "acid_base_051",
-          "difficulty": 2,
-          "question": "A patient with diabetic ketoacidosis has pH 7.1, HCO3- 5 mEq/L, PCO2 15 mmHg. What is the appropriate interpretation?",
-          "image": null,
-          "options": [
-            {
-              "text": "Metabolic acidosis with appropriate respiratory compensation",
-              "isCorrect": true,
-              "explanation": "Expected PCO2 = 1.5 × 5 + 8 ±2 = 15.5; the measured PCO2 of 15 is appropriate."
-            },
-            {
-              "text": "Metabolic acidosis with concurrent respiratory alkalosis",
-              "isCorrect": false,
-              "explanation": "PCO2 is exactly at expected, not lower."
-            },
-            {
-              "text": "Metabolic acidosis with inadequate compensation",
-              "isCorrect": false,
-              "explanation": "Compensation is adequate."
-            },
-            {
-              "text": "Mixed metabolic and respiratory acidosis",
-              "isCorrect": false,
-              "explanation": "PCO2 is low, not high."
-            },
-            {
-              "text": "Respiratory alkalosis",
-              "isCorrect": false,
-              "explanation": "Primary problem is metabolic."
-            }
-          ],
-          "explanation": {
-            "overview": "With HCO3 5, Winter's formula predicts PCO2 ≈ 15.5. The patient's PCO2 15 indicates appropriate respiratory compensation for pure metabolic acidosis.",
-            "highYield": "Winter's formula confirms appropriate compensation.",
-            "clinicalCorrelation": "If PCO2 were lower (e.g., 10), it would suggest a concurrent respiratory alkalosis."
-          }
-        },
-        {
-          "questionId": "acid_base_052",
-          "difficulty": 2,
-          "question": "Which of the following is true regarding the compensatory response in metabolic alkalosis?",
-          "image": null,
-          "options": [
-            {
-              "text": "Hypoventilation increases PCO2 by 0.6 mmHg per 1 mEq/L rise in HCO3-",
-              "isCorrect": true,
-              "explanation": "Respiratory compensation: PCO2 rises ~0.6 mmHg for every 1 mEq/L increase in HCO3 above 24."
-            },
-            {
-              "text": "Hyperventilation decreases PCO2",
-              "isCorrect": false,
-              "explanation": "Compensation is hypoventilation, not hyperventilation."
-            },
-            {
-              "text": "The kidneys rapidly excrete bicarbonate",
-              "isCorrect": false,
-              "explanation": "The kidney retains bicarbonate in metabolic alkalosis."
-            },
-            {
-              "text": "There is no respiratory compensation",
-              "isCorrect": false,
-              "explanation": "There is respiratory compensation via hypoventilation."
-            },
-            {
-              "text": "Compensation fully corrects the pH",
-              "isCorrect": false,
-              "explanation": "Compensation brings pH toward normal but rarely fully corrects."
-            }
-          ],
-          "explanation": {
-            "overview": "In metabolic alkalosis, the expected respiratory compensation is a rise in PCO2 of about 0.6 mmHg per 1 mEq/L increase in HCO3⁻ above 24.",
-            "highYield": "ΔPCO2 = 0.6 × (HCO3 – 24) in metabolic alkalosis.",
-            "clinicalCorrelation": "If PCO2 is higher than expected, a concomitant respiratory acidosis is present."
-          }
-        },
-        {
-          "questionId": "acid_base_053",
-          "difficulty": 2,
-          "question": "Which of the following laboratory findings is typical of proximal (type 2) RTA?",
-          "image": null,
-          "options": [
-            {
-              "text": "Hypokalemia, normal AG acidosis, bicarbonaturia, urine pH <5.5 when acidemic",
-              "isCorrect": true,
-              "explanation": "Proximal RTA leads to bicarbonate wasting, hypokalemia, and normal AG acidosis. Distal acidification is intact, so urine can become acidic when serum HCO3 is low."
-            },
-            {
-              "text": "Hyperkalemia, normal AG acidosis, urine pH >5.5",
-              "isCorrect": false,
-              "explanation": "That describes type 4 RTA (hyperkalemia) or type 1 RTA (urine pH >5.5)."
-            },
-            {
-              "text": "Hypokalemia, high AG acidosis",
-              "isCorrect": false,
-              "explanation": "Proximal RTA is normal AG."
-            },
-            {
-              "text": "Hyperkalemia, high AG acidosis",
-              "isCorrect": false,
-              "explanation": "Not typical."
-            },
-            {
-              "text": "Normal K, normal AG, alkaline urine",
-              "isCorrect": false,
-              "explanation": "Proximal RTA has low K and acidosis."
-            }
-          ],
-          "explanation": {
-            "overview": "Proximal RTA: impaired proximal HCO3⁻ reabsorption → bicarbonaturia, hypokalemia, normal AG metabolic acidosis. Urine can acidify (pH <5.5) when serum HCO3⁻ is below threshold.",
-            "highYield": "Proximal RTA: hypokalemia, normal AG acidosis, acidic urine when acidemic.",
-            "clinicalCorrelation": "Often associated with Fanconi syndrome (phosphaturia, glucosuria, aminoaciduria)."
-          }
-        },
-        {
-          "questionId": "acid_base_054",
-          "difficulty": 2,
-          "question": "Which set of values is consistent with chronic respiratory acidosis with full renal compensation?",
-          "image": null,
-          "options": [
-            {
-              "text": "pH 7.36, PCO2 60, HCO3- 34",
-              "isCorrect": true,
-              "explanation": "Slightly low pH, high PCO2, elevated HCO3- (~34) indicates chronic respiratory acidosis with renal compensation. ΔHCO3 ≈ 0.4 × (60-40) = 8, giving HCO3 ~32; 34 is within range."
-            },
-            {
-              "text": "pH 7.48, PCO2 30, HCO3- 22",
-              "isCorrect": false,
-              "explanation": "This is respiratory alkalosis."
-            },
-            {
-              "text": "pH 7.25, PCO2 60, HCO3- 25",
-              "isCorrect": false,
-              "explanation": "Acute respiratory acidosis."
-            },
-            {
-              "text": "pH 7.30, PCO2 50, HCO3- 18",
-              "isCorrect": false,
-              "explanation": "Mixed disorder: low pH, high PCO2 but HCO3 low suggests combined metabolic and respiratory acidosis."
-            },
-            {
-              "text": "pH 7.42, PCO2 40, HCO3- 26",
-              "isCorrect": false,
-              "explanation": "Normal."
-            }
-          ],
-          "explanation": {
-            "overview": "Chronic respiratory acidosis: pH near normal (7.35-7.40), elevated PCO2, and appropriately increased HCO3- (ΔHCO3 ≈ 0.4 × ΔPCO2).",
-            "highYield": "Chronic respiratory acidosis: pH ~7.36, PCO2↑, HCO3↑ proportionally.",
-            "clinicalCorrelation": "Common in stable COPD patients."
-          }
-        },
-        {
-          "questionId": "acid_base_055",
-          "difficulty": 2,
-          "question": "A patient with vomiting develops metabolic alkalosis. Which electrolyte abnormality would you expect?",
-          "image": null,
-          "options": [
-            {
-              "text": "Hypokalemia, hypochloremia",
-              "isCorrect": true,
-              "explanation": "Vomiting causes loss of HCl (hypochloremia) and potassium (hypokalemia due to renal K+ loss and shift)."
-            },
-            {
-              "text": "Hyperkalemia, hyperchloremia",
-              "isCorrect": false,
-              "explanation": "Vomiting causes loss, not retention."
-            },
-            {
-              "text": "Hypokalemia, hyperchloremia",
-              "isCorrect": false,
-              "explanation": "Chloride is lost in gastric acid."
-            },
-            {
-              "text": "Hypernatremia, hypokalemia",
-              "isCorrect": false,
-              "explanation": "Sodium may be normal or slightly low."
-            },
-            {
-              "text": "Normal electrolytes",
-              "isCorrect": false,
-              "explanation": "Electrolyte disturbances are typical."
-            }
-          ],
-          "explanation": {
-            "overview": "Vomiting leads to metabolic alkalosis with hypokalemia and hypochloremia. Urine chloride is low (<20), indicating chloride-responsive alkalosis.",
-            "highYield": "Vomiting → metabolic alkalosis, ↓K, ↓Cl, urine Cl <20.",
-            "clinicalCorrelation": "Saline infusion and KCl replacement correct the alkalosis."
-          }
-        },
-        {
-          "questionId": "acid_base_056",
-          "difficulty": 2,
-          "question": "In interpreting a blood gas: pH 7.20, PCO2 80, HCO3- 30. What is the disorder?",
-          "image": null,
-          "options": [
-            {
-              "text": "Acute respiratory acidosis with metabolic compensation (actually acute on chronic?)",
-              "isCorrect": false,
-              "explanation": "pH 7.20 is severely acidotic; HCO3 is 30, which is elevated, indicating some renal compensation, but pH is very low. This suggests acute-on-chronic respiratory acidosis or mixed disorder."
-            },
-            {
-              "text": "Acute respiratory acidosis only",
-              "isCorrect": false,
-              "explanation": "Acute respiratory acidosis would have near-normal HCO3."
-            },
-            {
-              "text": "Chronic respiratory acidosis with acute deterioration",
-              "isCorrect": true,
-              "explanation": "A high PCO2 of 80 with HCO3 of 30 indicates pre-existing chronic respiratory acidosis (compensated) with an acute rise in PCO2 (pH 7.20). Expected chronic HCO3 for PCO2 80: 24 + 0.4×(40) = 40, but here HCO3 is 30, so there is also a metabolic acidosis or acute-on-chronic."
-            },
-            {
-              "text": "Metabolic acidosis with respiratory compensation",
-              "isCorrect": false,
-              "explanation": "PCO2 is high, not low."
-            },
-            {
-              "text": "Mixed metabolic and respiratory acidosis",
-              "isCorrect": false,
-              "explanation": "HCO3 is elevated, not low, so metabolic acidosis is not present."
-            }
-          ],
-          "explanation": {
-            "overview": "pH 7.20, PCO2 80 (very high), HCO3 30 (elevated). Expected HCO3 for chronic PCO2 80 is ~40, so HCO3 30 is lower than expected for chronic, indicating an acute-on-chronic respiratory acidosis or an additional metabolic acidosis.",
-            "highYield": "PCO2 80 + HCO3 30 suggests acute-on-chronic respiratory acidosis.",
-            "clinicalCorrelation": "Common in COPD exacerbations."
-          }
-        },
-        {
-          "questionId": "acid_base_057",
-          "difficulty": 2,
-          "question": "The delta gap is calculated as (AG-12)/(24-HCO3). A delta gap >2 suggests:",
-          "image": null,
-          "options": [
-            {
-              "text": "Concomitant metabolic alkalosis",
-              "isCorrect": true,
-              "explanation": "Delta gap >2 indicates that the rise in AG is disproportionately greater than the fall in HCO3, implying a coexisting metabolic alkalosis is elevating HCO3."
-            },
-            {
-              "text": "Concomitant normal AG metabolic acidosis",
-              "isCorrect": false,
-              "explanation": "Delta gap <1 suggests that."
-            },
-            {
-              "text": "Pure high AG acidosis",
-              "isCorrect": false,
-              "explanation": "Delta gap 1-2 suggests pure disorder."
-            },
-            {
-              "text": "Respiratory alkalosis",
-              "isCorrect": false,
-              "explanation": "Not assessed by delta gap."
-            },
-            {
-              "text": "None of the above",
-              "isCorrect": false,
-              "explanation": "Delta gap >2 indicates metabolic alkalosis."
-            }
-          ],
-          "explanation": {
-            "overview": "Delta gap = (AG – 12) / (24 – HCO3). If >2, the rise in AG exceeds the fall in HCO3, suggesting a pre-existing metabolic alkalosis (or a mixed high AG acidosis and metabolic alkalosis).",
-            "highYield": "Delta gap >2 → concurrent metabolic alkalosis.",
-            "clinicalCorrelation": "Example: patient with vomiting (alkalosis) who develops sepsis and lactic acidosis."
-          }
-        },
-        {
-          "questionId": "acid_base_058",
-          "difficulty": 2,
-          "question": "Which of the following causes a normal anion gap metabolic acidosis?",
-          "image": null,
-          "options": [
-            {
-              "text": "Ureteral diversion (e.g., ileal conduit)",
-              "isCorrect": true,
-              "explanation": "Urinary diversions using ileum or colon can cause hyperchloremic metabolic acidosis due to bicarbonate loss in exchange for chloride."
-            },
-            {
-              "text": "Methanol poisoning",
-              "isCorrect": false,
-              "explanation": "High AG acidosis."
-            },
-            {
-              "text": "Lactic acidosis",
-              "isCorrect": false,
-              "explanation": "High AG."
-            },
-            {
-              "text": "Ketoacidosis",
-              "isCorrect": false,
-              "explanation": "High AG."
-            },
-            {
-              "text": "Uremia",
-              "isCorrect": false,
-              "explanation": "High AG."
-            }
-          ],
-          "explanation": {
-            "overview": "Causes of normal anion gap metabolic acidosis include diarrhea, RTA, and urinary diversions (ileal conduit). These lead to bicarbonate loss or impaired acid excretion without accumulating organic acids.",
-            "highYield": "Normal AG acidosis: diarrhea, RTA, ureteral diversion.",
-            "clinicalCorrelation": "In ileal conduits, urine chloride-bicarbonate exchange in the bowel segment causes hyperchloremic acidosis."
-          }
-        },
-        {
-          "questionId": "acid_base_059",
-          "difficulty": 2,
-          "question": "In hypoxic lactic acidosis (type A), the primary problem is:",
-          "image": null,
-          "options": [
-            {
-              "text": "Tissue hypoxia leading to anaerobic glycolysis",
-              "isCorrect": true,
-              "explanation": "Type A lactic acidosis results from inadequate oxygen delivery, causing cells to switch to anaerobic metabolism and produce lactate."
-            },
-            {
-              "text": "Mitochondrial dysfunction without hypoxia",
-              "isCorrect": false,
-              "explanation": "That is type B lactic acidosis."
-            },
-            {
-              "text": "Excess alcohol consumption",
-              "isCorrect": false,
-              "explanation": "Alcohol can cause type B lactic acidosis."
-            },
-            {
-              "text": "Renal failure",
-              "isCorrect": false,
-              "explanation": "Renal failure contributes but is not the primary cause of type A."
-            },
-            {
-              "text": "Diabetes",
-              "isCorrect": false,
-              "explanation": "Diabetes can cause DKA, not primarily type A lactic acidosis."
-            }
-          ],
-          "explanation": {
-            "overview": "Type A lactic acidosis is due to tissue hypoperfusion or hypoxia (e.g., shock, cardiac arrest, severe hypoxemia). Type B is due to metabolic defects without overt hypoxia.",
-            "highYield": "Type A lactic acidosis = tissue hypoxia (shock, ischemia).",
-            "clinicalCorrelation": "Treatment focuses on restoring perfusion and oxygen delivery."
-          }
-        },
-        {
-          "questionId": "acid_base_060",
-          "difficulty": 2,
-          "question": "The urine pH in a patient with distal RTA during severe acidemia is:",
-          "image": null,
-          "options": [
-            {
-              "text": ">5.5",
-              "isCorrect": true,
-              "explanation": "Distal RTA impairs distal H+ secretion; even with severe acidemia, urine pH cannot fall below 5.5."
-            },
-            {
-              "text": "<5.5",
-              "isCorrect": false,
-              "explanation": "That would indicate intact distal acidification."
-            },
-            {
-              "text": "Variable",
-              "isCorrect": false,
-              "explanation": "It is consistently >5.5."
-            },
-            {
-              "text": "Not related to serum pH",
-              "isCorrect": false,
-              "explanation": "It is related."
-            },
-            {
-              "text": "Always >7",
-              "isCorrect": false,
-              "explanation": "Not always; can be between 5.5 and 6.5."
-            }
-          ],
-          "explanation": {
-            "overview": "The hallmark of distal RTA is the inability to lower urine pH below 5.5 despite systemic acidosis, due to impaired distal H⁺ secretion.",
-            "highYield": "Distal RTA: urine pH >5.5 in acidemia.",
-            "clinicalCorrelation": "An acid load test (e.g., ammonium chloride) confirms the diagnosis."
-          }
-        },
-        {
-          "questionId": "acid_base_061",
-          "difficulty": 2,
-          "question": "Which of the following would cause a high urine anion gap?",
-          "image": null,
-          "options": [
-            {
-              "text": "Distal renal tubular acidosis",
-              "isCorrect": true,
-              "explanation": "In distal RTA, ammonium excretion is impaired, so urine NH4+ is low and UAG is positive."
-            },
-            {
-              "text": "Diarrhea",
-              "isCorrect": false,
-              "explanation": "Diarrhea leads to appropriate renal NH4+ excretion, negative UAG."
-            },
-            {
-              "text": "Proximal RTA (when bicarbonaturia)",
-              "isCorrect": false,
-              "explanation": "Proximal RTA with bicarbonaturia can have variable UAG, but distal RTA is the classic high UAG."
-            },
-            {
-              "text": "Starvation ketosis",
-              "isCorrect": false,
-              "explanation": "Ketosis is a high AG acidosis, not assessed by UAG primarily."
-            },
-            {
-              "text": "Lactic acidosis",
-              "isCorrect": false,
-              "explanation": "Lactic acidosis: renal response is high NH4+, negative UAG."
-            }
-          ],
-          "explanation": {
-            "overview": "Urine anion gap (Na+K–Cl) is positive when urinary ammonium is low. In distal RTA, inability to excrete H⁺ as NH₄⁺ leads to positive UAG.",
-            "highYield": "Positive UAG = distal RTA; Negative UAG = diarrhea.",
-            "clinicalCorrelation": "Use UAG in patients with normal AG metabolic acidosis to assess renal acidification."
-          }
-        },
-        {
-          "questionId": "acid_base_062",
-          "difficulty": 2,
-          "question": "In metabolic alkalosis, which of the following is a cause of chloride-resistant (urine Cl >20) alkalosis?",
-          "image": null,
-          "options": [
-            {
-              "text": "Primary hyperaldosteronism",
-              "isCorrect": true,
-              "explanation": "Mineralocorticoid excess causes renal H+ loss despite adequate chloride, leading to high urine Cl and chloride-resistant metabolic alkalosis."
-            },
-            {
-              "text": "Vomiting",
-              "isCorrect": false,
-              "explanation": "Vomiting causes chloride-responsive (urine Cl <20) alkalosis."
-            },
-            {
-              "text": "Nasogastric suction",
-              "isCorrect": false,
-              "explanation": "That is also chloride-responsive."
-            },
-            {
-              "text": "Chloride-deficient formula",
-              "isCorrect": false,
-              "explanation": "That causes chloride-responsive alkalosis."
-            },
-            {
-              "text": "Diuretic use (remote)",
-              "isCorrect": false,
-              "explanation": "Active diuretic use can cause high urine Cl, but remote diuretic use may show low Cl if volume depleted. However, primary hyperaldosteronism is the classic chloride-resistant."
-            }
-          ],
-          "explanation": {
-            "overview": "Chloride-resistant metabolic alkalosis (urine Cl >20) results from mineralocorticoid excess or severe hypokalemia. It does not respond to saline infusion.",
-            "highYield": "Urine Cl >20 = mineralocorticoid excess, diuretics (active), severe hypokalemia.",
-            "clinicalCorrelation": "Treatment targets the underlying hormone excess or potassium repletion."
-          }
-        },
-        {
-          "questionId": "acid_base_063",
-          "difficulty": 2,
-          "question": "Which of the following statements about the kidney's response to chronic respiratory acidosis is true?",
-          "image": null,
-          "options": [
-            {
-              "text": "Increased proximal HCO3- reabsorption and increased NH4+ excretion",
-              "isCorrect": true,
-              "explanation": "Chronic hypercapnia stimulates both proximal HCO3⁻ reclamation and distal H⁺ secretion as ammonium, raising plasma HCO3⁻."
-            },
-            {
-              "text": "Decreased H+ secretion",
-              "isCorrect": false,
-              "explanation": "H+ secretion increases."
-            },
-            {
-              "text": "No change in renal acid handling",
-              "isCorrect": false,
-              "explanation": "Renal compensation is significant."
-            },
-            {
-              "text": "Decreased bicarbonate reabsorption",
-              "isCorrect": false,
-              "explanation": "Reabsorption increases."
-            },
-            {
-              "text": "Loss of bicarbonate in urine",
-              "isCorrect": false,
-              "explanation": "Bicarbonate is conserved."
-            }
-          ],
-          "explanation": {
-            "overview": "Chronic respiratory acidosis leads to increased renal H⁺ secretion, enhanced HCO3⁻ reabsorption, and elevated ammonium excretion, resulting in a higher plasma HCO3⁻.",
-            "highYield": "Chronic respiratory acidosis: ↑HCO3⁻ reabsorption, ↑NH4+ excretion.",
-            "clinicalCorrelation": "This compensation takes 3–5 days to fully develop."
-          }
-        },
-        {
-          "questionId": "acid_base_064",
-          "difficulty": 2,
-          "question": "A patient with chronic kidney disease (stage 4) is likely to have which acid-base disturbance?",
-          "image": null,
-          "options": [
-            {
-              "text": "High anion gap metabolic acidosis (uremic acidosis)",
-              "isCorrect": true,
-              "explanation": "As GFR falls, organic acids accumulate, leading to high AG metabolic acidosis. In early CKD, it may be normal AG, but advanced CKD causes high AG."
-            },
-            {
-              "text": "Metabolic alkalosis",
-              "isCorrect": false,
-              "explanation": "CKD causes acidosis, not alkalosis."
-            },
-            {
-              "text": "Respiratory acidosis",
-              "isCorrect": false,
-              "explanation": "Not directly from CKD."
-            },
-            {
-              "text": "Respiratory alkalosis",
-              "isCorrect": false,
-              "explanation": "Not typical."
-            },
-            {
-              "text": "Normal acid-base status",
-              "isCorrect": false,
-              "explanation": "Advanced CKD impairs acid excretion."
-            }
-          ],
-          "explanation": {
-            "overview": "In advanced chronic kidney disease, retention of non-volatile acids (phosphate, sulfate) causes a high anion gap metabolic acidosis.",
-            "highYield": "CKD → high AG metabolic acidosis.",
-            "clinicalCorrelation": "Treatment includes bicarbonate supplementation and dietary protein restriction."
-          }
-        },
-        {
-          "questionId": "acid_base_065",
-          "difficulty": 2,
-          "question": "Which of the following drugs can cause a normal anion gap metabolic acidosis?",
-          "image": null,
-          "options": [
-            {
-              "text": "Acetazolamide",
-              "isCorrect": true,
-              "explanation": "Acetazolamide, a carbonic anhydrase inhibitor, causes bicarbonaturia and normal AG metabolic acidosis."
-            },
-            {
-              "text": "Metformin",
-              "isCorrect": false,
-              "explanation": "Metformin can cause lactic acidosis (high AG)."
-            },
-            {
-              "text": "Aspirin (high dose)",
-              "isCorrect": false,
-              "explanation": "Salicylate causes high AG acidosis and respiratory alkalosis."
-            },
-            {
-              "text": "Iron overdose",
-              "isCorrect": false,
-              "explanation": "Iron causes high AG acidosis."
-            },
-            {
-              "text": "Ethanol",
-              "isCorrect": false,
-              "explanation": "Ethanol can cause ketoacidosis (high AG)."
-            }
-          ],
-          "explanation": {
-            "overview": "Acetazolamide inhibits proximal HCO3⁻ reabsorption, causing bicarbonate loss and hyperchloremic metabolic acidosis.",
-            "highYield": "Acetazolamide → normal AG metabolic acidosis.",
-            "clinicalCorrelation": "Used in glaucoma, altitude sickness; can lead to alkaline urine and renal bicarbonate wasting."
-          }
-        },
-        {
-          "questionId": "acid_base_066",
-          "difficulty": 2,
-          "question": "In a patient with metabolic acidosis, the serum potassium is 6.0 mEq/L. Which type of RTA is most likely?",
-          "image": null,
-          "options": [
-            {
-              "text": "Type 4 RTA",
-              "isCorrect": true,
-              "explanation": "Type 4 RTA is characterized by hyperkalemia due to aldosterone deficiency or resistance, along with normal AG metabolic acidosis."
-            },
-            {
-              "text": "Type 1 RTA",
-              "isCorrect": false,
-              "explanation": "Type 1 RTA typically presents with hypokalemia."
-            },
-            {
-              "text": "Type 2 RTA",
-              "isCorrect": false,
-              "explanation": "Proximal RTA also causes hypokalemia."
-            },
-            {
-              "text": "Diabetic ketoacidosis",
-              "isCorrect": false,
-              "explanation": "DKA often presents with potassium depletion, but serum K may be normal or high initially due to acidosis shift; however, total body K is low. But the question asks for type of RTA."
-            },
-            {
-              "text": "Diarrhea-induced acidosis",
-              "isCorrect": false,
-              "explanation": "Diarrhea causes hypokalemia, not hyperkalemia."
-            }
-          ],
-          "explanation": {
-            "overview": "Type 4 RTA (hyporeninemic hypoaldosteronism) presents with hyperkalemia and hyperchloremic metabolic acidosis. Types 1 and 2 are associated with hypokalemia.",
-            "highYield": "Hyperkalemia + normal AG acidosis = type 4 RTA.",
-            "clinicalCorrelation": "Often seen in diabetic nephropathy and with medications that impair the renin-angiotensin-aldosterone system."
-          }
-        },
-        {
-          "questionId": "acid_base_067",
-          "difficulty": 2,
-          "question": "A patient has pH 7.48, PCO2 48, HCO3- 36. What is the primary disorder?",
-          "image": null,
-          "options": [
-            {
-              "text": "Metabolic alkalosis with appropriate respiratory compensation",
-              "isCorrect": true,
-              "explanation": "pH high, HCO3 high, PCO2 appropriately elevated. Expected PCO2 = 40 + 0.6 × (36-24) = 47.2, close to 48."
-            },
-            {
-              "text": "Respiratory acidosis with renal compensation",
-              "isCorrect": false,
-              "explanation": "pH is alkaline, not acidic."
-            },
-            {
-              "text": "Mixed metabolic alkalosis and respiratory acidosis",
-              "isCorrect": false,
-              "explanation": "PCO2 is appropriate for the degree of alkalosis; no evidence of respiratory acidosis."
-            },
-            {
-              "text": "Acute metabolic alkalosis",
-              "isCorrect": false,
-              "explanation": "The PCO2 elevation indicates compensation, which takes time."
-            },
-            {
-              "text": "Primary respiratory alkalosis",
-              "isCorrect": false,
-              "explanation": "PCO2 is high, not low."
-            }
-          ],
-          "explanation": {
-            "overview": "Metabolic alkalosis: high pH, high HCO3⁻, and compensatory hypoventilation raises PCO2. Expected PCO2 = 40 + 0.6 × (HCO3 – 24).",
-            "highYield": "Metabolic alkalosis: ↑pH, ↑HCO3, ↑PCO2 appropriately.",
-            "clinicalCorrelation": "If PCO2 is lower than expected, a concurrent respiratory alkalosis exists."
-          }
-        },
-        {
-          "questionId": "acid_base_068",
-          "difficulty": 2,
-          "question": "Which of the following is NOT a cause of high anion gap metabolic acidosis?",
-          "image": null,
-          "options": [
-            {
-              "text": "Acetazolamide therapy",
-              "isCorrect": true,
-              "explanation": "Acetazolamide causes normal AG acidosis."
-            },
-            {
-              "text": "Methanol poisoning",
-              "isCorrect": false,
-              "explanation": "High AG."
-            },
-            {
-              "text": "Lactic acidosis",
-              "isCorrect": false,
-              "explanation": "High AG."
-            },
-            {
-              "text": "Diabetic ketoacidosis",
-              "isCorrect": false,
-              "explanation": "High AG."
-            },
-            {
-              "text": "Uremia",
-              "isCorrect": false,
-              "explanation": "High AG."
-            }
-          ],
-          "explanation": {
-            "overview": "Acetazolamide is a carbonic anhydrase inhibitor that causes bicarbonate wasting and normal AG (hyperchloremic) acidosis. The others cause accumulation of unmeasured organic acids.",
-            "highYield": "Acetazolamide → normal AG acidosis.",
-            "clinicalCorrelation": "Useful to know when differentiating causes of metabolic acidosis."
-          }
-        },
-        {
-          "questionId": "acid_base_069",
-          "difficulty": 2,
-          "question": "In a patient with cirrhosis and ascites, which acid-base disorder might be present?",
-          "image": null,
-          "options": [
-            {
-              "text": "Respiratory alkalosis (from hyperventilation)",
-              "isCorrect": true,
-              "explanation": "Cirrhotic patients often have a primary respiratory alkalosis due to progesterone-mediated or central hyperventilation."
-            },
-            {
-              "text": "Metabolic acidosis",
-              "isCorrect": false,
-              "explanation": "Less common; alkalosis is more typical."
-            },
-            {
-              "text": "Metabolic alkalosis",
-              "isCorrect": false,
-              "explanation": "Can occur with diuretic use, but respiratory alkalosis is classic."
-            },
-            {
-              "text": "Respiratory acidosis",
-              "isCorrect": false,
-              "explanation": "Not typical."
-            },
-            {
-              "text": "No acid-base disorder",
-              "isCorrect": false,
-              "explanation": "Respiratory alkalosis is common."
-            }
-          ],
-          "explanation": {
-            "overview": "Liver cirrhosis is often associated with chronic respiratory alkalosis due to hyperventilation, possibly from elevated progesterone, intrapulmonary shunting, or hepatic encephalopathy.",
-            "highYield": "Cirrhosis → chronic respiratory alkalosis.",
-            "clinicalCorrelation": "A mixed disorder may develop if diuretics cause metabolic alkalosis or if there is a superimposed lactic acidosis."
-          }
-        },
-        {
-          "questionId": "acid_base_070",
-          "difficulty": 2,
-          "question": "Which of the following can cause both respiratory alkalosis and high anion gap metabolic acidosis?",
-          "image": null,
-          "options": [
-            {
-              "text": "Salicylate poisoning",
-              "isCorrect": true,
-              "explanation": "Salicylates directly stimulate the respiratory center (respiratory alkalosis) and uncouple oxidative phosphorylation (high AG acidosis)."
-            },
-            {
-              "text": "Opioid overdose",
-              "isCorrect": false,
-              "explanation": "Causes respiratory acidosis."
-            },
-            {
-              "text": "Diabetic ketoacidosis",
-              "isCorrect": false,
-              "explanation": "DKA causes metabolic acidosis with appropriate respiratory compensation (low PCO2), but the primary disorder is not respiratory alkalosis; it's a compensatory response."
-            },
-            {
-              "text": "Acetazolamide use",
-              "isCorrect": false,
-              "explanation": "Normal AG acidosis."
-            },
-            {
-              "text": "Renal failure",
-              "isCorrect": false,
-              "explanation": "High AG acidosis with Kussmaul breathing as compensation, not primary respiratory alkalosis."
-            }
-          ],
-          "explanation": {
-            "overview": "Salicylate poisoning is the classic cause of a mixed primary respiratory alkalosis and primary high AG metabolic acidosis.",
-            "highYield": "Salicylate poisoning = primary respiratory alkalosis + high AG metabolic acidosis.",
-            "clinicalCorrelation": "The presence of this combination should prompt investigation for salicylate ingestion."
-          }
-        },
-        {
-          "questionId": "acid_base_071",
-          "difficulty": 2,
-          "question": "The normal bicarbonate concentration in arterial blood is:",
-          "image": null,
-          "options": [
-            {
-              "text": "22-26 mEq/L",
-              "isCorrect": true,
-              "explanation": "Standard normal range for HCO3⁻ is 22–26 mEq/L (some sources 24±2)."
-            },
-            {
-              "text": "10-15 mEq/L",
-              "isCorrect": false,
-              "explanation": "Too low."
-            },
-            {
-              "text": "30-35 mEq/L",
-              "isCorrect": false,
-              "explanation": "Too high."
-            },
-            {
-              "text": "5-10 mEq/L",
-              "isCorrect": false,
-              "explanation": "Far too low."
-            },
-            {
-              "text": "40-45 mEq/L",
-              "isCorrect": false,
-              "explanation": "Markedly elevated."
-            }
-          ],
-          "explanation": {
-            "overview": "Arterial bicarbonate normally ranges from 22 to 26 mEq/L. It is the metabolic component of acid‑base status.",
-            "highYield": "Normal HCO3⁻ = 22–26 mEq/L.",
-            "clinicalCorrelation": "Used in conjunction with PCO2 to classify acid‑base disorders."
-          }
-        },
-        {
-          "questionId": "acid_base_072",
-          "difficulty": 2,
-          "question": "In a patient with sepsis and acute kidney injury, which acid‑base disorder is most likely?",
-          "image": null,
-          "options": [
-            {
-              "text": "High anion gap metabolic acidosis (lactic acidosis + uremia)",
-              "isCorrect": true,
-              "explanation": "Sepsis can cause lactic acidosis, and acute kidney injury leads to retention of organic acids, both contributing to high AG acidosis."
-            },
-            {
-              "text": "Metabolic alkalosis",
-              "isCorrect": false,
-              "explanation": "Not typical."
-            },
-            {
-              "text": "Respiratory acidosis",
-              "isCorrect": false,
-              "explanation": "Not primary in sepsis."
-            },
-            {
-              "text": "Normal anion gap acidosis",
-              "isCorrect": false,
-              "explanation": "Lactic acidosis is high AG."
-            },
-            {
-              "text": "Mixed respiratory alkalosis and metabolic alkalosis",
-              "isCorrect": false,
-              "explanation": "Sepsis may cause respiratory alkalosis, but AKI and lactate cause metabolic acidosis."
-            }
-          ],
-          "explanation": {
-            "overview": "Sepsis with acute kidney injury typically produces a high anion gap metabolic acidosis from lactic acid accumulation and reduced renal acid excretion.",
-            "highYield": "Sepsis + AKI → high AG metabolic acidosis.",
-            "clinicalCorrelation": "Monitoring lactate and renal function is crucial for management."
-          }
-        },
-        {
-          "questionId": "acid_base_073",
-          "difficulty": 2,
-          "question": "Which of the following values is consistent with a mixed metabolic acidosis and respiratory acidosis?",
-          "image": null,
-          "options": [
-            {
-              "text": "pH 7.10, PCO2 55, HCO3- 12",
-              "isCorrect": true,
-              "explanation": "Very low pH, high PCO2 (respiratory acidosis), and low HCO3 (metabolic acidosis) indicate a mixed disorder."
-            },
-            {
-              "text": "pH 7.32, PCO2 30, HCO3- 15",
-              "isCorrect": false,
-              "explanation": "Metabolic acidosis with appropriate compensation (PCO2 appropriately low)."
-            },
-            {
-              "text": "pH 7.46, PCO2 48, HCO3- 34",
-              "isCorrect": false,
-              "explanation": "Metabolic alkalosis with compensation."
-            },
-            {
-              "text": "pH 7.35, PCO2 60, HCO3- 34",
-              "isCorrect": false,
-              "explanation": "Chronic respiratory acidosis with compensation."
-            },
-            {
-              "text": "pH 7.52, PCO2 25, HCO3- 22",
-              "isCorrect": false,
-              "explanation": "Acute respiratory alkalosis."
-            }
-          ],
-          "explanation": {
-            "overview": "Mixed metabolic and respiratory acidosis: pH is very low, PCO2 is elevated (should be low if compensating for metabolic acidosis), and HCO3 is low. This indicates a primary defect in both systems.",
-            "highYield": "Mixed acidosis: ↓pH, ↑PCO2, ↓HCO3.",
-            "clinicalCorrelation": "Example: cardiac arrest with lactic acidosis and hypoventilation."
-          }
-        },
-        {
-          "questionId": "acid_base_074",
-          "difficulty": 2,
-          "question": "Which of the following would cause a respiratory acidosis with a normal A‑a gradient?",
-          "image": null,
-          "options": [
-            {
-              "text": "Guillain‑Barré syndrome (neuromuscular weakness)",
-              "isCorrect": true,
-              "explanation": "Neuromuscular weakness causes hypoventilation with normal lungs, so the A‑a gradient is normal."
-            },
-            {
-              "text": "Severe pneumonia",
-              "isCorrect": false,
-              "explanation": "Pneumonia increases A‑a gradient."
-            },
-            {
-              "text": "Pulmonary edema",
-              "isCorrect": false,
-              "explanation": "Increases A‑a gradient."
-            },
-            {
-              "text": "COPD exacerbation",
-              "isCorrect": false,
-              "explanation": "COPD often has an increased A‑a gradient."
-            },
-            {
-              "text": "Pulmonary embolism",
-              "isCorrect": false,
-              "explanation": "Increases A‑a gradient."
-            }
-          ],
-          "explanation": {
-            "overview": "Hypoventilation from neuromuscular disease (e.g., Guillain‑Barré, myasthenia gravis, cervical spine injury) results in hypercapnia with normal alveolar‑arterial O₂ gradient, because the lung parenchyma is normal.",
-            "highYield": "Normal A‑a gradient + hypercapnia = neuromuscular hypoventilation.",
-            "clinicalCorrelation": "Vital capacity and negative inspiratory force are monitored in these patients."
-          }
-        },
-        {
-          "questionId": "acid_base_075",
-          "difficulty": 2,
-          "question": "A patient with prolonged diarrhea develops a normal anion gap metabolic acidosis. Which of the following urinary findings is expected?",
-          "image": null,
-          "options": [
-            {
-              "text": "Urine anion gap negative, urine pH <5.5",
-              "isCorrect": true,
-              "explanation": "In diarrhea, the kidney responds appropriately by increasing ammonium excretion, making UAG negative, and distal acidification is intact, so urine pH can drop."
-            },
-            {
-              "text": "Urine anion gap positive, urine pH >5.5",
-              "isCorrect": false,
-              "explanation": "That would indicate distal RTA."
-            },
-            {
-              "text": "Urine anion gap positive, urine pH <5.5",
-              "isCorrect": false,
-              "explanation": "Positive UAG suggests low NH4+, inconsistent with appropriate renal response."
-            },
-            {
-              "text": "Urine anion gap zero, urine pH variable",
-              "isCorrect": false,
-              "explanation": "Not typical."
-            },
-            {
-              "text": "Urine anion gap negative, urine pH >5.5",
-              "isCorrect": false,
-              "explanation": "Appropriate response would acidify urine (pH <5.5) because distal acidification is intact."
-            }
-          ],
-          "explanation": {
-            "overview": "In extrarenal causes of normal AG acidosis like diarrhea, the kidney appropriately increases NH4+ excretion (negative UAG) and the distal nephron can lower urine pH below 5.5.",
-            "highYield": "Diarrhea → negative UAG, urine pH <5.5.",
-            "clinicalCorrelation": "Helps distinguish diarrhea from distal RTA (positive UAG, urine pH >5.5)."
-          }
+          "explanation": "Inability to acidify urine (pH >5.5) despite systemic acidosis."
         }
-      ]
+      ],
+      "explanation": {
+        "overview": "Type 1 (distal) RTA is characterized by an inability to acidify the urine (urine pH >5.5) despite systemic acidosis. It causes normal anion gap metabolic acidosis, hypokalemia, and often nephrolithiasis.",
+        "highYield": "Distal RTA: urine pH >5.5 in acidemia, hypokalemia, calcium phosphate stones.",
+        "clinicalCorrelation": "Causes include Sjögren syndrome, amphotericin B, and genetic disorders."
+      }
+    },
+    {
+      "questionId": "acid_base_033",
+      "difficulty": 2,
+      "question": "In proximal (type 2) renal tubular acidosis, the urine pH during severe acidosis is:",
+      "image": null,
+      "options": [
+        {
+          "text": "Usually <5.5",
+          "isCorrect": true,
+          "explanation": "In proximal RTA, distal acidification is intact; once plasma HCO₃⁻ falls below the threshold, urine can acidify normally."
+        },
+        {
+          "text": "Usually >5.5",
+          "isCorrect": false,
+          "explanation": "That is distal RTA."
+        },
+        {
+          "text": "Variable",
+          "isCorrect": false,
+          "explanation": "While variable early, during severe acidosis it acidifies."
+        },
+        {
+          "text": "Always alkaline",
+          "isCorrect": false,
+          "explanation": "Not always alkaline; it acidifies when serum HCO₃⁻ is low."
+        },
+        {
+          "text": "Not measurable",
+          "isCorrect": false,
+          "explanation": "It is measurable."
+        }
+      ],
+      "explanation": {
+        "overview": "Proximal RTA involves a reduced HCO₃⁻ reabsorption threshold. When plasma HCO₃⁻ falls below that threshold, the distal nephron can reabsorb HCO₃⁻ and acidify urine (pH <5.5).",
+        "highYield": "Proximal RTA: urine pH <5.5 when acidemic.",
+        "clinicalCorrelation": "Often part of Fanconi syndrome (phosphaturia, glucosuria, aminoaciduria)."
+      }
+    },
+    {
+      "questionId": "acid_base_034",
+      "difficulty": 2,
+      "question": "Which of the following is a cause of type 4 renal tubular acidosis (hyporeninemic hypoaldosteronism)?",
+      "image": null,
+      "options": [
+        {
+          "text": "Diabetes mellitus",
+          "isCorrect": false,
+          "explanation": "Diabetic nephropathy is a common cause."
+        },
+        {
+          "text": "Obstructive uropathy",
+          "isCorrect": false,
+          "explanation": "Can cause type 4 RTA."
+        },
+        {
+          "text": "Addison's disease",
+          "isCorrect": false,
+          "explanation": "Addison's is primary adrenal insufficiency with hypoaldosteronism, but more often causes type 4 RTA-like picture with hyperkalemia and acidosis."
+        },
+        {
+          "text": "All of the above",
+          "isCorrect": true,
+          "explanation": "All can cause type 4 RTA due to aldosterone deficiency or resistance."
+        },
+        {
+          "text": "None",
+          "isCorrect": false,
+          "explanation": "All are causes."
+        }
+      ],
+      "explanation": {
+        "overview": "Type 4 RTA results from aldosterone deficiency or resistance, leading to hyperkalemia and normal anion gap metabolic acidosis. Common causes include diabetic nephropathy, interstitial renal diseases, and adrenal insufficiency.",
+        "highYield": "Type 4 RTA = hyperkalemia + normal AG acidosis.",
+        "clinicalCorrelation": "Treat with fludrocortisone if hypoaldosteronism, or dietary K⁺ restriction and diuretics."
+      }
+    },
+    {
+      "questionId": "acid_base_035",
+      "difficulty": 2,
+      "question": "A patient with type 4 RTA typically has:",
+      "image": null,
+      "options": [
+        {
+          "text": "Hyperkalemia, normal anion gap acidosis",
+          "isCorrect": true,
+          "explanation": "Aldosterone deficiency or resistance impairs K⁺ and H⁺ excretion, causing hyperkalemia and hyperchloremic metabolic acidosis."
+        },
+        {
+          "text": "Hypokalemia, normal anion gap acidosis",
+          "isCorrect": false,
+          "explanation": "Hypokalemia is seen in types 1 and 2 RTA, not type 4."
+        },
+        {
+          "text": "Hyperkalemia, high anion gap acidosis",
+          "isCorrect": false,
+          "explanation": "The acidosis is normal anion gap (hyperchloremic)."
+        },
+        {
+          "text": "Hypokalemia, high anion gap acidosis",
+          "isCorrect": false,
+          "explanation": "Neither hypokalemia nor high AG is typical."
+        },
+        {
+          "text": "Normal electrolytes",
+          "isCorrect": false,
+          "explanation": "Type 4 RTA has distinct electrolyte abnormalities."
+        }
+      ],
+      "explanation": {
+        "overview": "Type 4 RTA is characterized by hyperkalemia and hyperchloremic metabolic acidosis due to impaired aldosterone action.",
+        "highYield": "Type 4 RTA = hyperkalemia + normal AG metabolic acidosis.",
+        "clinicalCorrelation": "Often the earliest sign of diabetic nephropathy affecting tubulointerstitium."
+      }
+    },
+    {
+      "questionId": "acid_base_036",
+      "difficulty": 2,
+      "question": "In metabolic acidosis, the appropriate renal response is:",
+      "image": null,
+      "options": [
+        {
+          "text": "Increased H+ excretion and increased HCO3- reabsorption",
+          "isCorrect": true,
+          "explanation": "The kidneys respond to acidosis by increasing H⁺ secretion (as titratable acid and ammonium) and reclaiming filtered HCO₃⁻."
+        },
+        {
+          "text": "Decreased H+ excretion and decreased HCO3- reabsorption",
+          "isCorrect": false,
+          "explanation": "That would worsen acidosis."
+        },
+        {
+          "text": "No change",
+          "isCorrect": false,
+          "explanation": "Renal compensation is essential."
+        },
+        {
+          "text": "Increased HCO3- excretion",
+          "isCorrect": false,
+          "explanation": "The kidney conserves HCO₃⁻, not excretes it."
+        },
+        {
+          "text": "Decreased ammonia production",
+          "isCorrect": false,
+          "explanation": "Ammonia production increases to buffer H⁺."
+        }
+      ],
+      "explanation": {
+        "overview": "In acidosis, the kidney increases H⁺ secretion via the Na⁺/H⁺ exchanger, increases ammonium excretion, and reabsorbs virtually all filtered HCO₃⁻.",
+        "highYield": "Acidosis → ↑H⁺ secretion, ↑NH₄⁺ excretion, ↑HCO₃⁻ reabsorption.",
+        "clinicalCorrelation": "The urine anion gap can assess whether the renal response is appropriate (negative = high NH₄⁺)."
+      }
+    },
+    {
+      "questionId": "acid_base_037",
+      "difficulty": 2,
+      "question": "Which of the following is a cause of respiratory acidosis with normal A-a gradient?",
+      "image": null,
+      "options": [
+        {
+          "text": "Opioid overdose",
+          "isCorrect": true,
+          "explanation": "Opioid overdose causes central hypoventilation with normal lungs, so the A‑a gradient is normal."
+        },
+        {
+          "text": "Severe COPD",
+          "isCorrect": false,
+          "explanation": "COPD has ventilation‑perfusion mismatch, increasing A‑a gradient."
+        },
+        {
+          "text": "Pulmonary edema",
+          "isCorrect": false,
+          "explanation": "Pulmonary edema impairs gas exchange, increasing A‑a gradient."
+        },
+        {
+          "text": "Pneumonia",
+          "isCorrect": false,
+          "explanation": "Pneumonia causes shunt, increasing A‑a gradient."
+        },
+        {
+          "text": "Pulmonary embolism",
+          "isCorrect": false,
+          "explanation": "PE increases dead space and A‑a gradient."
+        }
+      ],
+      "explanation": {
+        "overview": "Central nervous system depressants (opioids) cause pure hypoventilation without lung parenchymal disease, so the alveolar‑arterial O₂ gradient remains normal.",
+        "highYield": "Normal A‑a gradient + hypercapnia = central hypoventilation.",
+        "clinicalCorrelation": "Use the A‑a gradient to distinguish central from pulmonary causes of hypercapnia."
+      }
+    },
+    {
+      "questionId": "acid_base_038",
+      "difficulty": 2,
+      "question": "In salicylate poisoning, early findings include:",
+      "image": null,
+      "options": [
+        {
+          "text": "Respiratory alkalosis",
+          "isCorrect": false,
+          "explanation": "Early salicylate toxicity directly stimulates the respiratory center, causing respiratory alkalosis."
+        },
+        {
+          "text": "High anion gap metabolic acidosis",
+          "isCorrect": false,
+          "explanation": "Later, metabolic acidosis develops."
+        },
+        {
+          "text": "Both (mixed disorder)",
+          "isCorrect": true,
+          "explanation": "Salicylate poisoning causes a mixed acid‑base disorder: early respiratory alkalosis (hyperventilation) and later high AG metabolic acidosis."
+        },
+        {
+          "text": "Respiratory acidosis",
+          "isCorrect": false,
+          "explanation": "Salicylates cause hyperventilation, not hypoventilation."
+        },
+        {
+          "text": "Normal blood gases",
+          "isCorrect": false,
+          "explanation": "Blood gases will be abnormal."
+        }
+      ],
+      "explanation": {
+        "overview": "Salicylates stimulate the medullary respiratory center, causing respiratory alkalosis, and also uncouple oxidative phosphorylation, leading to lactic and ketoacid accumulation.",
+        "highYield": "Salicylate poisoning = respiratory alkalosis + high AG metabolic acidosis.",
+        "clinicalCorrelation": "The presence of both disorders in an adult is highly suggestive of salicylate poisoning."
+      }
+    },
+    {
+      "questionId": "acid_base_039",
+      "difficulty": 2,
+      "question": "The normal ammonium excretion by the kidney is approximately:",
+      "image": null,
+      "options": [
+        {
+          "text": "10-20 mEq/day",
+          "isCorrect": false,
+          "explanation": "That is below normal."
+        },
+        {
+          "text": "30-40 mEq/day",
+          "isCorrect": true,
+          "explanation": "Normal renal ammonium excretion is about 30–40 mEq/day, but can increase several‑fold in acidosis."
+        },
+        {
+          "text": "50-60 mEq/day",
+          "isCorrect": false,
+          "explanation": "Slightly higher than typical baseline."
+        },
+        {
+          "text": "80-100 mEq/day",
+          "isCorrect": false,
+          "explanation": "Too high for baseline."
+        },
+        {
+          "text": ">200 mEq/day",
+          "isCorrect": false,
+          "explanation": "This can be achieved in chronic acidosis, but not the baseline."
+        }
+      ],
+      "explanation": {
+        "overview": "Baseline ammonium excretion is ~30–40 mEq/day. In response to acidosis, it can rise to over 200–300 mEq/day, becoming the primary mechanism for net acid excretion.",
+        "highYield": "Normal NH₄⁺ excretion: 30–40 mEq/day; increases in acidosis.",
+        "clinicalCorrelation": "Impaired ammonium excretion is a hallmark of distal RTA."
+      }
+    },
+    {
+      "questionId": "acid_base_040",
+      "difficulty": 2,
+      "question": "In a patient with metabolic acidosis, a negative urine anion gap (urine Na + K - Cl) indicates:",
+      "image": null,
+      "options": [
+        {
+          "text": "Increased urinary ammonium excretion (appropriate renal response)",
+          "isCorrect": true,
+          "explanation": "Urine anion gap = Na + K – Cl. A negative value indicates high unmeasured cations, mainly ammonium (NH₄⁺), which is the appropriate renal response to acidosis."
+        },
+        {
+          "text": "Decreased ammonium excretion",
+          "isCorrect": false,
+          "explanation": "A positive urine anion gap suggests low ammonium excretion."
+        },
+        {
+          "text": "Renal tubular acidosis",
+          "isCorrect": false,
+          "explanation": "In RTA, ammonium excretion is impaired, leading to a positive urine AG."
+        },
+        {
+          "text": "Diarrhea",
+          "isCorrect": false,
+          "explanation": "Diarrhea causes extrarenal bicarbonate loss, so renal response (negative UAG) is appropriate."
+        },
+        {
+          "text": "Hyperaldosteronism",
+          "isCorrect": false,
+          "explanation": "Hyperaldosteronism typically causes metabolic alkalosis, not acidosis."
+        }
+      ],
+      "explanation": {
+        "overview": "In non‑renal metabolic acidosis, the kidney increases ammonium excretion, making the urine anion gap negative. A positive gap suggests impaired ammonium excretion (RTA).",
+        "highYield": "Negative urine anion gap = appropriate renal NH₄⁺ excretion.",
+        "clinicalCorrelation": "Use the urine anion gap to differentiate GI bicarbonate loss (negative UAG) from distal RTA (positive UAG)."
+      }
+    },
+    {
+      "questionId": "acid_base_041",
+      "difficulty": 2,
+      "question": "In distal RTA (type 1), the urine anion gap is typically:",
+      "image": null,
+      "options": [
+        {
+          "text": "Positive (low ammonium)",
+          "isCorrect": true,
+          "explanation": "Distal RTA impairs ammonium excretion, so NH₄⁺ in urine is low, making the urine anion gap positive."
+        },
+        {
+          "text": "Negative (high ammonium)",
+          "isCorrect": false,
+          "explanation": "Negative UAG indicates high NH₄⁺, as in diarrhea."
+        },
+        {
+          "text": "Zero",
+          "isCorrect": false,
+          "explanation": "Usually positive or negative, not zero."
+        },
+        {
+          "text": "Variable",
+          "isCorrect": false,
+          "explanation": "It is characteristically positive."
+        },
+        {
+          "text": "Cannot be measured",
+          "isCorrect": false,
+          "explanation": "It can be measured from urine electrolytes."
+        }
+      ],
+      "explanation": {
+        "overview": "Distal RTA: inability to excrete H⁺ as NH₄⁺, so urine ammonium is low → urine anion gap (Na+K–Cl) is positive.",
+        "highYield": "Distal RTA → positive urine anion gap.",
+        "clinicalCorrelation": "Confirms the diagnosis of distal RTA in a patient with normal AG metabolic acidosis."
+      }
+    },
+    {
+      "questionId": "acid_base_042",
+      "difficulty": 2,
+      "question": "Which of the following drugs can cause metabolic alkalosis?",
+      "image": null,
+      "options": [
+        {
+          "text": "Thiazide diuretics",
+          "isCorrect": false,
+          "explanation": "Yes."
+        },
+        {
+          "text": "Loop diuretics",
+          "isCorrect": false,
+          "explanation": "Yes."
+        },
+        {
+          "text": "Mineralocorticoids",
+          "isCorrect": false,
+          "explanation": "Yes."
+        },
+        {
+          "text": "All of the above",
+          "isCorrect": true,
+          "explanation": "Thiazides, loop diuretics, and mineralocorticoids all promote renal H⁺ loss, leading to metabolic alkalosis."
+        },
+        {
+          "text": "None",
+          "isCorrect": false,
+          "explanation": "All can cause alkalosis."
+        }
+      ],
+      "explanation": {
+        "overview": "Loop and thiazide diuretics increase distal Na⁺ delivery, promoting H⁺ and K⁺ secretion. Mineralocorticoids directly stimulate H⁺-ATPase activity, causing alkalosis.",
+        "highYield": "Diuretics and mineralocorticoids → metabolic alkalosis.",
+        "clinicalCorrelation": "Check urine chloride: high (>20) in diuretic use; treat by volume repletion and potassium replacement."
+      }
+    },
+    {
+      "questionId": "acid_base_043",
+      "difficulty": 2,
+      "question": "A patient with pyloric stenosis presents with metabolic alkalosis. The urine chloride is likely:",
+      "image": null,
+      "options": [
+        {
+          "text": "Low (<20 mEq/L)",
+          "isCorrect": true,
+          "explanation": "Pyloric stenosis causes gastric acid loss and volume depletion; urine chloride is low (chloride‑responsive alkalosis)."
+        },
+        {
+          "text": "High (>20 mEq/L)",
+          "isCorrect": false,
+          "explanation": "High urine Cl is seen in mineralocorticoid excess or diuretic use."
+        },
+        {
+          "text": "Normal",
+          "isCorrect": false,
+          "explanation": "Typically low."
+        },
+        {
+          "text": "Variable",
+          "isCorrect": false,
+          "explanation": "Characteristically low."
+        },
+        {
+          "text": "Zero",
+          "isCorrect": false,
+          "explanation": "Not zero, but low."
+        }
+      ],
+      "explanation": {
+        "overview": "Chloride‑responsive metabolic alkalosis (urine Cl <20) is due to volume and chloride depletion, as in vomiting or nasogastric suction.",
+        "highYield": "Pyloric stenosis → urine Cl <20, metabolic alkalosis.",
+        "clinicalCorrelation": "Treat with NaCl and KCl to restore volume and chloride."
+      }
+    },
+    {
+      "questionId": "acid_base_044",
+      "difficulty": 2,
+      "question": "In a patient with mineralocorticoid excess (e.g., Conn's syndrome), the urine chloride is typically:",
+      "image": null,
+      "options": [
+        {
+          "text": "High (>20 mEq/L)",
+          "isCorrect": true,
+          "explanation": "Mineralocorticoid excess causes hypertension, hypokalemia, and metabolic alkalosis with high urine chloride (chloride‑resistant)."
+        },
+        {
+          "text": "Low (<20 mEq/L)",
+          "isCorrect": false,
+          "explanation": "Low urine Cl is chloride‑responsive."
+        },
+        {
+          "text": "Normal",
+          "isCorrect": false,
+          "explanation": "Typically high."
+        },
+        {
+          "text": "Zero",
+          "isCorrect": false,
+          "explanation": "Not zero."
+        },
+        {
+          "text": "Not measurable",
+          "isCorrect": false,
+          "explanation": "Measurable."
+        }
+      ],
+      "explanation": {
+        "overview": "Chloride‑resistant metabolic alkalosis: urine Cl >20, due to renal causes such as mineralocorticoid excess, licorice ingestion, or severe hypokalemia.",
+        "highYield": "Mineralocorticoid excess → urine Cl >20, metabolic alkalosis, hypertension.",
+        "clinicalCorrelation": "Treatment includes spironolactone or removal of the mineralocorticoid source."
+      }
+    },
+    {
+      "questionId": "acid_base_045",
+      "difficulty": 1,
+      "question": "The normal range for PCO2 is:",
+      "image": null,
+      "options": [
+        {
+          "text": "25-35 mmHg",
+          "isCorrect": false,
+          "explanation": "This range is low, indicating hyperventilation."
+        },
+        {
+          "text": "35-45 mmHg",
+          "isCorrect": true,
+          "explanation": "Normal arterial PCO₂ is 35–45 mmHg."
+        },
+        {
+          "text": "45-55 mmHg",
+          "isCorrect": false,
+          "explanation": "Mild hypercapnia."
+        },
+        {
+          "text": "20-30 mmHg",
+          "isCorrect": false,
+          "explanation": "Too low."
+        },
+        {
+          "text": "50-60 mmHg",
+          "isCorrect": false,
+          "explanation": "Significant hypercapnia."
+        }
+      ],
+      "explanation": {
+        "overview": "Arterial PCO₂ reflects the balance between CO₂ production and alveolar ventilation. Normal range: 35–45 mmHg.",
+        "highYield": "Normal PCO₂ = 35–45 mmHg.",
+        "clinicalCorrelation": "Values >45 indicate hypoventilation; <35 indicate hyperventilation."
+      }
+    },
+    {
+      "questionId": "acid_base_046",
+      "difficulty": 2,
+      "question": "A patient has pH 7.30, PCO2 30 mmHg, HCO3- 15 mEq/L. What is the primary disorder?",
+      "image": null,
+      "options": [
+        {
+          "text": "Metabolic acidosis with appropriate respiratory compensation",
+          "isCorrect": true,
+          "explanation": "pH low, HCO₃ low, PCO₂ low. Expected PCO₂ = 1.5×15+8 ±2 = 30.5. Measured 30 is appropriate compensation."
+        },
+        {
+          "text": "Metabolic acidosis with inadequate compensation",
+          "isCorrect": false,
+          "explanation": "The PCO₂ is exactly at the expected value, so compensation is adequate."
+        },
+        {
+          "text": "Respiratory alkalosis",
+          "isCorrect": false,
+          "explanation": "Respiratory alkalosis would have high pH."
+        },
+        {
+          "text": "Mixed metabolic acidosis and respiratory alkalosis",
+          "isCorrect": false,
+          "explanation": "A mixed disorder would show PCO₂ lower than expected for the HCO₃."
+        },
+        {
+          "text": "Normal",
+          "isCorrect": false,
+          "explanation": "pH is low."
+        }
+      ],
+      "explanation": {
+        "overview": "Low pH, low HCO₃⁻ (primary metabolic acidosis), and PCO₂ appropriately reduced per Winter's formula = simple metabolic acidosis with appropriate respiratory compensation.",
+        "highYield": "Winter's formula: expected PCO₂ = 1.5 × HCO₃⁻ + 8 ±2.",
+        "clinicalCorrelation": "If PCO₂ is higher than expected, a concurrent respiratory acidosis exists."
+      }
+    },
+    {
+      "questionId": "acid_base_047",
+      "difficulty": 2,
+      "question": "Which of the following can cause a mixed high AG metabolic acidosis and respiratory alkalosis?",
+      "image": null,
+      "options": [
+        {
+          "text": "Salicylate poisoning",
+          "isCorrect": false,
+          "explanation": "Yes."
+        },
+        {
+          "text": "Sepsis with lactic acidosis",
+          "isCorrect": false,
+          "explanation": "Sepsis causes hyperventilation and lactic acidosis."
+        },
+        {
+          "text": "Hepatic failure with lactic acidosis",
+          "isCorrect": false,
+          "explanation": "Liver failure can cause hyperventilation and lactic acidosis."
+        },
+        {
+          "text": "All of the above",
+          "isCorrect": true,
+          "explanation": "All three conditions can cause a mixed picture of high AG metabolic acidosis and respiratory alkalosis."
+        },
+        {
+          "text": "None",
+          "isCorrect": false,
+          "explanation": "All are correct."
+        }
+      ],
+      "explanation": {
+        "overview": "Salicylate poisoning, sepsis, and hepatic failure can all present with a mixed disorder: respiratory alkalosis due to hyperventilation and high anion gap metabolic acidosis.",
+        "highYield": "Mixed respiratory alkalosis + high AG acidosis = salicylates, sepsis, liver failure.",
+        "clinicalCorrelation": "Recognizing mixed disorders prevents misattribution of compensation as a primary disorder."
+      }
+    },
+    {
+      "questionId": "acid_base_048",
+      "difficulty": 2,
+      "question": "In a patient with metabolic alkalosis and hypokalemia, the hypokalemia is due to:",
+      "image": null,
+      "options": [
+        {
+          "text": "Shift of K+ into cells (H+ exit) and renal K+ loss",
+          "isCorrect": true,
+          "explanation": "In alkalosis, H⁺ moves out of cells to buffer the alkaline pH, and K⁺ shifts into cells. Additionally, bicarbonaturia and increased distal Na⁺ delivery promote renal K⁺ loss."
+        },
+        {
+          "text": "Decreased intake",
+          "isCorrect": false,
+          "explanation": "Decreased intake alone is rarely the cause."
+        },
+        {
+          "text": "GI loss",
+          "isCorrect": false,
+          "explanation": "GI losses can cause hypokalemia, but in metabolic alkalosis the primary mechanism is transcellular shift and renal loss."
+        },
+        {
+          "text": "All of the above",
+          "isCorrect": false,
+          "explanation": "Not all apply as primary mechanisms."
+        },
+        {
+          "text": "None",
+          "isCorrect": false,
+          "explanation": "Shift and renal loss are key."
+        }
+      ],
+      "explanation": {
+        "overview": "Metabolic alkalosis causes hypokalemia via intracellular K⁺ shift in exchange for H⁺ and increased renal K⁺ wasting, especially if associated with hyperaldosteronism or diuretics.",
+        "highYield": "Alkalosis → K⁺ moves into cells; renal K⁺ loss → hypokalemia.",
+        "clinicalCorrelation": "Correcting the alkalosis and repleting potassium are essential; hypokalemia perpetuates alkalosis."
+      }
+    },
+    {
+      "questionId": "acid_base_049",
+      "difficulty": 2,
+      "question": "The most potent stimulus for aldosterone secretion is:",
+      "image": null,
+      "options": [
+        {
+          "text": "Hyperkalemia",
+          "isCorrect": true,
+          "explanation": "While angiotensin II is a major regulator, a rise in plasma potassium is the most potent direct stimulus for aldosterone secretion from the zona glomerulosa."
+        },
+        {
+          "text": "Angiotensin II",
+          "isCorrect": false,
+          "explanation": "Angiotensin II is a powerful stimulus, but potassium is considered the most potent."
+        },
+        {
+          "text": "Hyponatremia",
+          "isCorrect": false,
+          "explanation": "Sodium concentration has a less potent effect."
+        },
+        {
+          "text": "ACTH",
+          "isCorrect": false,
+          "explanation": "ACTH can stimulate aldosterone acutely, but potassium is the primary chronic regulator."
+        },
+        {
+          "text": "Hypotension",
+          "isCorrect": false,
+          "explanation": "Hypotension activates the renin‑angiotensin system."
+        }
+      ],
+      "explanation": {
+        "overview": "Hyperkalemia directly stimulates aldosterone secretion by depolarizing the adrenal cell membrane, leading to increased calcium influx. It is the most potent regulator.",
+        "highYield": "Most potent aldosterone stimulus: hyperkalemia.",
+        "clinicalCorrelation": "Aldosterone promotes K⁺ secretion and Na⁺ reabsorption; in type 4 RTA, aldosterone deficiency leads to hyperkalemia and acidosis."
+      }
+    },
+    {
+      "questionId": "acid_base_050",
+      "difficulty": 2,
+      "question": "In a patient with ethylene glycol poisoning, characteristic findings include:",
+      "image": null,
+      "options": [
+        {
+          "text": "High anion gap acidosis, elevated osmolal gap, calcium oxalate crystals in urine",
+          "isCorrect": true,
+          "explanation": "Ethylene glycol is metabolized to glycolic and oxalic acids, causing high AG acidosis, an osmolal gap early, and calcium oxalate crystalluria."
+        },
+        {
+          "text": "Normal anion gap acidosis, hypocalcemia",
+          "isCorrect": false,
+          "explanation": "Ethylene glycol causes high AG acidosis, not normal AG."
+        },
+        {
+          "text": "Respiratory alkalosis, elevated lactate",
+          "isCorrect": false,
+          "explanation": "Not the primary picture."
+        },
+        {
+          "text": "Metabolic alkalosis, hyperkalemia",
+          "isCorrect": false,
+          "explanation": "It's acidosis, not alkalosis."
+        },
+        {
+          "text": "Normal labs",
+          "isCorrect": false,
+          "explanation": "Laboratory abnormalities are prominent."
+        }
+      ],
+      "explanation": {
+        "overview": "Ethylene glycol poisoning: high anion gap acidosis, elevated osmolal gap, and calcium oxalate crystals (envelope‑shaped) in urine. Hypocalcemia may occur due to calcium oxalate formation.",
+        "highYield": "Ethylene glycol = high AG + osmolal gap + oxalate crystals.",
+        "clinicalCorrelation": "Treatment with fomepizole or ethanol, and hemodialysis for severe cases."
+      }
+    },
+    {
+      "questionId": "acid_base_051",
+      "difficulty": 2,
+      "question": "A patient with diabetic ketoacidosis has pH 7.1, HCO3- 5 mEq/L, PCO2 15 mmHg. What is the appropriate interpretation?",
+      "image": null,
+      "options": [
+        {
+          "text": "Metabolic acidosis with appropriate respiratory compensation",
+          "isCorrect": true,
+          "explanation": "Expected PCO2 = 1.5 × 5 + 8 ±2 = 15.5; the measured PCO2 of 15 is appropriate."
+        },
+        {
+          "text": "Metabolic acidosis with concurrent respiratory alkalosis",
+          "isCorrect": false,
+          "explanation": "PCO2 is exactly at expected, not lower."
+        },
+        {
+          "text": "Metabolic acidosis with inadequate compensation",
+          "isCorrect": false,
+          "explanation": "Compensation is adequate."
+        },
+        {
+          "text": "Mixed metabolic and respiratory acidosis",
+          "isCorrect": false,
+          "explanation": "PCO2 is low, not high."
+        },
+        {
+          "text": "Respiratory alkalosis",
+          "isCorrect": false,
+          "explanation": "Primary problem is metabolic."
+        }
+      ],
+      "explanation": {
+        "overview": "With HCO3 5, Winter's formula predicts PCO2 ≈ 15.5. The patient's PCO2 15 indicates appropriate respiratory compensation for pure metabolic acidosis.",
+        "highYield": "Winter's formula confirms appropriate compensation.",
+        "clinicalCorrelation": "If PCO2 were lower (e.g., 10), it would suggest a concurrent respiratory alkalosis."
+      }
+    },
+    {
+      "questionId": "acid_base_052",
+      "difficulty": 2,
+      "question": "Which of the following is true regarding the compensatory response in metabolic alkalosis?",
+      "image": null,
+      "options": [
+        {
+          "text": "Hypoventilation increases PCO2 by 0.6 mmHg per 1 mEq/L rise in HCO3-",
+          "isCorrect": true,
+          "explanation": "Respiratory compensation: PCO2 rises ~0.6 mmHg for every 1 mEq/L increase in HCO3 above 24."
+        },
+        {
+          "text": "Hyperventilation decreases PCO2",
+          "isCorrect": false,
+          "explanation": "Compensation is hypoventilation, not hyperventilation."
+        },
+        {
+          "text": "The kidneys rapidly excrete bicarbonate",
+          "isCorrect": false,
+          "explanation": "The kidney retains bicarbonate in metabolic alkalosis."
+        },
+        {
+          "text": "There is no respiratory compensation",
+          "isCorrect": false,
+          "explanation": "There is respiratory compensation via hypoventilation."
+        },
+        {
+          "text": "Compensation fully corrects the pH",
+          "isCorrect": false,
+          "explanation": "Compensation brings pH toward normal but rarely fully corrects."
+        }
+      ],
+      "explanation": {
+        "overview": "In metabolic alkalosis, the expected respiratory compensation is a rise in PCO2 of about 0.6 mmHg per 1 mEq/L increase in HCO3⁻ above 24.",
+        "highYield": "ΔPCO2 = 0.6 × (HCO3 – 24) in metabolic alkalosis.",
+        "clinicalCorrelation": "If PCO2 is higher than expected, a concomitant respiratory acidosis is present."
+      }
+    },
+    {
+      "questionId": "acid_base_053",
+      "difficulty": 2,
+      "question": "Which of the following laboratory findings is typical of proximal (type 2) RTA?",
+      "image": null,
+      "options": [
+        {
+          "text": "Hypokalemia, normal AG acidosis, bicarbonaturia, urine pH <5.5 when acidemic",
+          "isCorrect": true,
+          "explanation": "Proximal RTA leads to bicarbonate wasting, hypokalemia, and normal AG acidosis. Distal acidification is intact, so urine can become acidic when serum HCO3 is low."
+        },
+        {
+          "text": "Hyperkalemia, normal AG acidosis, urine pH >5.5",
+          "isCorrect": false,
+          "explanation": "That describes type 4 RTA (hyperkalemia) or type 1 RTA (urine pH >5.5)."
+        },
+        {
+          "text": "Hypokalemia, high AG acidosis",
+          "isCorrect": false,
+          "explanation": "Proximal RTA is normal AG."
+        },
+        {
+          "text": "Hyperkalemia, high AG acidosis",
+          "isCorrect": false,
+          "explanation": "Not typical."
+        },
+        {
+          "text": "Normal K, normal AG, alkaline urine",
+          "isCorrect": false,
+          "explanation": "Proximal RTA has low K and acidosis."
+        }
+      ],
+      "explanation": {
+        "overview": "Proximal RTA: impaired proximal HCO3⁻ reabsorption → bicarbonaturia, hypokalemia, normal AG metabolic acidosis. Urine can acidify (pH <5.5) when serum HCO3⁻ is below threshold.",
+        "highYield": "Proximal RTA: hypokalemia, normal AG acidosis, acidic urine when acidemic.",
+        "clinicalCorrelation": "Often associated with Fanconi syndrome (phosphaturia, glucosuria, aminoaciduria)."
+      }
+    },
+    {
+      "questionId": "acid_base_054",
+      "difficulty": 2,
+      "question": "Which set of values is consistent with chronic respiratory acidosis with full renal compensation?",
+      "image": null,
+      "options": [
+        {
+          "text": "pH 7.36, PCO2 60, HCO3- 34",
+          "isCorrect": true,
+          "explanation": "Slightly low pH, high PCO2, elevated HCO3- (~34) indicates chronic respiratory acidosis with renal compensation. ΔHCO3 ≈ 0.4 × (60-40) = 8, giving HCO3 ~32; 34 is within range."
+        },
+        {
+          "text": "pH 7.48, PCO2 30, HCO3- 22",
+          "isCorrect": false,
+          "explanation": "This is respiratory alkalosis."
+        },
+        {
+          "text": "pH 7.25, PCO2 60, HCO3- 25",
+          "isCorrect": false,
+          "explanation": "Acute respiratory acidosis."
+        },
+        {
+          "text": "pH 7.30, PCO2 50, HCO3- 18",
+          "isCorrect": false,
+          "explanation": "Mixed disorder: low pH, high PCO2 but HCO3 low suggests combined metabolic and respiratory acidosis."
+        },
+        {
+          "text": "pH 7.42, PCO2 40, HCO3- 26",
+          "isCorrect": false,
+          "explanation": "Normal."
+        }
+      ],
+      "explanation": {
+        "overview": "Chronic respiratory acidosis: pH near normal (7.35-7.40), elevated PCO2, and appropriately increased HCO3- (ΔHCO3 ≈ 0.4 × ΔPCO2).",
+        "highYield": "Chronic respiratory acidosis: pH ~7.36, PCO2↑, HCO3↑ proportionally.",
+        "clinicalCorrelation": "Common in stable COPD patients."
+      }
+    },
+    {
+      "questionId": "acid_base_055",
+      "difficulty": 2,
+      "question": "A patient with vomiting develops metabolic alkalosis. Which electrolyte abnormality would you expect?",
+      "image": null,
+      "options": [
+        {
+          "text": "Hypokalemia, hypochloremia",
+          "isCorrect": true,
+          "explanation": "Vomiting causes loss of HCl (hypochloremia) and potassium (hypokalemia due to renal K+ loss and shift)."
+        },
+        {
+          "text": "Hyperkalemia, hyperchloremia",
+          "isCorrect": false,
+          "explanation": "Vomiting causes loss, not retention."
+        },
+        {
+          "text": "Hypokalemia, hyperchloremia",
+          "isCorrect": false,
+          "explanation": "Chloride is lost in gastric acid."
+        },
+        {
+          "text": "Hypernatremia, hypokalemia",
+          "isCorrect": false,
+          "explanation": "Sodium may be normal or slightly low."
+        },
+        {
+          "text": "Normal electrolytes",
+          "isCorrect": false,
+          "explanation": "Electrolyte disturbances are typical."
+        }
+      ],
+      "explanation": {
+        "overview": "Vomiting leads to metabolic alkalosis with hypokalemia and hypochloremia. Urine chloride is low (<20), indicating chloride-responsive alkalosis.",
+        "highYield": "Vomiting → metabolic alkalosis, ↓K, ↓Cl, urine Cl <20.",
+        "clinicalCorrelation": "Saline infusion and KCl replacement correct the alkalosis."
+      }
+    },
+    {
+      "questionId": "acid_base_056",
+      "difficulty": 2,
+      "question": "In interpreting a blood gas: pH 7.20, PCO2 80, HCO3- 30. What is the disorder?",
+      "image": null,
+      "options": [
+        {
+          "text": "Acute respiratory acidosis with metabolic compensation (actually acute on chronic?)",
+          "isCorrect": false,
+          "explanation": "pH 7.20 is severely acidotic; HCO3 is 30, which is elevated, indicating some renal compensation, but pH is very low. This suggests acute-on-chronic respiratory acidosis or mixed disorder."
+        },
+        {
+          "text": "Acute respiratory acidosis only",
+          "isCorrect": false,
+          "explanation": "Acute respiratory acidosis would have near-normal HCO3."
+        },
+        {
+          "text": "Chronic respiratory acidosis with acute deterioration",
+          "isCorrect": true,
+          "explanation": "A high PCO2 of 80 with HCO3 of 30 indicates pre-existing chronic respiratory acidosis (compensated) with an acute rise in PCO2 (pH 7.20). Expected chronic HCO3 for PCO2 80: 24 + 0.4×(40) = 40, but here HCO3 is 30, so there is also a metabolic acidosis or acute-on-chronic."
+        },
+        {
+          "text": "Metabolic acidosis with respiratory compensation",
+          "isCorrect": false,
+          "explanation": "PCO2 is high, not low."
+        },
+        {
+          "text": "Mixed metabolic and respiratory acidosis",
+          "isCorrect": false,
+          "explanation": "HCO3 is elevated, not low, so metabolic acidosis is not present."
+        }
+      ],
+      "explanation": {
+        "overview": "pH 7.20, PCO2 80 (very high), HCO3 30 (elevated). Expected HCO3 for chronic PCO2 80 is ~40, so HCO3 30 is lower than expected for chronic, indicating an acute-on-chronic respiratory acidosis or an additional metabolic acidosis.",
+        "highYield": "PCO2 80 + HCO3 30 suggests acute-on-chronic respiratory acidosis.",
+        "clinicalCorrelation": "Common in COPD exacerbations."
+      }
+    },
+    {
+      "questionId": "acid_base_057",
+      "difficulty": 2,
+      "question": "The delta gap is calculated as (AG-12)/(24-HCO3). A delta gap >2 suggests:",
+      "image": null,
+      "options": [
+        {
+          "text": "Concomitant metabolic alkalosis",
+          "isCorrect": true,
+          "explanation": "Delta gap >2 indicates that the rise in AG is disproportionately greater than the fall in HCO3, implying a coexisting metabolic alkalosis is elevating HCO3."
+        },
+        {
+          "text": "Concomitant normal AG metabolic acidosis",
+          "isCorrect": false,
+          "explanation": "Delta gap <1 suggests that."
+        },
+        {
+          "text": "Pure high AG acidosis",
+          "isCorrect": false,
+          "explanation": "Delta gap 1-2 suggests pure disorder."
+        },
+        {
+          "text": "Respiratory alkalosis",
+          "isCorrect": false,
+          "explanation": "Not assessed by delta gap."
+        },
+        {
+          "text": "None of the above",
+          "isCorrect": false,
+          "explanation": "Delta gap >2 indicates metabolic alkalosis."
+        }
+      ],
+      "explanation": {
+        "overview": "Delta gap = (AG – 12) / (24 – HCO3). If >2, the rise in AG exceeds the fall in HCO3, suggesting a pre-existing metabolic alkalosis (or a mixed high AG acidosis and metabolic alkalosis).",
+        "highYield": "Delta gap >2 → concurrent metabolic alkalosis.",
+        "clinicalCorrelation": "Example: patient with vomiting (alkalosis) who develops sepsis and lactic acidosis."
+      }
+    },
+    {
+      "questionId": "acid_base_058",
+      "difficulty": 2,
+      "question": "Which of the following causes a normal anion gap metabolic acidosis?",
+      "image": null,
+      "options": [
+        {
+          "text": "Ureteral diversion (e.g., ileal conduit)",
+          "isCorrect": true,
+          "explanation": "Urinary diversions using ileum or colon can cause hyperchloremic metabolic acidosis due to bicarbonate loss in exchange for chloride."
+        },
+        {
+          "text": "Methanol poisoning",
+          "isCorrect": false,
+          "explanation": "High AG acidosis."
+        },
+        {
+          "text": "Lactic acidosis",
+          "isCorrect": false,
+          "explanation": "High AG."
+        },
+        {
+          "text": "Ketoacidosis",
+          "isCorrect": false,
+          "explanation": "High AG."
+        },
+        {
+          "text": "Uremia",
+          "isCorrect": false,
+          "explanation": "High AG."
+        }
+      ],
+      "explanation": {
+        "overview": "Causes of normal anion gap metabolic acidosis include diarrhea, RTA, and urinary diversions (ileal conduit). These lead to bicarbonate loss or impaired acid excretion without accumulating organic acids.",
+        "highYield": "Normal AG acidosis: diarrhea, RTA, ureteral diversion.",
+        "clinicalCorrelation": "In ileal conduits, urine chloride-bicarbonate exchange in the bowel segment causes hyperchloremic acidosis."
+      }
+    },
+    {
+      "questionId": "acid_base_059",
+      "difficulty": 2,
+      "question": "In hypoxic lactic acidosis (type A), the primary problem is:",
+      "image": null,
+      "options": [
+        {
+          "text": "Tissue hypoxia leading to anaerobic glycolysis",
+          "isCorrect": true,
+          "explanation": "Type A lactic acidosis results from inadequate oxygen delivery, causing cells to switch to anaerobic metabolism and produce lactate."
+        },
+        {
+          "text": "Mitochondrial dysfunction without hypoxia",
+          "isCorrect": false,
+          "explanation": "That is type B lactic acidosis."
+        },
+        {
+          "text": "Excess alcohol consumption",
+          "isCorrect": false,
+          "explanation": "Alcohol can cause type B lactic acidosis."
+        },
+        {
+          "text": "Renal failure",
+          "isCorrect": false,
+          "explanation": "Renal failure contributes but is not the primary cause of type A."
+        },
+        {
+          "text": "Diabetes",
+          "isCorrect": false,
+          "explanation": "Diabetes can cause DKA, not primarily type A lactic acidosis."
+        }
+      ],
+      "explanation": {
+        "overview": "Type A lactic acidosis is due to tissue hypoperfusion or hypoxia (e.g., shock, cardiac arrest, severe hypoxemia). Type B is due to metabolic defects without overt hypoxia.",
+        "highYield": "Type A lactic acidosis = tissue hypoxia (shock, ischemia).",
+        "clinicalCorrelation": "Treatment focuses on restoring perfusion and oxygen delivery."
+      }
+    },
+    {
+      "questionId": "acid_base_060",
+      "difficulty": 2,
+      "question": "The urine pH in a patient with distal RTA during severe acidemia is:",
+      "image": null,
+      "options": [
+        {
+          "text": ">5.5",
+          "isCorrect": true,
+          "explanation": "Distal RTA impairs distal H+ secretion; even with severe acidemia, urine pH cannot fall below 5.5."
+        },
+        {
+          "text": "<5.5",
+          "isCorrect": false,
+          "explanation": "That would indicate intact distal acidification."
+        },
+        {
+          "text": "Variable",
+          "isCorrect": false,
+          "explanation": "It is consistently >5.5."
+        },
+        {
+          "text": "Not related to serum pH",
+          "isCorrect": false,
+          "explanation": "It is related."
+        },
+        {
+          "text": "Always >7",
+          "isCorrect": false,
+          "explanation": "Not always; can be between 5.5 and 6.5."
+        }
+      ],
+      "explanation": {
+        "overview": "The hallmark of distal RTA is the inability to lower urine pH below 5.5 despite systemic acidosis, due to impaired distal H⁺ secretion.",
+        "highYield": "Distal RTA: urine pH >5.5 in acidemia.",
+        "clinicalCorrelation": "An acid load test (e.g., ammonium chloride) confirms the diagnosis."
+      }
+    },
+    {
+      "questionId": "acid_base_061",
+      "difficulty": 2,
+      "question": "Which of the following would cause a high urine anion gap?",
+      "image": null,
+      "options": [
+        {
+          "text": "Distal renal tubular acidosis",
+          "isCorrect": true,
+          "explanation": "In distal RTA, ammonium excretion is impaired, so urine NH4+ is low and UAG is positive."
+        },
+        {
+          "text": "Diarrhea",
+          "isCorrect": false,
+          "explanation": "Diarrhea leads to appropriate renal NH4+ excretion, negative UAG."
+        },
+        {
+          "text": "Proximal RTA (when bicarbonaturia)",
+          "isCorrect": false,
+          "explanation": "Proximal RTA with bicarbonaturia can have variable UAG, but distal RTA is the classic high UAG."
+        },
+        {
+          "text": "Starvation ketosis",
+          "isCorrect": false,
+          "explanation": "Ketosis is a high AG acidosis, not assessed by UAG primarily."
+        },
+        {
+          "text": "Lactic acidosis",
+          "isCorrect": false,
+          "explanation": "Lactic acidosis: renal response is high NH4+, negative UAG."
+        }
+      ],
+      "explanation": {
+        "overview": "Urine anion gap (Na+K–Cl) is positive when urinary ammonium is low. In distal RTA, inability to excrete H⁺ as NH₄⁺ leads to positive UAG.",
+        "highYield": "Positive UAG = distal RTA; Negative UAG = diarrhea.",
+        "clinicalCorrelation": "Use UAG in patients with normal AG metabolic acidosis to assess renal acidification."
+      }
+    },
+    {
+      "questionId": "acid_base_062",
+      "difficulty": 2,
+      "question": "In metabolic alkalosis, which of the following is a cause of chloride-resistant (urine Cl >20) alkalosis?",
+      "image": null,
+      "options": [
+        {
+          "text": "Primary hyperaldosteronism",
+          "isCorrect": true,
+          "explanation": "Mineralocorticoid excess causes renal H+ loss despite adequate chloride, leading to high urine Cl and chloride-resistant metabolic alkalosis."
+        },
+        {
+          "text": "Vomiting",
+          "isCorrect": false,
+          "explanation": "Vomiting causes chloride-responsive (urine Cl <20) alkalosis."
+        },
+        {
+          "text": "Nasogastric suction",
+          "isCorrect": false,
+          "explanation": "That is also chloride-responsive."
+        },
+        {
+          "text": "Chloride-deficient formula",
+          "isCorrect": false,
+          "explanation": "That causes chloride-responsive alkalosis."
+        },
+        {
+          "text": "Diuretic use (remote)",
+          "isCorrect": false,
+          "explanation": "Active diuretic use can cause high urine Cl, but remote diuretic use may show low Cl if volume depleted. However, primary hyperaldosteronism is the classic chloride-resistant."
+        }
+      ],
+      "explanation": {
+        "overview": "Chloride-resistant metabolic alkalosis (urine Cl >20) results from mineralocorticoid excess or severe hypokalemia. It does not respond to saline infusion.",
+        "highYield": "Urine Cl >20 = mineralocorticoid excess, diuretics (active), severe hypokalemia.",
+        "clinicalCorrelation": "Treatment targets the underlying hormone excess or potassium repletion."
+      }
+    },
+    {
+      "questionId": "acid_base_063",
+      "difficulty": 2,
+      "question": "Which of the following statements about the kidney's response to chronic respiratory acidosis is true?",
+      "image": null,
+      "options": [
+        {
+          "text": "Increased proximal HCO3- reabsorption and increased NH4+ excretion",
+          "isCorrect": true,
+          "explanation": "Chronic hypercapnia stimulates both proximal HCO3⁻ reclamation and distal H⁺ secretion as ammonium, raising plasma HCO3⁻."
+        },
+        {
+          "text": "Decreased H+ secretion",
+          "isCorrect": false,
+          "explanation": "H+ secretion increases."
+        },
+        {
+          "text": "No change in renal acid handling",
+          "isCorrect": false,
+          "explanation": "Renal compensation is significant."
+        },
+        {
+          "text": "Decreased bicarbonate reabsorption",
+          "isCorrect": false,
+          "explanation": "Reabsorption increases."
+        },
+        {
+          "text": "Loss of bicarbonate in urine",
+          "isCorrect": false,
+          "explanation": "Bicarbonate is conserved."
+        }
+      ],
+      "explanation": {
+        "overview": "Chronic respiratory acidosis leads to increased renal H⁺ secretion, enhanced HCO3⁻ reabsorption, and elevated ammonium excretion, resulting in a higher plasma HCO3⁻.",
+        "highYield": "Chronic respiratory acidosis: ↑HCO3⁻ reabsorption, ↑NH4+ excretion.",
+        "clinicalCorrelation": "This compensation takes 3–5 days to fully develop."
+      }
+    },
+    {
+      "questionId": "acid_base_064",
+      "difficulty": 2,
+      "question": "A patient with chronic kidney disease (stage 4) is likely to have which acid-base disturbance?",
+      "image": null,
+      "options": [
+        {
+          "text": "High anion gap metabolic acidosis (uremic acidosis)",
+          "isCorrect": true,
+          "explanation": "As GFR falls, organic acids accumulate, leading to high AG metabolic acidosis. In early CKD, it may be normal AG, but advanced CKD causes high AG."
+        },
+        {
+          "text": "Metabolic alkalosis",
+          "isCorrect": false,
+          "explanation": "CKD causes acidosis, not alkalosis."
+        },
+        {
+          "text": "Respiratory acidosis",
+          "isCorrect": false,
+          "explanation": "Not directly from CKD."
+        },
+        {
+          "text": "Respiratory alkalosis",
+          "isCorrect": false,
+          "explanation": "Not typical."
+        },
+        {
+          "text": "Normal acid-base status",
+          "isCorrect": false,
+          "explanation": "Advanced CKD impairs acid excretion."
+        }
+      ],
+      "explanation": {
+        "overview": "In advanced chronic kidney disease, retention of non-volatile acids (phosphate, sulfate) causes a high anion gap metabolic acidosis.",
+        "highYield": "CKD → high AG metabolic acidosis.",
+        "clinicalCorrelation": "Treatment includes bicarbonate supplementation and dietary protein restriction."
+      }
+    },
+    {
+      "questionId": "acid_base_065",
+      "difficulty": 2,
+      "question": "Which of the following drugs can cause a normal anion gap metabolic acidosis?",
+      "image": null,
+      "options": [
+        {
+          "text": "Acetazolamide",
+          "isCorrect": true,
+          "explanation": "Acetazolamide, a carbonic anhydrase inhibitor, causes bicarbonaturia and normal AG metabolic acidosis."
+        },
+        {
+          "text": "Metformin",
+          "isCorrect": false,
+          "explanation": "Metformin can cause lactic acidosis (high AG)."
+        },
+        {
+          "text": "Aspirin (high dose)",
+          "isCorrect": false,
+          "explanation": "Salicylate causes high AG acidosis and respiratory alkalosis."
+        },
+        {
+          "text": "Iron overdose",
+          "isCorrect": false,
+          "explanation": "Iron causes high AG acidosis."
+        },
+        {
+          "text": "Ethanol",
+          "isCorrect": false,
+          "explanation": "Ethanol can cause ketoacidosis (high AG)."
+        }
+      ],
+      "explanation": {
+        "overview": "Acetazolamide inhibits proximal HCO3⁻ reabsorption, causing bicarbonate loss and hyperchloremic metabolic acidosis.",
+        "highYield": "Acetazolamide → normal AG metabolic acidosis.",
+        "clinicalCorrelation": "Used in glaucoma, altitude sickness; can lead to alkaline urine and renal bicarbonate wasting."
+      }
+    },
+    {
+      "questionId": "acid_base_066",
+      "difficulty": 2,
+      "question": "In a patient with metabolic acidosis, the serum potassium is 6.0 mEq/L. Which type of RTA is most likely?",
+      "image": null,
+      "options": [
+        {
+          "text": "Type 4 RTA",
+          "isCorrect": true,
+          "explanation": "Type 4 RTA is characterized by hyperkalemia due to aldosterone deficiency or resistance, along with normal AG metabolic acidosis."
+        },
+        {
+          "text": "Type 1 RTA",
+          "isCorrect": false,
+          "explanation": "Type 1 RTA typically presents with hypokalemia."
+        },
+        {
+          "text": "Type 2 RTA",
+          "isCorrect": false,
+          "explanation": "Proximal RTA also causes hypokalemia."
+        },
+        {
+          "text": "Diabetic ketoacidosis",
+          "isCorrect": false,
+          "explanation": "DKA often presents with potassium depletion, but serum K may be normal or high initially due to acidosis shift; however, total body K is low. But the question asks for type of RTA."
+        },
+        {
+          "text": "Diarrhea-induced acidosis",
+          "isCorrect": false,
+          "explanation": "Diarrhea causes hypokalemia, not hyperkalemia."
+        }
+      ],
+      "explanation": {
+        "overview": "Type 4 RTA (hyporeninemic hypoaldosteronism) presents with hyperkalemia and hyperchloremic metabolic acidosis. Types 1 and 2 are associated with hypokalemia.",
+        "highYield": "Hyperkalemia + normal AG acidosis = type 4 RTA.",
+        "clinicalCorrelation": "Often seen in diabetic nephropathy and with medications that impair the renin-angiotensin-aldosterone system."
+      }
+    },
+    {
+      "questionId": "acid_base_067",
+      "difficulty": 2,
+      "question": "A patient has pH 7.48, PCO2 48, HCO3- 36. What is the primary disorder?",
+      "image": null,
+      "options": [
+        {
+          "text": "Metabolic alkalosis with appropriate respiratory compensation",
+          "isCorrect": true,
+          "explanation": "pH high, HCO3 high, PCO2 appropriately elevated. Expected PCO2 = 40 + 0.6 × (36-24) = 47.2, close to 48."
+        },
+        {
+          "text": "Respiratory acidosis with renal compensation",
+          "isCorrect": false,
+          "explanation": "pH is alkaline, not acidic."
+        },
+        {
+          "text": "Mixed metabolic alkalosis and respiratory acidosis",
+          "isCorrect": false,
+          "explanation": "PCO2 is appropriate for the degree of alkalosis; no evidence of respiratory acidosis."
+        },
+        {
+          "text": "Acute metabolic alkalosis",
+          "isCorrect": false,
+          "explanation": "The PCO2 elevation indicates compensation, which takes time."
+        },
+        {
+          "text": "Primary respiratory alkalosis",
+          "isCorrect": false,
+          "explanation": "PCO2 is high, not low."
+        }
+      ],
+      "explanation": {
+        "overview": "Metabolic alkalosis: high pH, high HCO3⁻, and compensatory hypoventilation raises PCO2. Expected PCO2 = 40 + 0.6 × (HCO3 – 24).",
+        "highYield": "Metabolic alkalosis: ↑pH, ↑HCO3, ↑PCO2 appropriately.",
+        "clinicalCorrelation": "If PCO2 is lower than expected, a concurrent respiratory alkalosis exists."
+      }
+    },
+    {
+      "questionId": "acid_base_068",
+      "difficulty": 2,
+      "question": "Which of the following is NOT a cause of high anion gap metabolic acidosis?",
+      "image": null,
+      "options": [
+        {
+          "text": "Acetazolamide therapy",
+          "isCorrect": true,
+          "explanation": "Acetazolamide causes normal AG acidosis."
+        },
+        {
+          "text": "Methanol poisoning",
+          "isCorrect": false,
+          "explanation": "High AG."
+        },
+        {
+          "text": "Lactic acidosis",
+          "isCorrect": false,
+          "explanation": "High AG."
+        },
+        {
+          "text": "Diabetic ketoacidosis",
+          "isCorrect": false,
+          "explanation": "High AG."
+        },
+        {
+          "text": "Uremia",
+          "isCorrect": false,
+          "explanation": "High AG."
+        }
+      ],
+      "explanation": {
+        "overview": "Acetazolamide is a carbonic anhydrase inhibitor that causes bicarbonate wasting and normal AG (hyperchloremic) acidosis. The others cause accumulation of unmeasured organic acids.",
+        "highYield": "Acetazolamide → normal AG acidosis.",
+        "clinicalCorrelation": "Useful to know when differentiating causes of metabolic acidosis."
+      }
+    },
+    {
+      "questionId": "acid_base_069",
+      "difficulty": 2,
+      "question": "In a patient with cirrhosis and ascites, which acid-base disorder might be present?",
+      "image": null,
+      "options": [
+        {
+          "text": "Respiratory alkalosis (from hyperventilation)",
+          "isCorrect": true,
+          "explanation": "Cirrhotic patients often have a primary respiratory alkalosis due to progesterone-mediated or central hyperventilation."
+        },
+        {
+          "text": "Metabolic acidosis",
+          "isCorrect": false,
+          "explanation": "Less common; alkalosis is more typical."
+        },
+        {
+          "text": "Metabolic alkalosis",
+          "isCorrect": false,
+          "explanation": "Can occur with diuretic use, but respiratory alkalosis is classic."
+        },
+        {
+          "text": "Respiratory acidosis",
+          "isCorrect": false,
+          "explanation": "Not typical."
+        },
+        {
+          "text": "No acid-base disorder",
+          "isCorrect": false,
+          "explanation": "Respiratory alkalosis is common."
+        }
+      ],
+      "explanation": {
+        "overview": "Liver cirrhosis is often associated with chronic respiratory alkalosis due to hyperventilation, possibly from elevated progesterone, intrapulmonary shunting, or hepatic encephalopathy.",
+        "highYield": "Cirrhosis → chronic respiratory alkalosis.",
+        "clinicalCorrelation": "A mixed disorder may develop if diuretics cause metabolic alkalosis or if there is a superimposed lactic acidosis."
+      }
+    },
+    {
+      "questionId": "acid_base_070",
+      "difficulty": 2,
+      "question": "Which of the following can cause both respiratory alkalosis and high anion gap metabolic acidosis?",
+      "image": null,
+      "options": [
+        {
+          "text": "Salicylate poisoning",
+          "isCorrect": true,
+          "explanation": "Salicylates directly stimulate the respiratory center (respiratory alkalosis) and uncouple oxidative phosphorylation (high AG acidosis)."
+        },
+        {
+          "text": "Opioid overdose",
+          "isCorrect": false,
+          "explanation": "Causes respiratory acidosis."
+        },
+        {
+          "text": "Diabetic ketoacidosis",
+          "isCorrect": false,
+          "explanation": "DKA causes metabolic acidosis with appropriate respiratory compensation (low PCO2), but the primary disorder is not respiratory alkalosis; it's a compensatory response."
+        },
+        {
+          "text": "Acetazolamide use",
+          "isCorrect": false,
+          "explanation": "Normal AG acidosis."
+        },
+        {
+          "text": "Renal failure",
+          "isCorrect": false,
+          "explanation": "High AG acidosis with Kussmaul breathing as compensation, not primary respiratory alkalosis."
+        }
+      ],
+      "explanation": {
+        "overview": "Salicylate poisoning is the classic cause of a mixed primary respiratory alkalosis and primary high AG metabolic acidosis.",
+        "highYield": "Salicylate poisoning = primary respiratory alkalosis + high AG metabolic acidosis.",
+        "clinicalCorrelation": "The presence of this combination should prompt investigation for salicylate ingestion."
+      }
+    },
+    {
+      "questionId": "acid_base_071",
+      "difficulty": 2,
+      "question": "The normal bicarbonate concentration in arterial blood is:",
+      "image": null,
+      "options": [
+        {
+          "text": "22-26 mEq/L",
+          "isCorrect": true,
+          "explanation": "Standard normal range for HCO3⁻ is 22–26 mEq/L (some sources 24±2)."
+        },
+        {
+          "text": "10-15 mEq/L",
+          "isCorrect": false,
+          "explanation": "Too low."
+        },
+        {
+          "text": "30-35 mEq/L",
+          "isCorrect": false,
+          "explanation": "Too high."
+        },
+        {
+          "text": "5-10 mEq/L",
+          "isCorrect": false,
+          "explanation": "Far too low."
+        },
+        {
+          "text": "40-45 mEq/L",
+          "isCorrect": false,
+          "explanation": "Markedly elevated."
+        }
+      ],
+      "explanation": {
+        "overview": "Arterial bicarbonate normally ranges from 22 to 26 mEq/L. It is the metabolic component of acid‑base status.",
+        "highYield": "Normal HCO3⁻ = 22–26 mEq/L.",
+        "clinicalCorrelation": "Used in conjunction with PCO2 to classify acid‑base disorders."
+      }
+    },
+    {
+      "questionId": "acid_base_072",
+      "difficulty": 2,
+      "question": "In a patient with sepsis and acute kidney injury, which acid‑base disorder is most likely?",
+      "image": null,
+      "options": [
+        {
+          "text": "High anion gap metabolic acidosis (lactic acidosis + uremia)",
+          "isCorrect": true,
+          "explanation": "Sepsis can cause lactic acidosis, and acute kidney injury leads to retention of organic acids, both contributing to high AG acidosis."
+        },
+        {
+          "text": "Metabolic alkalosis",
+          "isCorrect": false,
+          "explanation": "Not typical."
+        },
+        {
+          "text": "Respiratory acidosis",
+          "isCorrect": false,
+          "explanation": "Not primary in sepsis."
+        },
+        {
+          "text": "Normal anion gap acidosis",
+          "isCorrect": false,
+          "explanation": "Lactic acidosis is high AG."
+        },
+        {
+          "text": "Mixed respiratory alkalosis and metabolic alkalosis",
+          "isCorrect": false,
+          "explanation": "Sepsis may cause respiratory alkalosis, but AKI and lactate cause metabolic acidosis."
+        }
+      ],
+      "explanation": {
+        "overview": "Sepsis with acute kidney injury typically produces a high anion gap metabolic acidosis from lactic acid accumulation and reduced renal acid excretion.",
+        "highYield": "Sepsis + AKI → high AG metabolic acidosis.",
+        "clinicalCorrelation": "Monitoring lactate and renal function is crucial for management."
+      }
+    },
+    {
+      "questionId": "acid_base_073",
+      "difficulty": 2,
+      "question": "Which of the following values is consistent with a mixed metabolic acidosis and respiratory acidosis?",
+      "image": null,
+      "options": [
+        {
+          "text": "pH 7.10, PCO2 55, HCO3- 12",
+          "isCorrect": true,
+          "explanation": "Very low pH, high PCO2 (respiratory acidosis), and low HCO3 (metabolic acidosis) indicate a mixed disorder."
+        },
+        {
+          "text": "pH 7.32, PCO2 30, HCO3- 15",
+          "isCorrect": false,
+          "explanation": "Metabolic acidosis with appropriate compensation (PCO2 appropriately low)."
+        },
+        {
+          "text": "pH 7.46, PCO2 48, HCO3- 34",
+          "isCorrect": false,
+          "explanation": "Metabolic alkalosis with compensation."
+        },
+        {
+          "text": "pH 7.35, PCO2 60, HCO3- 34",
+          "isCorrect": false,
+          "explanation": "Chronic respiratory acidosis with compensation."
+        },
+        {
+          "text": "pH 7.52, PCO2 25, HCO3- 22",
+          "isCorrect": false,
+          "explanation": "Acute respiratory alkalosis."
+        }
+      ],
+      "explanation": {
+        "overview": "Mixed metabolic and respiratory acidosis: pH is very low, PCO2 is elevated (should be low if compensating for metabolic acidosis), and HCO3 is low. This indicates a primary defect in both systems.",
+        "highYield": "Mixed acidosis: ↓pH, ↑PCO2, ↓HCO3.",
+        "clinicalCorrelation": "Example: cardiac arrest with lactic acidosis and hypoventilation."
+      }
+    },
+    {
+      "questionId": "acid_base_074",
+      "difficulty": 2,
+      "question": "Which of the following would cause a respiratory acidosis with a normal A‑a gradient?",
+      "image": null,
+      "options": [
+        {
+          "text": "Guillain‑Barré syndrome (neuromuscular weakness)",
+          "isCorrect": true,
+          "explanation": "Neuromuscular weakness causes hypoventilation with normal lungs, so the A‑a gradient is normal."
+        },
+        {
+          "text": "Severe pneumonia",
+          "isCorrect": false,
+          "explanation": "Pneumonia increases A‑a gradient."
+        },
+        {
+          "text": "Pulmonary edema",
+          "isCorrect": false,
+          "explanation": "Increases A‑a gradient."
+        },
+        {
+          "text": "COPD exacerbation",
+          "isCorrect": false,
+          "explanation": "COPD often has an increased A‑a gradient."
+        },
+        {
+          "text": "Pulmonary embolism",
+          "isCorrect": false,
+          "explanation": "Increases A‑a gradient."
+        }
+      ],
+      "explanation": {
+        "overview": "Hypoventilation from neuromuscular disease (e.g., Guillain‑Barré, myasthenia gravis, cervical spine injury) results in hypercapnia with normal alveolar‑arterial O₂ gradient, because the lung parenchyma is normal.",
+        "highYield": "Normal A‑a gradient + hypercapnia = neuromuscular hypoventilation.",
+        "clinicalCorrelation": "Vital capacity and negative inspiratory force are monitored in these patients."
+      }
+    },
+    {
+      "questionId": "acid_base_075",
+      "difficulty": 2,
+      "question": "A patient with prolonged diarrhea develops a normal anion gap metabolic acidosis. Which of the following urinary findings is expected?",
+      "image": null,
+      "options": [
+        {
+          "text": "Urine anion gap negative, urine pH <5.5",
+          "isCorrect": true,
+          "explanation": "In diarrhea, the kidney responds appropriately by increasing ammonium excretion, making UAG negative, and distal acidification is intact, so urine pH can drop."
+        },
+        {
+          "text": "Urine anion gap positive, urine pH >5.5",
+          "isCorrect": false,
+          "explanation": "That would indicate distal RTA."
+        },
+        {
+          "text": "Urine anion gap positive, urine pH <5.5",
+          "isCorrect": false,
+          "explanation": "Positive UAG suggests low NH4+, inconsistent with appropriate renal response."
+        },
+        {
+          "text": "Urine anion gap zero, urine pH variable",
+          "isCorrect": false,
+          "explanation": "Not typical."
+        },
+        {
+          "text": "Urine anion gap negative, urine pH >5.5",
+          "isCorrect": false,
+          "explanation": "Appropriate response would acidify urine (pH <5.5) because distal acidification is intact."
+        }
+      ],
+      "explanation": {
+        "overview": "In extrarenal causes of normal AG acidosis like diarrhea, the kidney appropriately increases NH4+ excretion (negative UAG) and the distal nephron can lower urine pH below 5.5.",
+        "highYield": "Diarrhea → negative UAG, urine pH <5.5.",
+        "clinicalCorrelation": "Helps distinguish diarrhea from distal RTA (positive UAG, urine pH >5.5)."
+      }
     }
+  ]
+}

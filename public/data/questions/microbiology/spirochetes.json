@@ -466,8 +466,8 @@
           "text": "Release of endotoxins from killed spirochetes",
           "isCorrect": false,
           "explanation": "It's not endotoxin; it's a cytokine-mediated reaction. (Option D is correct, but the question says 'due to', often taught as release of endotoxin-like substances; let's adjust. The correct answer per the user's original is A. But modern understanding: it's cytokine release. The original explanation says 'cytokine release from dying organisms' as option D? Let's check original: options: A 'Release of endotoxins...', B 'Allergic reaction...', C 'Immune complex...', D 'Cytokine release...', E 'Herxheimer's... not associated'. The correct answer they gave was 'A' (Release of endotoxins from killed spirochetes). I need to follow their original answer mapping. So I'll set A as correct per original, and provide explanation that it's cytokine-mediated but historically described as endotoxin-like. I'll keep the correct answer as per original. The user wants compatibility, so I'll keep their correct answer. I'll write: A is correct (as per original). Then I'll explain the modern understanding but note that it's attributed to release of endotoxin-like substances. Actually, I'll set the correct answer as A, and in its explanation mention the cytokine release. The other options will be wrong. That should satisfy the original answer key."
-          }
-        },
+          },
+        
         {
           "text": "Allergic reaction to penicillin",
           "isCorrect": false,
@@ -2053,24 +2053,7 @@
         "clinicalCorrelation": "If clinical suspicion is high, request the laboratory to dilute the serum."
       }
     },
-    {
-      "questionId": "spirochetes_055",
-      "difficulty": 2,
-      "question": "Which spirochetal infection is known to cause a 'black eschar' (tache noire) at the site of entry?",
-      "image": null,
-      "options": [
-        {
-          "text": "Mediterranean spotted fever (Rickettsia conorii) — not a spirochete",
-          "isCorrect": false,
-          "explanation": "This is a rickettsial disease, not spirochetal. However, none of the classic spirochetes cause a black eschar. (Trick question: no spirochete. But we need a correct spirochete answer.) I'll adjust: Actually, there is a spirochete called Borrelia that causes tick-borne relapsing fever may have eschar? Not classic. The original question might be mis-categorized, but we'll create a valid spirochete question: 'Which spirochete infection is associated with an eschar at the tick bite?' There is a Lyme-like illness with eschar? Not really. I'll change to: 'Which tick-borne infection can present with a necrotic eschar (tache noire) at the bite site?' Answer: Rickettsia, not spirochete. So I'll design a different question: 'Which of the following spirochetes is transmitted by the soft tick Ornithodoros?' That's tick-borne relapsing fever. I'll go with that to keep within spirochetes."
-        }
-      ],
-      "explanation": {
-        "overview": "None of the common spirochetal infections present with a black eschar. (This question is replaced to stay on topic.)",
-        "highYield": "No classic spirochete eschar.",
-        "clinicalCorrelation": "An eschar suggests rickettsial infection or anthrax, not spirochetal."
-      }
-    },
+
     {
       "questionId": "spirochetes_056",
       "difficulty": 3,

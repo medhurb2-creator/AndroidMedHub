@@ -1,9 +1,13 @@
-/* ===========================
-   FREE TRIAL PAGE STYLES
-   (works with common.css variables)
-   =========================== */
+/* ==========================================================================
+   FREE TRIAL — page-specific styles
+   Requires common.css (tokens, reset, buttons base, page-container base,
+   keyframes, header:not([class]) — not matched here since this page uses
+   <header class="header-superior">).
+   Adds: fixed superior header, scrollable inferior nav, trial content card,
+   feature/warning blocks, big CTA button, and full-page shimmer overlay.
+   ========================================================================== */
 
-/* ---------- FIXED SUPERIOR HEADER ---------- */
+/* ---------- Fixed superior header ---------- */
 .header-superior {
     position: fixed;
     top: 0;
@@ -17,8 +21,9 @@
     padding: 0 20px;
     background: var(--bg);
     border-bottom: 1px solid var(--border);
-    box-shadow: 0 2px 12px rgba(0,0,0,0.05);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
     backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
 }
 
 .header-superior-left {
@@ -39,7 +44,7 @@
     letter-spacing: -0.3px;
 }
 
-/* Theme toggle button */
+/* Theme toggle */
 .btn-theme-toggle {
     display: flex;
     align-items: center;
@@ -54,18 +59,16 @@
     transition: background 0.2s, transform 0.15s, border-color 0.2s;
     color: var(--text);
 }
-
 .btn-theme-toggle:hover {
     background: var(--accent-light);
     border-color: var(--accent);
     transform: scale(1.05);
 }
-
 .btn-theme-toggle:active {
     transform: scale(0.96);
 }
 
-/* ---------- SCROLLABLE INFERIOR NAV ---------- */
+/* ---------- Inferior nav ---------- */
 .header-inferior {
     display: flex;
     justify-content: space-between;
@@ -76,7 +79,6 @@
     flex-wrap: wrap;
 }
 
-/* Common button style for nav buttons */
 .btn-nav {
     display: inline-flex;
     align-items: center;
@@ -91,48 +93,43 @@
     cursor: pointer;
     transition: background 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.1s;
     white-space: nowrap;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
 }
-
 .btn-nav:hover {
     background: var(--accent-light);
     border-color: var(--accent);
-    box-shadow: 0 4px 10px rgba(0,0,0,0.06);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
 }
-
 .btn-nav:active {
     transform: translateY(1px);
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
-.btn-nav-icon {
-    font-size: 1rem;
-}
+.btn-nav-icon { font-size: 1rem; }
 
-/* Slight color distinction for the right button (subscription) */
 .btn-nav-right {
     background: var(--accent);
     color: #fff;
     border-color: transparent;
 }
-
 .btn-nav-right:hover {
     background: var(--accent-dark, #1a4f9e);
     border-color: transparent;
-    color: white;
+    color: #fff;
 }
 
-/* ---------- PAGE CONTAINER OFFSET ---------- */
+/* ---------- Page container override ----------
+   Common provides max-width: 1200px; margin: 0 auto.
+   Here we only adjust padding to clear the fixed header. */
 .page-container {
-    padding-top: 100px;  /* 60px header + 20px inferior nav + extra */
+    padding-top: 100px;   /* 60px header + 20px gap + 20px breathing */
     padding-left: 20px;
     padding-right: 20px;
     padding-bottom: 30px;
     min-height: 100vh;
-    box-sizing: border-box;
 }
 
-/* ---------- MAIN TRIAL CONTENT ---------- */
+/* ---------- Trial content ---------- */
 .trial-container {
     max-width: 650px;
     margin: 0 auto;
@@ -140,7 +137,7 @@
 
 .trial-card.highlight {
     background: linear-gradient(145deg, var(--accent), #1a4f9e);
-    color: white;
+    color: #fff;
     text-align: center;
     padding: 2rem;
     border-radius: var(--radius-lg);
@@ -166,28 +163,15 @@
     padding: 1.5rem;
     margin-bottom: 2rem;
 }
-
-.features-list h3 {
-    margin-bottom: 1rem;
-}
-
-.features-list ul {
-    list-style: none;
-    margin-bottom: 1.5rem;
-}
-
+.features-list h3 { margin-bottom: 1rem; }
+.features-list ul { list-style: none; margin-bottom: 1.5rem; }
 .features-list li {
     padding: 0.5rem 0;
     border-bottom: 1px solid var(--border);
 }
+.features-list li:last-child { border-bottom: none; }
 
-.features-list li:last-child {
-    border-bottom: none;
-}
-
-.limitations {
-    color: var(--warning);
-}
+.limitations { color: var(--warning); }
 
 .warning-box {
     background: rgba(245, 158, 11, 0.08);
@@ -198,7 +182,7 @@
     font-size: 0.875rem;
 }
 
-/* ---------- CTA SECTION ---------- */
+/* ---------- CTA section ---------- */
 .trial-actions {
     display: flex;
     flex-direction: column;
@@ -206,33 +190,30 @@
     margin-top: 0.5rem;
 }
 
-/* Big primary button */
+/* Big primary button — overrides common's .btn-primary base */
 .btn-primary.btn-large {
     display: block;
     width: 100%;
     padding: 16px 24px;
     border-radius: 32px;
     background: var(--accent);
-    color: white;
+    color: #fff;
     font-weight: 700;
     font-size: 1.1rem;
     border: none;
     cursor: pointer;
     transition: background 0.2s, transform 0.15s, box-shadow 0.2s;
     text-align: center;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
 }
-
-.btn-primary.btn-large:hover {
+.btn-primary.btn-large:hover:not(:disabled) {
     background: var(--accent-dark, #1a4f9e);
     transform: translateY(-1px);
-    box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
 }
-
-.btn-primary.btn-large:active {
+.btn-primary.btn-large:active:not(:disabled) {
     transform: translateY(0);
 }
-
 .btn-primary.btn-large:disabled {
     opacity: 0.5;
     cursor: not-allowed;
@@ -240,25 +221,165 @@
     box-shadow: none;
 }
 
-/* ---------- RESPONSIVE ADAPTATIONS ---------- */
+/* ---------- Shimmer overlay ---------- */
+:root {
+    --shimmer-bg:        #12151c;
+    --shimmer-skeleton:  #1e2230;
+    --shimmer-highlight: #2a2f3d;
+}
+
+#shimmer-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    background: var(--shimmer-bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding-top: 0;
+    transition: opacity 0.4s ease;
+    opacity: 1;
+    pointer-events: all;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Uses .shimmer-hidden (not .hidden) so common's .hidden !important
+   does not kill the fade-out transition. */
+#shimmer-overlay.shimmer-hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.shimmer-content {
+    width: 100%;
+    max-width: 650px;
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-top: 76px;
+}
+
+.shimmer-header-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100000;
+    height: 60px;
+    background: var(--shimmer-bg);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.shimmer-header-bar .sk-circle {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: var(--shimmer-skeleton);
+    animation: shimmerPulse 1.6s infinite;
+}
+.shimmer-header-bar .sk-pill {
+    width: 44px;
+    height: 38px;
+    border-radius: 19px;
+    background: var(--shimmer-skeleton);
+    animation: shimmerPulse 1.6s infinite;
+    animation-delay: 0.15s;
+}
+
+.shimmer-nav-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 4px;
+}
+.shimmer-nav-row .sk-btn {
+    width: 130px;
+    height: 38px;
+    border-radius: 22px;
+    background: var(--shimmer-skeleton);
+    animation: shimmerPulse 1.6s infinite;
+    animation-delay: 0.25s;
+}
+.shimmer-nav-row .sk-btn:last-child {
+    animation-delay: 0.35s;
+}
+
+.sk-card {
+    width: 100%;
+    height: 160px;
+    border-radius: 16px;
+    background: var(--shimmer-skeleton);
+    animation: shimmerPulse 1.6s infinite;
+    animation-delay: 0.1s;
+}
+
+.sk-line-group {
+    background: var(--shimmer-skeleton);
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    animation: shimmerPulse 1.6s infinite;
+    animation-delay: 0.2s;
+}
+.sk-line {
+    height: 16px;
+    border-radius: 8px;
+    background: var(--shimmer-highlight);
+    animation: shimmerPulse 1.6s infinite;
+}
+.sk-line.w75 { width: 75%; animation-delay: 0.3s; }
+.sk-line.w60 { width: 60%; animation-delay: 0.4s; }
+.sk-line.w85 { width: 85%; animation-delay: 0.5s; }
+.sk-line.w50 { width: 50%; animation-delay: 0.6s; }
+
+.sk-warning {
+    width: 100%;
+    height: 52px;
+    border-radius: 0 12px 12px 0;
+    border-left: 4px solid var(--shimmer-highlight);
+    background: var(--shimmer-skeleton);
+    animation: shimmerPulse 1.6s infinite;
+    animation-delay: 0.45s;
+}
+
+.sk-cta {
+    width: 100%;
+    height: 52px;
+    border-radius: 28px;
+    background: var(--shimmer-skeleton);
+    animation: shimmerPulse 1.6s infinite;
+    animation-delay: 0.55s;
+    margin-top: 4px;
+}
+
+@keyframes shimmerPulse {
+    0%, 100% { opacity: 0.5; }
+    50%      { opacity: 1;   }
+}
+
+/* ---------- Responsive ---------- */
 @media (max-width: 768px) {
     .header-superior {
         height: 54px;
         padding: 0 16px;
     }
-
-    .logo-text {
-        font-size: 1.1rem;
-    }
+    .logo-text { font-size: 1.1rem; }
 
     .page-container {
-        padding-top: 86px; /* 54px header + 32px for nav + spacing */
+        padding-top: 86px;   /* 54px header + 32px gap */
         padding-left: 16px;
         padding-right: 16px;
     }
 
     .header-inferior {
-        flex-wrap: nowrap; /* keep side by side */
+        flex-wrap: nowrap;
         gap: 8px;
         margin-bottom: 16px;
     }
@@ -300,186 +421,18 @@
         gap: 4px;
     }
 
-    .btn-nav-icon {
-        font-size: 0.9rem;
-    }
+    .btn-nav-icon { font-size: 0.9rem; }
 
-    .trial-card.highlight {
-        padding: 1.5rem;
-    }
-
-    .trial-duration {
-        font-size: 2.2rem;
-    }
+    .trial-card.highlight { padding: 1.5rem; }
+    .trial-duration { font-size: 2.2rem; }
 
     .btn-primary.btn-large {
         font-size: 1rem;
         padding: 14px 20px;
         border-radius: 28px;
     }
-}
 
-/* ================================================================
-   SHIMMER OVERLAY (from inline styles)
-   ================================================================ */
-:root {
-    --shimmer-bg: #12151c;
-    --shimmer-skeleton: #1e2230;
-    --shimmer-highlight: #2a2f3d;
-}
-
-#shimmer-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 99999;
-    background: var(--shimmer-bg);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: flex-start;
-    padding-top: 0;
-    transition: opacity 0.4s ease;
-    opacity: 1;
-    pointer-events: all;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
-
-#shimmer-overlay.shimmer-hidden {
-    opacity: 0;
-    pointer-events: none;
-}
-
-/* Skeleton wrapper – matches content max-width */
-.shimmer-content {
-    width: 100%;
-    max-width: 650px;
-    padding: 16px 20px;
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    margin-top: 76px;
-}
-
-/* Skeleton header bar */
-.shimmer-header-bar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 100000;
-    height: 60px;
-    background: var(--shimmer-bg);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 20px;
-    box-sizing: border-box;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.shimmer-header-bar .sk-circle {
-    width: 38px;
-    height: 38px;
-    border-radius: 50%;
-    background: var(--shimmer-skeleton);
-    animation: shimmerPulse 1.6s infinite;
-}
-
-.shimmer-header-bar .sk-pill {
-    width: 44px;
-    height: 38px;
-    border-radius: 19px;
-    background: var(--shimmer-skeleton);
-    animation: shimmerPulse 1.6s infinite;
-    animation-delay: 0.15s;
-}
-
-/* Inferior nav skeleton */
-.shimmer-nav-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 4px;
-}
-
-.shimmer-nav-row .sk-btn {
-    width: 130px;
-    height: 38px;
-    border-radius: 22px;
-    background: var(--shimmer-skeleton);
-    animation: shimmerPulse 1.6s infinite;
-    animation-delay: 0.25s;
-}
-
-.shimmer-nav-row .sk-btn:last-child {
-    animation-delay: 0.35s;
-}
-
-/* Large card skeleton */
-.sk-card {
-    width: 100%;
-    height: 160px;
-    border-radius: 16px;
-    background: var(--shimmer-skeleton);
-    animation: shimmerPulse 1.6s infinite;
-    animation-delay: 0.1s;
-}
-
-/* Feature lines */
-.sk-line-group {
-    background: var(--shimmer-skeleton);
-    border-radius: 12px;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    animation: shimmerPulse 1.6s infinite;
-    animation-delay: 0.2s;
-}
-
-.sk-line {
-    height: 16px;
-    border-radius: 8px;
-    background: var(--shimmer-highlight);
-    animation: shimmerPulse 1.6s infinite;
-}
-
-.sk-line.w75 { width: 75%; animation-delay: 0.3s; }
-.sk-line.w60 { width: 60%; animation-delay: 0.4s; }
-.sk-line.w85 { width: 85%; animation-delay: 0.5s; }
-.sk-line.w50 { width: 50%; animation-delay: 0.6s; }
-
-/* Warning box skeleton */
-.sk-warning {
-    width: 100%;
-    height: 52px;
-    border-radius: 0 12px 12px 0;
-    border-left: 4px solid var(--shimmer-highlight);
-    background: var(--shimmer-skeleton);
-    animation: shimmerPulse 1.6s infinite;
-    animation-delay: 0.45s;
-}
-
-/* CTA button skeleton */
-.sk-cta {
-    width: 100%;
-    height: 52px;
-    border-radius: 28px;
-    background: var(--shimmer-skeleton);
-    animation: shimmerPulse 1.6s infinite;
-    animation-delay: 0.55s;
-    margin-top: 4px;
-}
-
-/* Pulse animation – mimics shimmer */
-@keyframes shimmerPulse {
-    0%, 100% { opacity: 0.5; }
-    50% { opacity: 1; }
-}
-
-/* Responsive shimmer */
-@media (max-width: 480px) {
+    /* Shimmer responsive */
     .shimmer-content {
         padding: 12px 14px;
         gap: 12px;
@@ -503,9 +456,7 @@
         height: 34px;
         border-radius: 18px;
     }
-    .sk-card {
-        height: 130px;
-    }
+    .sk-card { height: 130px; }
     .sk-cta {
         height: 44px;
         border-radius: 24px;

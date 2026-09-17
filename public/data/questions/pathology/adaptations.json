@@ -1001,16 +1001,16 @@
         },
         {
           "text": "Pathologic atrophy",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Loss of nerve supply leads to pathologic muscle wasting."
         },
         {
           "text": "Neurogenic atrophy",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Atrophy due to nerve damage is specifically neurogenic atrophy."
         },
         {
-          "text": "Both B and C",
+          "text": "Both Pathologic atrophy and Neurogenic atrophy",
           "isCorrect": true,
           "explanation": "Denervation atrophy is both pathologic and neurogenic."
         },

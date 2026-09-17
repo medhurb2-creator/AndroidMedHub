@@ -4560,7 +4560,6 @@
         "clinicalCorrelation": "Loop diuretics impair medullary gradient, reducing concentrating ability even if ADH present."
       }
     },
-    // New questions to reach 150% (renal_121 to renal_180) 
     {
       "questionId": "renal_121",
       "difficulty": 2,

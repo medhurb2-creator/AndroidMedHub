@@ -1,56 +1,37 @@
-/* frontend-user/css/notes.css */
+/* ==========================================================================
+   NOTES — page-specific styles
+   Requires common.css (tokens, reset, body, buttons, .fab, .modal-overlay,
+   .modal, .modal-header, .modal-close, .modal-body, .no-data, .history-item,
+   keyframes shimmer/spin/modalSlideUp, focus-visible, hidden, utilities).
+   Adds ONLY: page radius/header tokens, page shell, notes header, history
+   panel, dashboard toolbar, note grid + cards, editor view, Quill overrides,
+   context menus, share modal tweaks, shimmer skeleton, responsive.
+   ========================================================================== */
 
-/* ===== ROOT VARIABLES (MedVix Unified) ===== */
+/* ---------- Page-scoped token overrides ---------- */
 :root {
-    --primary: #2563eb;
-    --primary-dark: #1d4ed8;
-    --primary-light: #3b82f6;
-    --bg-primary: #f8fafc;
-    --bg-secondary: #f1f5f9;
-    --bg-card: #ffffff;
-    --text-primary: #0f172a;
-    --text-secondary: #334155;
-    --text-muted: #64748b;
-    --border: #e2e8f0;
-    --border-dark: #cbd5e1;
-    --shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
-    --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1);
-    --radius: 12px;
-    --radius-sm: 6px;
-    --radius-lg: 16px;
+    /* Radii — page uses a larger, softer scale than common */
+    --radius:    12px;   /* common: 0.5rem */
+    --radius-lg: 16px;   /* common: 0.75rem */
+
+    /* Header height — responsive clamp */
     --header-height: clamp(60px, 10vh, 80px);
+
+    /* Aliases kept explicit for readability (already aliased in common) */
+    --primary:       var(--accent);
+    --primary-dark:  var(--accent-dark);
+    --primary-light: var(--accent-light);
 }
 
-body.dark-theme {
-    --bg-primary: #0b1120;
-    --bg-secondary: #1e293b;
-    --bg-card: #1e293b;
-    --text-primary: #f1f5f9;
-    --text-secondary: #cbd5e1;
-    --text-muted: #94a3b8;
-    --border: #334155;
-    --border-dark: #475569;
-}
-
-/* ===== BASE ===== */
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-
+/* ---------- Body override — flex shell for full-height editor ---------- */
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-                 'Helvetica Neue', Arial, sans-serif;
-    background: var(--bg-primary);
-    color: var(--text-primary);
     height: 100vh;
     display: flex;
     flex-direction: column;
     overflow: hidden;
 }
 
-/* ===== HEADER ===== */
+/* ---------- Notes header ---------- */
 .notes-header {
     display: flex;
     justify-content: space-between;
@@ -75,9 +56,7 @@ body {
     color: var(--text-secondary);
     transition: color 0.2s;
 }
-.hamburger:hover {
-    color: var(--primary);
-}
+.hamburger:hover { color: var(--primary); }
 
 .page-title {
     font-size: 1.4rem;
@@ -90,7 +69,6 @@ body {
     align-items: center;
     gap: 0.75rem;
 }
-
 .header-right a,
 .header-right button {
     background: none;
@@ -104,14 +82,13 @@ body {
     font-weight: 500;
     cursor: pointer;
 }
-
 .header-right a:hover,
 .header-right button:hover {
     background: var(--bg-secondary);
     color: var(--text-primary);
 }
 
-/* ===== HISTORY PANEL ===== */
+/* ---------- History panel ---------- */
 .history-panel {
     position: fixed;
     top: 0;
@@ -126,10 +103,7 @@ body {
     padding: 1.5rem;
     overflow-y: auto;
 }
-
-.history-panel.open {
-    left: 0;
-}
+.history-panel.open { left: 0; }
 
 .history-header {
     display: flex;
@@ -137,7 +111,6 @@ body {
     align-items: center;
     margin-bottom: 1.5rem;
 }
-
 .history-header h3 {
     font-size: 1.1rem;
     font-weight: 600;
@@ -149,11 +122,13 @@ body {
     color: var(--text-muted);
     padding: 0.25rem;
 }
-.close-history:hover {
-    color: var(--text-primary);
-}
+.close-history:hover { color: var(--text-primary); }
 
+/* Override common's horizontal-flex .history-item — notes uses stacked
+   block layout (date above title, no side elements). */
 .history-item {
+    display: block;
+    justify-content: flex-start;
     padding: 0.75rem;
     border-radius: var(--radius-sm);
     background: var(--bg-secondary);
@@ -161,22 +136,16 @@ body {
     cursor: pointer;
     transition: background 0.2s;
 }
-
-.history-item:hover {
-    background: var(--border);
-}
+.history-item:hover { background: var(--border); }
 
 .history-item .date {
     font-size: 0.7rem;
     color: var(--text-muted);
     margin-bottom: 0.15rem;
 }
+.history-item .title { font-weight: 500; }
 
-.history-item .title {
-    font-weight: 500;
-}
-
-/* ===== DASHBOARD ===== */
+/* ---------- Dashboard ---------- */
 #dashboard-view {
     display: flex;
     flex-direction: column;
@@ -184,7 +153,7 @@ body {
     overflow: hidden;
 }
 
-/* ===== TOOLBAR ===== */
+/* ---------- Toolbar ---------- */
 .notes-toolbar {
     display: flex;
     justify-content: space-between;
@@ -201,7 +170,6 @@ body {
     display: flex;
     gap: 0.5rem;
 }
-
 .filter-tab {
     padding: 0.4rem 1rem;
     border-radius: 30px;
@@ -215,14 +183,10 @@ body {
     transition: all 0.2s;
     min-height: 36px;
 }
-
-.filter-tab:hover {
-    background: var(--bg-secondary);
-}
-
+.filter-tab:hover { background: var(--bg-secondary); }
 .filter-tab.active {
     background: var(--primary);
-    color: white;
+    color: #fff;
     border-color: var(--primary);
 }
 
@@ -238,14 +202,13 @@ body {
     min-height: 36px;
     transition: border-color 0.2s, box-shadow 0.2s;
 }
-
 #searchNotes:focus {
     outline: none;
     border-color: var(--primary);
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
 
-/* ===== NOTE GRID ===== */
+/* ---------- Note grid ---------- */
 .note-grid {
     display: flex;
     flex-wrap: wrap;
@@ -269,21 +232,17 @@ body {
     aspect-ratio: 1 / 1.45;
     min-height: 140px;
     max-height: 320px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
     position: relative;
     overflow: hidden;
     contain: layout style paint;
 }
-
 .note-card:hover {
     transform: translateY(-4px);
     box-shadow: var(--shadow);
     border-color: var(--primary-light);
 }
-
-.note-card:active {
-    transform: scale(0.97);
-}
+.note-card:active { transform: scale(0.97); }
 
 .card-title {
     font-weight: 600;
@@ -298,12 +257,10 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
 }
-
 .card-title .lock-icon {
     font-size: 0.8rem;
     margin-right: 0.3rem;
 }
-
 .card-title .card-menu {
     font-size: 1.2rem;
     cursor: pointer;
@@ -317,7 +274,6 @@ body {
     margin-top: -0.2rem;
     line-height: 1;
 }
-
 .card-title .card-menu:hover {
     background: var(--bg-secondary);
     color: var(--text-primary);
@@ -345,33 +301,9 @@ body {
     flex-shrink: 0;
 }
 
-/* ===== FAB ===== */
-.fab {
-    position: fixed;
-    bottom: 2rem;
-    right: 2rem;
-    width: 56px;
-    height: 56px;
-    background: var(--primary);
-    color: white;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 2rem;
-    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
-    border: none;
-    cursor: pointer;
-    z-index: 100;
-    transition: all 0.2s;
-}
+/* .fab removed — identical to common's .fab */
 
-.fab:hover {
-    background: var(--primary-dark);
-    transform: scale(1.05);
-}
-
-/* ===== EDITOR VIEW ===== */
+/* ---------- Editor view ---------- */
 #editor-view {
     display: none;
     flex-direction: column;
@@ -394,23 +326,19 @@ body {
     align-items: center;
     gap: 0.75rem;
 }
-
 .back-btn {
     font-size: 1.5rem;
     cursor: pointer;
     color: var(--text-secondary);
     transition: color 0.2s;
 }
-.back-btn:hover {
-    color: var(--text-primary);
-}
+.back-btn:hover { color: var(--text-primary); }
 
 .edit-header-right {
     display: flex;
     gap: 0.5rem;
     align-items: center;
 }
-
 .tool-icon {
     font-size: 1.1rem;
     cursor: pointer;
@@ -421,7 +349,6 @@ body {
     min-width: 36px;
     text-align: center;
 }
-
 .tool-icon:hover {
     background: var(--bg-secondary);
     color: var(--text-primary);
@@ -429,7 +356,7 @@ body {
 
 .save-btn {
     background: var(--primary);
-    color: white;
+    color: #fff;
     border: none;
     padding: 0.4rem 1.2rem;
     border-radius: 30px;
@@ -439,10 +366,7 @@ body {
     transition: background 0.2s;
     min-height: 36px;
 }
-
-.save-btn:hover {
-    background: var(--primary-dark);
-}
+.save-btn:hover { background: var(--primary-dark); }
 
 .edit-body {
     flex: 1;
@@ -463,10 +387,7 @@ body {
     width: 100%;
     flex-shrink: 0;
 }
-
-#noteTitle::placeholder {
-    color: var(--text-muted);
-}
+#noteTitle::placeholder { color: var(--text-muted); }
 
 .date-line {
     font-size: 0.8rem;
@@ -478,7 +399,7 @@ body {
     flex-shrink: 0;
 }
 
-/* ===== QUILL EDITOR ===== */
+/* ---------- Quill editor ---------- */
 #noteContent {
     flex: 1;
     font-size: 1rem;
@@ -494,7 +415,6 @@ body {
     flex-shrink: 0;
     border-radius: var(--radius) var(--radius) 0 0;
 }
-
 .ql-container.ql-snow {
     flex: 1;
     display: flex;
@@ -505,9 +425,8 @@ body {
     background: var(--bg-card);
     border-radius: 0 0 var(--radius) var(--radius);
     font-size: 1rem;
-    min-height: 0
+    min-height: 0;
 }
-
 .ql-editor {
     flex: 1;
     min-height: 200px;
@@ -515,7 +434,7 @@ body {
     overflow-y: auto;
 }
 
-/* ===== CONTEXT MENU ===== */
+/* ---------- Context menus ---------- */
 #note-context-menu,
 #editor-context-menu {
     background: var(--bg-card);
@@ -527,7 +446,6 @@ body {
     max-width: 220px;
     overflow: hidden;
 }
-
 .context-item {
     padding: 0.5rem 1rem;
     cursor: pointer;
@@ -538,72 +456,22 @@ body {
     color: var(--text-primary);
     transition: background 0.15s;
 }
+.context-item:hover { background: var(--bg-secondary); }
 
-.context-item:hover {
-    background: var(--bg-secondary);
-}
-
-/* ===== SHARE MODAL ===== */
+/* ---------- Modal overrides ---------- */
 .modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0,0,0,0.5);
-    backdrop-filter: blur(4px);
-    display: none;
-    align-items: center;
-    justify-content: center;
-    z-index: 2000;
-    padding: 1.5rem;
+    z-index: 2000;   /* common: 10001 */
+    padding: 1.5rem; /* common: 1rem   */
 }
-
 .modal {
-    background: var(--bg-card);
-    border-radius: var(--radius-lg);
-    padding: 1.5rem;
-    max-width: 460px;
-    width: 100%;
-    box-shadow: var(--shadow-lg);
+    max-width: 460px;                     /* common: 500px */
     animation: modalSlideUp 0.25s ease;
 }
-
-@keyframes modalSlideUp {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-.modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-}
-
 .modal-header h3 {
-    font-size: 1.1rem;
-    font-weight: 600;
+    font-size: 1.1rem;                    /* common: 1.25rem */
 }
 
-.modal-close {
-    background: none;
-    border: none;
-    font-size: 1.5rem;
-    cursor: pointer;
-    color: var(--text-muted);
-    padding: 0.25rem;
-    line-height: 1;
-}
-
-.modal-close:hover {
-    color: var(--text-primary);
-}
-
-.modal-body {
-    color: var(--text-secondary);
-}
-
+/* Share-modal internals */
 #share-link-input {
     width: 100%;
     padding: 0.5rem 0.75rem;
@@ -614,24 +482,22 @@ body {
     font-size: 0.85rem;
     font-family: monospace;
 }
-
 #share-qr-code {
     display: inline-block;
     background: white;
     padding: 0.5rem;
     border-radius: var(--radius-sm);
 }
-
 #share-qr-code canvas {
     display: block;
     width: 120px;
     height: 120px;
 }
 
-/* ===== BUTTONS FOR DYNAMIC PROMPTS ===== */
+/* ---------- Button overrides ---------- */
 .btn-primary {
     background: var(--primary);
-    color: white;
+    color: #fff;
     border: none;
     padding: 0.4rem 1.2rem;
     border-radius: 30px;
@@ -639,10 +505,7 @@ body {
     cursor: pointer;
     transition: background 0.2s;
 }
-
-.btn-primary:hover {
-    background: var(--primary-dark);
-}
+.btn-primary:hover:not(:disabled) { background: var(--primary-dark); }
 
 .btn-secondary {
     background: transparent;
@@ -653,75 +516,45 @@ body {
     cursor: pointer;
     transition: all 0.2s;
 }
-
-.btn-secondary:hover {
+.btn-secondary:hover:not(:disabled) {
     background: var(--bg-secondary);
     border-color: var(--border-dark);
 }
 
-/* ===== DARK THEME – Quill overrides ===== */
+/* ---------- Dark theme Quill overrides ---------- */
 body.dark-theme .ql-toolbar.ql-snow {
     background: var(--bg-secondary);
     border-color: var(--border);
 }
-
 body.dark-theme .ql-container.ql-snow {
     background: var(--bg-card);
     border-color: var(--border);
 }
-
-body.dark-theme .ql-stroke {
-    stroke: var(--text-primary);
-}
-
-body.dark-theme .ql-fill {
-    fill: var(--text-primary);
-}
-
-body.dark-theme .ql-picker {
-    color: var(--text-primary);
-}
-
+body.dark-theme .ql-stroke { stroke: var(--text-primary); }
+body.dark-theme .ql-fill   { fill:   var(--text-primary); }
+body.dark-theme .ql-picker { color:  var(--text-primary); }
 body.dark-theme .ql-picker-options {
     background: var(--bg-card);
     border-color: var(--border);
 }
-
-body.dark-theme .ql-snow .ql-picker-label {
-    color: var(--text-primary);
-}
-
+body.dark-theme .ql-snow .ql-picker-label { color: var(--text-primary); }
 body.dark-theme .ql-snow .ql-picker-label:hover,
 body.dark-theme .ql-snow .ql-picker-item:hover {
     background: var(--bg-secondary);
 }
-
 body.dark-theme .ql-snow .ql-tooltip {
     background: var(--bg-card);
     color: var(--text-primary);
     border-color: var(--border);
 }
 
-/* ===== ACCESSIBILITY – Keyboard focus ===== */
-.hamburger:focus-visible,
-.back-btn:focus-visible,
-.filter-tab:focus-visible,
-.tool-icon:focus-visible,
-.card-menu:focus-visible,
-.context-item:focus-visible {
-    outline: 2px solid var(--primary);
-    outline-offset: 2px;
-}
+/* :focus-visible block removed — common's *:focus-visible covers it */
 
-/* ===== UTILITY ===== */
+/* ---------- Utility overrides ---------- */
 .no-data {
-    text-align: center;
-    color: var(--text-muted);
-    padding: 3rem 1rem;
-    font-style: italic;
+    padding: 3rem 1rem;   /* common: 2rem 1rem */
     width: 100%;
 }
-
 .history-empty,
 .history-error {
     color: var(--text-muted);
@@ -729,119 +562,18 @@ body.dark-theme .ql-snow .ql-tooltip {
     padding: 0.5rem 0;
 }
 
-/* ===== RESPONSIVE ===== */
-@media (max-width: 640px) {
-    .notes-header {
-        padding: 0.5rem 1rem;
-    }
-    .page-title {
-        font-size: 1.1rem;
-    }
-    .header-right a,
-    .header-right button {
-        font-size: 0.8rem;
-        padding: 0.3rem 0.4rem;
-    }
-    .notes-toolbar {
-        padding: 0.5rem 1rem;
-        flex-direction: column;
-        align-items: stretch;
-        gap: 0.5rem;
-    }
-    .filter-tabs {
-        justify-content: center;
-    }
-    #searchNotes {
-        width: 100%;
-    }
-    .note-grid {
-        gap: 0.75rem;
-        padding: 0.75rem;
-    }
-    .note-card {
-        flex: 1 1 150px;
-        min-width: 120px;
-        padding: 0.75rem;
-        min-height: 120px;
-        max-height: 240px;
-    }
-    .card-title {
-        font-size: 0.9rem;
-    }
-    .card-body {
-        font-size: 0.8rem;
-        -webkit-line-clamp: 3;
-    }
-    .fab {
-        bottom: 1.25rem;
-        right: 1.25rem;
-        width: 48px;
-        height: 48px;
-        font-size: 1.6rem;
-    }
-    .edit-header {
-        padding: 0.5rem 1rem;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-    }
-    .edit-header-right {
-        flex-wrap: wrap;
-        justify-content: flex-end;
-    }
-    .edit-body {
-        padding: 1rem;
-    }
-    #noteTitle {
-        font-size: 1.3rem;
-    }
-    .modal {
-        padding: 1rem;
-        margin: 0.5rem;
-    }
-}
-
-/* Smartwatch / ultra-small screens */
-@media (max-width: 380px) {
-    .note-card {
-        flex: 1 1 100%;
-        min-width: 100%;
-        min-height: 160px;
-        max-height: 240px;
-    }
-}
-
-@media (min-width: 641px) and (max-width: 1023px) {
-    .note-card {
-        flex: 1 1 220px;
-        min-height: 160px;
-    }
-}
-
-@media (min-width: 1024px) {
-    .note-grid {
-        gap: 1.5rem;
-        padding: 1.5rem;
-    }
-    .note-card {
-        flex: 1 1 260px;
-        padding: 1.5rem;
-        min-height: 200px;
-    }
-    .card-body {
-        -webkit-line-clamp: 5;
-    }
-}
-
-/* ===== System font stack ===== */
+/* ---------- System font stack override ---------- */
+/* Notes opts out of the Inter-first stack used by common. */
 body,
 input,
 textarea,
 select,
 button {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+                 'Helvetica Neue', Arial, sans-serif;
 }
 
-/* ===== Shimmer overlay ===== */
+/* ---------- Shimmer skeleton ---------- */
 #shimmer-loading {
     position: fixed;
     inset: 0;
@@ -856,7 +588,6 @@ button {
     overflow-y: auto;
     font-family: 'Inter', sans-serif;
 }
-
 #shimmer-loading .shimmer-message {
     font-size: 1.2rem;
     margin-bottom: 2rem;
@@ -871,7 +602,6 @@ button {
     max-width: 1200px;
     padding: 0 1rem;
 }
-
 .shimmer-card {
     background: #2a2a3e;
     border-radius: 12px;
@@ -882,7 +612,6 @@ button {
     gap: 1rem;
     overflow: hidden;
 }
-
 .shimmer-card .line {
     height: 16px;
     border-radius: 8px;
@@ -890,16 +619,110 @@ button {
     background-size: 200% 100%;
     animation: shimmer 1.5s infinite;
 }
+.shimmer-card .line.short  { width: 60%;  }
+.shimmer-card .line.medium { width: 80%;  }
+.shimmer-card .line.long   { width: 100%; }
 
-.shimmer-card .line.short { width: 60%; }
-.shimmer-card .line.medium { width: 80%; }
-.shimmer-card .line.long { width: 100%; }
-
+/* Notes uses a percentage-based shimmer (common's is pixel-based).
+   Keep this version — matches `background-size: 200% 100%` above. */
 @keyframes shimmer {
-    0% { background-position: 200% 0; }
+    0%   { background-position:  200% 0; }
     100% { background-position: -200% 0; }
 }
 
-body.loaded #shimmer-loading {
-    display: none;
+body.loaded #shimmer-loading { display: none; }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 640px) {
+    .notes-header { padding: 0.5rem 1rem; }
+    .page-title   { font-size: 1.1rem; }
+
+    .header-right a,
+    .header-right button {
+        font-size: 0.8rem;
+        padding: 0.3rem 0.4rem;
+    }
+
+    .notes-toolbar {
+        padding: 0.5rem 1rem;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.5rem;
+    }
+    .filter-tabs { justify-content: center; }
+    #searchNotes { width: 100%; }
+
+    .note-grid {
+        gap: 0.75rem;
+        padding: 0.75rem;
+    }
+    .note-card {
+        flex: 1 1 150px;
+        min-width: 120px;
+        padding: 0.75rem;
+        min-height: 120px;
+        max-height: 240px;
+    }
+    .card-title { font-size: 0.9rem; }
+    .card-body {
+        font-size: 0.8rem;
+        -webkit-line-clamp: 3;
+    }
+
+    .fab {
+        bottom: 1.25rem;
+        right: 1.25rem;
+        width: 48px;
+        height: 48px;
+        font-size: 1.6rem;
+    }
+
+    .edit-header {
+        padding: 0.5rem 1rem;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    .edit-header-right {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+    .edit-body { padding: 1rem; }
+    #noteTitle { font-size: 1.3rem; }
+
+    .modal {
+        padding: 1rem;
+        margin: 0.5rem;
+    }
+}
+
+/* Ultra-small screens */
+@media (max-width: 380px) {
+    .note-card {
+        flex: 1 1 100%;
+        min-width: 100%;
+        min-height: 160px;
+        max-height: 240px;
+    }
+}
+
+/* Tablet */
+@media (min-width: 641px) and (max-width: 1023px) {
+    .note-card {
+        flex: 1 1 220px;
+        min-height: 160px;
+    }
+}
+
+/* Desktop */
+@media (min-width: 1024px) {
+    .note-grid {
+        gap: 1.5rem;
+        padding: 1.5rem;
+    }
+    .note-card {
+        flex: 1 1 260px;
+        padding: 1.5rem;
+        min-height: 200px;
+    }
+    .card-body { -webkit-line-clamp: 5; }
 }

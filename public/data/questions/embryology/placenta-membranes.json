@@ -236,7 +236,7 @@
       "options": [
         {
           "text": "Placental barrier",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "The placental barrier (also called the placental membrane) consists of syncytiotrophoblast, cytotrophoblast (early), villous connective tissue, and fetal capillary endothelium."
         },
         {

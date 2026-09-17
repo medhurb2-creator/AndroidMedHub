@@ -1908,7 +1908,7 @@
       "options": [
         {
           "text": "Hypoxanthine‑guanine phosphoribosyltransferase (HGPRT)",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "HGPRT is a key salvage enzyme that converts hypoxanthine to IMP and guanine to GMP using PRPP."
         },
         {
@@ -1917,7 +1917,7 @@
           "explanation": "APRT is also a salvage enzyme, but the question asks for a purine salvage enzyme; both are, but HGPRT is more well‑known in the context of Lesch‑Nyhan."
         },
         {
-          "text": "Both A and B",
+          "text": "Both HGPRT and APRT",
           "isCorrect": true,
           "explanation": "Both HGPRT and APRT are salvage enzymes for purines."
         },

@@ -1718,7 +1718,7 @@
       "options": [
         {
           "text": "Respiratory epithelium",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Bronchogenic cysts are lined by ciliated pseudostratified columnar epithelium (respiratory epithelium)."
         },
         {
@@ -1737,7 +1737,7 @@
           "explanation": "This is part of respiratory epithelium, but not the full answer."
         },
         {
-          "text": "Both A and D",
+          "text": "Both Respiratory epithelium and Columnar epithelium with cilia",
           "isCorrect": true,
           "explanation": "Respiratory epithelium is ciliated pseudostratified columnar; both A and D are correct."
         }

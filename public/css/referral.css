@@ -1,8 +1,14 @@
-/* frontend-user/css/referral.css */
+/* ==========================================================================
+   REFERRAL — page-specific styles
+   Requires common.css (tokens, header-row base, buttons, .modal-overlay,
+   .modal, .modal-header, .modal-close, .modal-footer, .no-data base,
+   keyframes shimmer, utilities).
+   Adds ONLY: page-sticky fixed-header, referral content, wallet card,
+   referral list, agent badge, withdraw status, error state, modal body
+   internals, shimmer skeleton, responsive.
+   ========================================================================== */
 
-/* ===== REFERRAL PAGE – MOBILE-FIRST ===== */
-
-/* Fixed header */
+/* ---------- Page-sticky fixed header ---------- */
 .fixed-header {
     position: sticky;
     top: 0;
@@ -12,62 +18,7 @@
     padding: 0.5rem 1rem;
 }
 
-.header-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-.header-row.top {
-    margin-bottom: 0.3rem;
-}
-.header-row .left-group {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-}
-.header-row .left-group img {
-    width: 32px;
-    height: 32px;
-    border-radius: 6px;
-}
-.header-row .left-group .brand {
-    font-weight: 600;
-    font-size: 1.2rem;
-}
-.header-row .left-group .btn-text {
-    font-size: 0.9rem;
-    padding: 0.3rem 0.6rem;
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    border-radius: 4px;
-}
-.header-row .left-group .btn-text:hover {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-}
-.header-row .right-group {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-.header-row .btn-outline {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    padding: 0.3rem 0.6rem;
-    border-radius: 30px;
-    font-size: 1.2rem;
-    cursor: pointer;
-    line-height: 1;
-    transition: background 0.2s, color 0.2s, border-color 0.2s;
-}
-.header-row .btn-outline:hover {
-    background: var(--accent);
-    color: white;
-    border-color: var(--accent);
-}
-
+/* Page uses .title-area h1 instead of common's .page-title */
 .header-row.bottom .title-area {
     display: flex;
     align-items: center;
@@ -82,17 +33,15 @@
     color: var(--text-muted);
 }
 
-/* Main content */
+/* ---------- Main ---------- */
 main {
     max-width: 800px;
     margin: 0 auto;
     padding: 1rem;
 }
 
-/* Referral header */
-.referral-header {
-    margin-bottom: 2rem;
-}
+/* ---------- Referral header ---------- */
+.referral-header { margin-bottom: 2rem; }
 .referral-header h2 {
     font-size: 1.3rem;
     margin-bottom: 0.5rem;
@@ -120,14 +69,10 @@ main {
     color: var(--text-secondary);
     margin-top: 0.5rem;
 }
-.earn-info strong {
-    color: var(--success);
-}
+.earn-info strong { color: var(--success); }
 
-/* Wallet section */
-.wallet-section {
-    margin-bottom: 2rem;
-}
+/* ---------- Wallet section ---------- */
+.wallet-section { margin-bottom: 2rem; }
 .wallet-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -158,9 +103,7 @@ main {
     gap: 1rem;
     margin-bottom: 1rem;
 }
-.stat {
-    text-align: center;
-}
+.stat { text-align: center; }
 .stat .stat-label {
     display: block;
     font-size: 0.75rem;
@@ -179,7 +122,7 @@ main {
     margin-top: 0.5rem;
 }
 
-/* Referrals section */
+/* ---------- Referrals section ---------- */
 .referrals-section {
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -204,34 +147,18 @@ main {
     flex-wrap: wrap;
     gap: 0.5rem;
 }
-.referral-item:last-child {
-    border-bottom: none;
-}
+.referral-item:last-child { border-bottom: none; }
 .referral-item.active {
     border-left: 3px solid var(--success);
     padding-left: 0.75rem;
 }
-.ref-info {
-    display: flex;
-    flex-direction: column;
-}
-.ref-name {
-    font-weight: 500;
-}
-.ref-email {
-    font-size: 0.8rem;
-    color: var(--text-muted);
-}
-.ref-status {
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-}
-.ref-date {
-    font-size: 0.7rem;
-    color: var(--text-muted);
-}
+.ref-info  { display: flex; flex-direction: column; }
+.ref-name  { font-weight: 500; }
+.ref-email { font-size: 0.8rem; color: var(--text-muted); }
+.ref-status { font-size: 0.8rem; color: var(--text-secondary); }
+.ref-date   { font-size: 0.7rem; color: var(--text-muted); }
 
-/* Agent badge */
+/* ---------- Agent badge / become agent ---------- */
 .agent-badge {
     background: rgba(245, 158, 11, 0.15);
     border: 1px solid var(--warning);
@@ -254,39 +181,23 @@ main {
     font-weight: 600;
     text-decoration: none;
 }
-.become-agent a:hover {
-    text-decoration: underline;
-}
+.become-agent a:hover { text-decoration: underline; }
 
-/* Withdrawal status */
+/* ---------- Withdrawal status ---------- */
 .withdraw-status {
     margin-top: 0.75rem;
     padding: 0.5rem;
     border-radius: var(--radius-sm);
     font-size: 0.9rem;
 }
-.withdraw-status.success {
-    background: rgba(16, 185, 129, 0.2);
-    color: var(--success);
-}
-.withdraw-status.error {
-    background: rgba(239, 68, 68, 0.2);
-    color: var(--danger);
-}
-.withdraw-status.info {
-    background: rgba(37, 99, 235, 0.2);
-    color: var(--accent);
-}
+.withdraw-status.success { background: rgba(16, 185, 129, 0.2); color: var(--success); }
+.withdraw-status.error   { background: rgba(239, 68, 68, 0.2);  color: var(--danger);  }
+.withdraw-status.info    { background: rgba(37, 99, 235, 0.2);  color: var(--accent);  }
 
-/* No data */
-.no-data {
-    color: var(--text-muted);
-    font-style: italic;
-    padding: 1rem 0;
-    text-align: center;
-}
+/* ---------- No-data override ---------- */
+.no-data { padding: 1rem 0; }
 
-/* Error state */
+/* ---------- Error state ---------- */
 .error-state {
     text-align: center;
     padding: 3rem 1.5rem;
@@ -299,7 +210,7 @@ main {
     color: var(--text-secondary);
 }
 
-/* Action buttons */
+/* ---------- Action buttons row ---------- */
 .action-buttons {
     margin-top: 2rem;
     display: flex;
@@ -308,45 +219,14 @@ main {
     justify-content: center;
 }
 
-/* Modal (withdrawal) */
-.modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(4px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10001;
-    padding: 1rem;
-}
-.modal {
-    background: var(--bg-card);
-    border-radius: var(--radius-lg);
-    max-width: 500px;
-    width: 100%;
-    padding: 1.5rem;
-    box-shadow: var(--shadow-lg);
-}
-.modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-}
-.modal-close {
-    background: none;
-    border: none;
-    font-size: 1.5rem;
-    cursor: pointer;
-    color: var(--text-muted);
-}
-.modal-body .form-group {
-    margin-bottom: 1rem;
-}
+/* ---------- Modal (page-specific overrides) ----------
+   Common's .modal-overlay uses display: none (activated via .active/.show).
+   This page's modal is created on-demand by JS and expected to be visible
+   as soon as it's in the DOM. Force display: flex to match original. */
+.modal-overlay { display: flex; }
+
+/* Modal body internals — not in common */
+.modal-body .form-group { margin-bottom: 1rem; }
 .modal-body .form-group label {
     display: block;
     font-weight: 500;
@@ -361,51 +241,13 @@ main {
     background: var(--bg-card);
     color: var(--text-primary);
 }
-.modal-footer {
-    display: flex;
-    gap: 0.75rem;
-    margin-top: 1.5rem;
-    justify-content: flex-end;
-}
 
-/* Responsive */
-@media (max-width: 640px) {
-    .code-display {
-        flex-direction: column;
-        align-items: stretch;
-    }
-    .code-display .code {
-        text-align: center;
-        font-size: 1.2rem;
-        padding: 0.4rem 0.8rem;
-    }
-    .code-display .btn {
-        width: 100%;
-    }
-    .referral-item {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-    .wallet-stats {
-        grid-template-columns: 1fr 1fr;
-    }
-    .wallet-balance {
-        flex-direction: column;
-        text-align: center;
-        gap: 0.5rem;
-    }
-    .modal {
-        margin: 1rem;
-        padding: 1rem;
-    }
-}
-/* ===== SHIMMER OVERLAY ===== */
+/* ================================================================
+   SHIMMER SKELETON
+   ================================================================ */
 .shimmer-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    inset: 0;
     background: var(--bg-primary, #121212);
     z-index: 9999;
     display: flex;
@@ -415,10 +257,13 @@ main {
     padding: 1.5rem;
     transition: opacity 0.3s ease;
 }
+/* Block common's `.hidden { display: none !important }` so the fade plays. */
 .shimmer-overlay.hidden {
+    display: flex !important;
     opacity: 0;
     pointer-events: none;
 }
+
 .shimmer-grid {
     width: 100%;
     max-width: 600px;
@@ -430,7 +275,7 @@ main {
     background: var(--bg-secondary, #1e1e1e);
     border-radius: var(--radius, 12px);
     padding: 1.5rem;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
     animation: shimmer-pulse 1.5s ease-in-out infinite;
 }
 .shimmer-line {
@@ -440,20 +285,24 @@ main {
     margin-bottom: 0.75rem;
     width: 100%;
 }
-.shimmer-line.short { width: 40%; }
-.shimmer-line.medium { width: 60%; }
-.shimmer-line.large { width: 80%; }
+.shimmer-line.short   { width: 40%; }
+.shimmer-line.medium  { width: 60%; }
+.shimmer-line.large   { width: 80%; }
 .shimmer-line:last-child { margin-bottom: 0; }
+
+/* Page-specific keyframe (different from common's shimmer). */
 @keyframes shimmer-pulse {
-    0% { opacity: 0.6; }
-    50% { opacity: 1; }
+    0%   { opacity: 0.6; }
+    50%  { opacity: 1;   }
     100% { opacity: 0.6; }
 }
+
 .shimmer-overlay .shimmer-subtitle {
     color: var(--text-muted, #888);
     margin-top: 1rem;
     font-size: 0.9rem;
 }
+
 #main-content {
     display: none;
     opacity: 0;
@@ -462,4 +311,32 @@ main {
 #main-content.show {
     display: block;
     opacity: 1;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 640px) {
+    .code-display {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .code-display .code {
+        text-align: center;
+        font-size: 1.2rem;
+        padding: 0.4rem 0.8rem;
+    }
+    .code-display .btn { width: 100%; }
+    .referral-item {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .wallet-stats { grid-template-columns: 1fr 1fr; }
+    .wallet-balance {
+        flex-direction: column;
+        text-align: center;
+        gap: 0.5rem;
+    }
+    .modal {
+        margin: 1rem;
+        padding: 1rem;
+    }
 }

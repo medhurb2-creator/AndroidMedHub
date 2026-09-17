@@ -1,12 +1,12 @@
-/* ===== ORIGINAL AI PAGE STYLES (retained) ===== */
+/* ==========================================================================
+   AI PAGE — page-specific styles
+   Requires common.css. This page uses a separate theme (green accent, dark
+   default) that overrides common's tokens via :root / body.light-mode.
+   All chat layout, message renderer, rich-data cards, shimmer skeleton,
+   and modal styling live here.
+   ========================================================================== */
 
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
-}
-
+/* ---------- AI palette — overrides common's :root for this page ---------- */
 :root {
     --bg-main: #343541;
     --sidebar-bg: #202123;
@@ -25,10 +25,8 @@
     --voice-wave: #10a37f;
     --attachment-preview-bg: #2a2b32;
 
-    /* dynamic header offset – will be overridden by JS */
     --header-height: 90px;
 
-    /* New variables for enhanced content */
     --bg-code: #1a1a2e;
     --text-code: #e0e0e0;
     --border-code: #333;
@@ -54,8 +52,8 @@ body.light-mode {
     --bubble-assistant: #e5e7eb;
     --input-bg: #ffffff;
     --border: #d9d9e3;
-    --text-primary: #0a0a0a;       /* darker for better contrast */
-    --text-muted: #3d3d3d;         /* darker for better contrast */
+    --text-primary: #0a0a0a;
+    --text-muted: #3d3d3d;
     --overlay: rgba(0, 0, 0, 0.4);
     --quick-action-bg: #e5e5e5;
     --dropdown-bg: #f0f0f0;
@@ -63,9 +61,8 @@ body.light-mode {
     --voice-wave: #10a37f;
     --attachment-preview-bg: #f0f0f0;
 
-    /* Light mode overrides for new variables */
     --bg-code: #f5f5f5;
-    --text-code: #1a1a1a;          /* darker for better contrast */
+    --text-code: #1a1a1a;
     --border-code: #ddd;
     --bg-inline-code: rgba(0, 0, 0, 0.06);
     --text-inline-code: #d63384;
@@ -76,11 +73,12 @@ body.light-mode {
     --border-table: #e2e8f0;
     --text-heading: #1a202c;
     --border-blockquote: #cbd5e0;
-    --text-blockquote: #2d3748;    /* darker for better contrast */
-    --text-def-term: #1d4ed8;      /* darker for better contrast */
+    --text-blockquote: #2d3748;
+    --text-def-term: #1d4ed8;
     --border-hr: #e2e8f0;
 }
 
+/* ---------- Body — chat layout (overrides common's body) ---------- */
 body {
     height: 100vh;
     overflow: hidden;
@@ -88,7 +86,7 @@ body {
     color: var(--text-primary);
 }
 
-/* ---------- TWO FIXED HEADER BARS ---------- */
+/* ---------- Fixed top bar ---------- */
 .fixed-top-bar {
     position: fixed;
     top: 0;
@@ -100,32 +98,12 @@ body {
     padding: 0.5rem 1rem;
 }
 
-.header-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.header-row.top {
-    margin-bottom: 0.3rem;
-}
-
-.header-row .left-group {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-}
+/* Header overrides — only what differs from common.css */
+.header-row .left-group { flex-wrap: wrap; }
 
 .header-row .left-group img {
     width: 36px;
     height: 36px;
-    border-radius: 6px;
-}
-
-.header-row .left-group .brand {
-    font-weight: 600;
-    font-size: 1.2rem;
 }
 
 .header-row .left-group .btn-text {
@@ -136,22 +114,16 @@ body {
     color: var(--text-primary);
     font-size: 0.85rem;
     transition: background 0.2s;
-    cursor: pointer;
     white-space: nowrap;
 }
-
 .header-row .left-group .btn-text:hover {
     background: var(--accent);
-    color: white;
+    color: #fff;
     border-color: var(--accent);
 }
 
-.header-row .right-group {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
+/* Theme toggle lives in .right-group; no .btn-outline class in markup,
+   but keep the selector so JS-added classes still style correctly. */
 .header-row .right-group .btn-outline {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
@@ -161,10 +133,9 @@ body {
     cursor: pointer;
     transition: background 0.2s;
 }
-
 .header-row .right-group .btn-outline:hover {
     background: var(--accent);
-    color: white;
+    color: #fff;
     border-color: var(--accent);
 }
 
@@ -174,26 +145,19 @@ body {
     gap: 0.5rem;
     font-size: 0.9rem;
 }
-
-#header-status .status-text {
-    color: var(--text-secondary);
-}
-
+#header-status .status-text { color: var(--text-secondary); }
 #header-status .trial-btn {
     background: var(--accent);
-    color: white;
+    color: #fff;
     border: none;
     padding: 0.2rem 0.7rem;
     border-radius: 30px;
     font-weight: 600;
     cursor: pointer;
 }
+#header-status .trial-btn:hover { background: var(--accent-dark); }
 
-#header-status .trial-btn:hover {
-    background: var(--accent-dark);
-}
-
-/* ---------- OFFSET THE ORIGINAL APP (now dynamic) ---------- */
+/* ---------- App shell (offset for fixed header) ---------- */
 #app {
     display: flex;
     height: var(--app-height, calc(100vh - var(--header-height)));
@@ -204,7 +168,7 @@ body {
     margin-top: var(--header-height);
 }
 
-/* ---------- SIDEBAR ---------- */
+/* ---------- Sidebar ---------- */
 .sidebar {
     width: 260px;
     background: var(--sidebar-bg);
@@ -219,10 +183,7 @@ body {
     z-index: 20;
     transform: translateX(-100%);
 }
-
-.sidebar.open {
-    transform: translateX(0);
-}
+.sidebar.open { transform: translateX(0); }
 
 @media (min-width: 768px) {
     .sidebar {
@@ -254,10 +215,7 @@ body {
     background: transparent;
     color: var(--text-primary);
 }
-
-.new-chat-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
-}
+.new-chat-btn:hover { background: rgba(255, 255, 255, 0.08); }
 
 .search-chats {
     margin: 0 16px 20px;
@@ -268,7 +226,11 @@ body {
     color: var(--text-primary);
     font-size: 0.9rem;
     width: calc(100% - 32px);
-    box-sizing: border-box;
+}
+/* Block common's input:focus blue ring */
+.search-chats:focus {
+    outline: none;
+    box-shadow: none;
 }
 
 .chat-history {
@@ -278,20 +240,8 @@ body {
     padding: 0 8px;
 }
 
-.history-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 8px 8px 16px;
-    border-radius: 30px;
-    margin-bottom: 4px;
-    cursor: pointer;
-}
-
-.history-item:hover {
-    background: rgba(255, 255, 255, 0.08);
-}
-
+/* .history-item base comes from common.css */
+.history-item:hover { background: rgba(255, 255, 255, 0.08); }
 .history-item.pinned {
     background: rgba(16, 163, 127, 0.15);
     border-left: 3px solid var(--accent);
@@ -305,19 +255,14 @@ body {
     font-size: 0.95rem;
 }
 
-.item-menu {
-    position: relative;
-}
+.item-menu { position: relative; }
 
 .menu-dots {
     padding: 8px 10px;
     cursor: pointer;
     border-radius: 50%;
 }
-
-.menu-dots:hover {
-    background: rgba(255, 255, 255, 0.2);
-}
+.menu-dots:hover { background: rgba(255, 255, 255, 0.2); }
 
 .dropdown-menu {
     position: absolute;
@@ -332,11 +277,7 @@ body {
     display: none;
     box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
 }
-
-.dropdown-menu.show {
-    display: block;
-}
-
+.dropdown-menu.show { display: block; }
 .dropdown-menu div {
     padding: 10px 18px;
     cursor: pointer;
@@ -345,16 +286,13 @@ body {
     gap: 12px;
     font-size: 0.9rem;
 }
+.dropdown-menu div:hover { background: rgba(255, 255, 255, 0.1); }
+.dropdown-menu i { width: 20px; color: var(--accent); }
 
-.dropdown-menu div:hover {
-    background: rgba(255, 255, 255, 0.1);
+.sidebar-footer {
+    padding: 20px 16px;
+    border-top: 1px solid var(--border);
 }
-
-.dropdown-menu i {
-    width: 20px;
-    color: var(--accent);
-}
-
 .sidebar-footer div {
     display: flex;
     align-items: center;
@@ -364,7 +302,6 @@ body {
     font-size: 0.95rem;
     opacity: 0.9;
 }
-
 .sidebar-footer a {
     text-decoration: none;
     color: inherit;
@@ -373,18 +310,9 @@ body {
     gap: 14px;
     width: 100%;
 }
+.sidebar-footer i { width: 22px; font-size: 1.2rem; }
 
-.sidebar-footer i {
-    width: 22px;
-    font-size: 1.2rem;
-}
-
-.sidebar-footer {
-    padding: 20px 16px;
-    border-top: 1px solid var(--border);
-}
-
-/* ---------- MAIN CHAT AREA ---------- */
+/* ---------- Main chat area ---------- */
 .main {
     flex: 1;
     display: flex;
@@ -415,11 +343,8 @@ body {
     cursor: pointer;
     display: block;
 }
-
 @media (min-width: 768px) {
-    .menu-icon {
-        display: none;
-    }
+    .menu-icon { display: none; }
 }
 
 .right-controls {
@@ -453,14 +378,8 @@ body {
     color: var(--text-primary);
     text-decoration: none;
 }
-
-.performance-btn i {
-    color: var(--accent);
-}
-
-.performance-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-}
+.performance-btn i { color: var(--accent); }
+.performance-btn:hover { background: rgba(255, 255, 255, 0.1); }
 
 .chat-container {
     flex: 1;
@@ -472,17 +391,14 @@ body {
     scroll-behavior: smooth;
 }
 
-/* ========== MESSAGE STYLES ========== */
-.message {
-    display: flex;
-}
+/* ---------- Messages ---------- */
+.message { display: flex; }
 
 .message.user {
     max-width: 88%;
     align-self: flex-end;
 }
 
-/* ===== ASSISTANT MESSAGE – FULL‑WIDTH, NO BOX, NO BACKGROUND ===== */
 .message.assistant {
     align-self: stretch;
     width: 100%;
@@ -492,11 +408,9 @@ body {
     margin: 12px 0;
     border: none;
     border-radius: 0;
-    box-sizing: border-box;
     display: flex;
     flex-direction: column;
 }
-
 .message.assistant .bubble {
     background: transparent;
     padding: 0;
@@ -504,16 +418,23 @@ body {
     white-space: normal;
 }
 
+.message.user .bubble {
+    background: var(--bubble-user);
+    border-bottom-right-radius: 6px;
+    border-radius: 22px;
+    padding: 14px 18px;
+}
+
 .assistant-content {
     line-height: 1.7;
     font-size: 1rem;
     word-wrap: break-word;
-    padding: 0 0;
+    padding: 0;
     margin: 0 0 8px 0;
 }
-
 .assistant-content code {
-    background: rgba(0, 0, 0, 0.2);
+    background: var(--bg-inline-code);
+    color: var(--text-inline-code);
     padding: 2px 6px;
     border-radius: 4px;
     font-family: 'Courier New', monospace;
@@ -528,14 +449,12 @@ body {
     gap: 12px;
     flex-wrap: wrap;
 }
-
 .message-meta {
     font-size: 0.7rem;
     color: var(--text-muted);
     margin-bottom: 4px;
 }
 
-/* ===== MESSAGE ACTIONS ===== */
 .message-actions {
     display: flex;
     gap: 18px;
@@ -547,27 +466,17 @@ body {
     flex-direction: row;
     align-items: center;
 }
-
 .message-actions span {
     cursor: pointer;
     display: flex;
     align-items: center;
     gap: 5px;
 }
+.message-actions span:hover { color: var(--accent); }
+.message-actions .thumbs-up.active { color: #2ecc71; }
+.message-actions .thumbs-down.active { color: #e74c3c; }
 
-.message-actions span:hover {
-    color: var(--accent);
-}
-
-.message-actions .thumbs-up.active {
-    color: #2ecc71;
-}
-
-.message-actions .thumbs-down.active {
-    color: #e74c3c;
-}
-
-/* ---------- TYPING INDICATOR ---------- */
+/* ---------- Typing indicator ---------- */
 .typing-indicator {
     display: flex;
     align-items: center;
@@ -579,7 +488,6 @@ body {
     width: fit-content;
     color: var(--text-muted);
 }
-
 .typing-indicator .dot {
     width: 9px;
     height: 9px;
@@ -587,31 +495,15 @@ body {
     border-radius: 50%;
     animation: typingBounce 1.4s infinite;
 }
-
-.typing-indicator .dot:nth-child(2) {
-    animation-delay: 0.2s;
-}
-
-.typing-indicator .dot:nth-child(3) {
-    animation-delay: 0.4s;
-}
+.typing-indicator .dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator .dot:nth-child(3) { animation-delay: 0.4s; }
 
 @keyframes typingBounce {
-
-    0%,
-    60%,
-    100% {
-        transform: translateY(0);
-        opacity: 0.4;
-    }
-
-    30% {
-        transform: translateY(-5px);
-        opacity: 1;
-    }
+    0%, 60%, 100% { transform: translateY(0);   opacity: 0.4; }
+    30%           { transform: translateY(-5px); opacity: 1;   }
 }
 
-/* ---------- WELCOME BLOCK ---------- */
+/* ---------- Welcome block ---------- */
 .welcome-block {
     display: flex;
     flex-direction: column;
@@ -619,7 +511,6 @@ body {
     gap: 16px;
     max-width: 90%;
 }
-
 .greeting-bubble {
     background: var(--bubble-assistant);
     padding: 18px 22px;
@@ -629,19 +520,16 @@ body {
     line-height: 1.5;
     color: var(--text-primary);
 }
-
 .greeting-bubble strong {
     color: var(--accent);
     font-weight: 600;
 }
-
 .quick-actions {
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
     margin-left: 8px;
 }
-
 .quick-action-btn {
     background: var(--quick-action-bg);
     border: 1px solid var(--border);
@@ -655,17 +543,10 @@ body {
     gap: 6px;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
 }
+.quick-action-btn:hover { background: var(--bubble-assistant); }
+.quick-action-btn i { color: var(--accent); font-size: 1rem; }
 
-.quick-action-btn:hover {
-    background: var(--bubble-assistant);
-}
-
-.quick-action-btn i {
-    color: var(--accent);
-    font-size: 1rem;
-}
-
-/* ---------- INPUT AREA ---------- */
+/* ---------- Input area ---------- */
 .input-area {
     flex-shrink: 0;
     background: var(--bg-main);
@@ -682,11 +563,8 @@ body {
     margin-bottom: 8px;
     min-height: 0;
 }
-
 .pending-attachments:empty,
-.active-functions:empty {
-    display: none;
-}
+.active-functions:empty { display: none; }
 
 .function-chip,
 .attachment-chip {
@@ -700,20 +578,9 @@ body {
     font-size: 0.85rem;
     color: var(--text-primary);
 }
-
-.attachment-chip {
-    border-color: #f39c12;
-}
-
-.function-chip i:first-child,
-.attachment-chip i:first-child {
-    color: var(--accent);
-}
-
-.attachment-chip i:first-child {
-    color: #f39c12;
-}
-
+.attachment-chip { border-color: #f39c12; }
+.function-chip i:first-child { color: var(--accent); }
+.attachment-chip i:first-child { color: #f39c12; }
 .function-chip .remove-chip,
 .attachment-chip .remove-attachment {
     cursor: pointer;
@@ -721,11 +588,8 @@ body {
     font-size: 1rem;
     color: var(--text-muted);
 }
-
 .function-chip .remove-chip:hover,
-.attachment-chip .remove-attachment:hover {
-    color: #e74c3c;
-}
+.attachment-chip .remove-attachment:hover { color: #e74c3c; }
 
 .input-wrapper {
     display: flex;
@@ -736,7 +600,6 @@ body {
     padding: 4px 8px 4px 16px;
     border: 1px solid var(--border);
 }
-
 .input-wrapper textarea {
     flex: 1;
     background: transparent;
@@ -750,10 +613,12 @@ body {
     padding: 8px 0;
     font-family: inherit;
 }
-
-.input-wrapper textarea::placeholder {
-    color: var(--text-muted);
+/* Block common's textarea:focus ring */
+.input-wrapper textarea:focus {
+    outline: none;
+    box-shadow: none;
 }
+.input-wrapper textarea::placeholder { color: var(--text-muted); }
 
 .action-btn {
     display: inline-flex;
@@ -769,18 +634,9 @@ body {
     cursor: pointer;
     flex-shrink: 0;
 }
-
-.action-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-}
-
-.action-btn.send {
-    color: var(--accent);
-}
-
-.action-btn.send:hover {
-    background: rgba(16, 163, 127, 0.2);
-}
+.action-btn:hover { background: rgba(255, 255, 255, 0.1); }
+.action-btn.send { color: var(--accent); }
+.action-btn.send:hover { background: rgba(16, 163, 127, 0.2); }
 
 .voice-recording-bar {
     display: none;
@@ -792,7 +648,6 @@ body {
     border: 1px solid var(--accent);
     margin-top: 4px;
 }
-
 .voice-recording-bar .wave-group {
     flex: 1;
     display: flex;
@@ -801,7 +656,6 @@ body {
     gap: 4px;
     height: 40px;
 }
-
 .wave {
     width: 6px;
     height: 20px;
@@ -809,45 +663,20 @@ body {
     border-radius: 10px;
     animation: wave 1s ease-in-out infinite;
 }
-
-.wave:nth-child(2) {
-    animation-delay: 0.1s;
-    height: 30px;
-}
-
-.wave:nth-child(3) {
-    animation-delay: 0.2s;
-    height: 40px;
-}
-
-.wave:nth-child(4) {
-    animation-delay: 0.3s;
-    height: 30px;
-}
-
-.wave:nth-child(5) {
-    animation-delay: 0.4s;
-    height: 20px;
-}
+.wave:nth-child(2) { animation-delay: 0.1s; height: 30px; }
+.wave:nth-child(3) { animation-delay: 0.2s; height: 40px; }
+.wave:nth-child(4) { animation-delay: 0.3s; height: 30px; }
+.wave:nth-child(5) { animation-delay: 0.4s; height: 20px; }
 
 @keyframes wave {
-
-    0%,
-    100% {
-        transform: scaleY(0.8);
-        opacity: 0.8;
-    }
-
-    50% {
-        transform: scaleY(1.2);
-        opacity: 1;
-    }
+    0%, 100% { transform: scaleY(0.8); opacity: 0.8; }
+    50%      { transform: scaleY(1.2); opacity: 1;   }
 }
 
 .stop-recording {
     background: var(--accent);
     border: none;
-    color: white;
+    color: #fff;
     width: 40px;
     height: 40px;
     border-radius: 50%;
@@ -873,10 +702,7 @@ body {
     z-index: 30;
     min-width: 220px;
 }
-
-.attach-dropdown.show {
-    display: flex;
-}
+.attach-dropdown.show { display: flex; }
 
 .attach-item {
     display: flex;
@@ -888,19 +714,10 @@ body {
     transition: background 0.2s;
     font-size: 0.95rem;
 }
+.attach-item:hover { background: rgba(255, 255, 255, 0.1); }
+.attach-item i { width: 24px; color: var(--accent); }
 
-.attach-item:hover {
-    background: rgba(255, 255, 255, 0.1);
-}
-
-.attach-item i {
-    width: 24px;
-    color: var(--accent);
-}
-
-.file-input {
-    display: none;
-}
+.file-input { display: none; }
 
 .image-preview {
     max-width: 200px;
@@ -910,7 +727,7 @@ body {
     border: 1px solid var(--border);
 }
 
-/* ---------- MODAL ---------- */
+/* ---------- Modal (overrides common) ---------- */
 .modal-overlay {
     position: fixed;
     top: 0;
@@ -922,7 +739,9 @@ body {
     align-items: center;
     justify-content: center;
     z-index: 100;
+    padding: 0;                               /* block common's 1rem */
     backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);       /* match for WebKit */
 }
 
 .modal {
@@ -934,15 +753,13 @@ body {
     color: var(--text-primary);
     box-shadow: 0 20px 30px rgba(0, 0, 0, 0.5);
     border: 1px solid var(--border);
-    box-sizing: border-box;
+    animation: none;                          /* block common's modalSlideUp */
 }
-
 .modal h3 {
     margin-bottom: 22px;
     font-weight: 600;
     font-size: 1.4rem;
 }
-
 .modal-item {
     display: flex;
     justify-content: space-between;
@@ -950,7 +767,6 @@ body {
     margin-bottom: 20px;
     font-size: 1rem;
 }
-
 .modal-item button,
 .modal-item select {
     background: var(--input-bg);
@@ -961,11 +777,12 @@ body {
     cursor: pointer;
     font-size: 0.9rem;
 }
-
-.modal-item select {
-    padding: 6px 20px 6px 10px;
+.modal-item select { padding: 6px 20px 6px 10px; }
+/* Block common's select:focus ring */
+.modal-item select:focus {
+    outline: none;
+    box-shadow: none;
 }
-
 .close-btn {
     background: transparent;
     border: 1px solid var(--border);
@@ -978,21 +795,17 @@ body {
     cursor: pointer;
 }
 
-/* ================================================================
-   ===== RICH DATA CARDS =====
-   ================================================================ */
+/* ---------- Rich data cards ---------- */
 .rich-data-section {
     margin-top: 16px;
     padding-top: 0;
 }
-
 .rich-heading {
     font-size: 0.9rem;
     font-weight: 600;
     color: var(--accent);
     margin: 12px 0 6px;
 }
-
 .formula-card {
     background: rgba(0, 0, 0, 0.1);
     border-left: 4px solid var(--accent);
@@ -1000,20 +813,17 @@ body {
     margin: 10px 0;
     border-radius: 6px;
 }
-
 .formula-desc {
     font-style: italic;
     color: var(--text-muted);
     font-size: 0.9rem;
     margin-bottom: 4px;
 }
-
 .formula-equation {
     font-family: 'Courier New', monospace;
     font-size: 1.1rem;
     padding: 4px 0;
 }
-
 .mnemonic-card {
     background: rgba(16, 163, 127, 0.1);
     border-left: 4px solid #f39c12;
@@ -1022,7 +832,6 @@ body {
     border-radius: 6px;
     font-style: italic;
 }
-
 .reference-item {
     font-size: 0.9rem;
     padding: 3px 0;
@@ -1030,11 +839,7 @@ body {
     border-bottom: 1px dotted var(--border);
     margin-bottom: 6px;
 }
-
-.sources-group {
-    margin: 12px 0;
-}
-
+.sources-group { margin: 12px 0; }
 .source-chips {
     display: flex;
     gap: 8px;
@@ -1043,7 +848,6 @@ body {
     scrollbar-width: thin;
     scrollbar-color: var(--accent) transparent;
 }
-
 .source-chip {
     background: var(--dropdown-bg);
     padding: 6px 14px;
@@ -1056,24 +860,18 @@ body {
     flex-shrink: 0;
     transition: all 0.2s;
 }
-
 .source-chip:hover {
     background: var(--accent);
-    color: white;
+    color: #fff;
     border-color: var(--accent);
 }
-
-.images-group {
-    margin: 12px 0;
-}
-
+.images-group { margin: 12px 0; }
 .images-row {
     display: flex;
     gap: 10px;
     overflow-x: auto;
     padding: 4px 0;
 }
-
 .rich-image {
     max-width: 220px;
     max-height: 180px;
@@ -1084,15 +882,9 @@ body {
     transition: transform 0.2s;
     cursor: pointer;
 }
+.rich-image:hover { transform: scale(1.02); }
 
-.rich-image:hover {
-    transform: scale(1.02);
-}
-
-.latex-inline {
-    display: inline;
-}
-
+.latex-inline { display: inline; }
 .latex-block {
     display: block;
     margin: 12px 0;
@@ -1100,36 +892,21 @@ body {
     overflow-x: auto;
 }
 
-.message.user .bubble {
-    background: var(--bubble-user);
-    border-bottom-right-radius: 6px;
-    border-radius: 22px;
-    padding: 14px 18px;
-}
-
-/* ================================================================
-   ===== TYPING EFFECT =====
-   ================================================================ */
+/* ---------- Typing effect mask ---------- */
 .assistant-content.typing-effect {
     mask-image: linear-gradient(to right, black var(--reveal-percentage, 0%), transparent var(--reveal-percentage, 0%));
     -webkit-mask-image: linear-gradient(to right, black var(--reveal-percentage, 0%), transparent var(--reveal-percentage, 0%));
     transition: mask-image 0.05s linear, -webkit-mask-image 0.05s linear;
 }
-
 .assistant-content:not(.typing-effect) {
     mask-image: none;
     -webkit-mask-image: none;
 }
 
-/* ================================================================
-   ===== IMAGE VIEWER (LIGHTBOX) =====
-   ================================================================ */
+/* ---------- Image viewer (lightbox) ---------- */
 .image-viewer-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    inset: 0;
     background: rgba(0, 0, 0, 0.85);
     display: none;
     align-items: center;
@@ -1137,11 +914,7 @@ body {
     z-index: 2000;
     cursor: zoom-out;
 }
-
-.image-viewer-overlay.active {
-    display: flex;
-}
-
+.image-viewer-overlay.active { display: flex; }
 .image-viewer-overlay img {
     max-width: 90vw;
     max-height: 90vh;
@@ -1149,24 +922,18 @@ body {
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
     object-fit: contain;
 }
-
 .image-viewer-overlay .close-viewer {
     position: absolute;
     top: 20px;
     right: 30px;
     font-size: 2.5rem;
-    color: white;
+    color: #fff;
     cursor: pointer;
     z-index: 2001;
 }
+.image-viewer-overlay .close-viewer:hover { color: #ccc; }
 
-.image-viewer-overlay .close-viewer:hover {
-    color: #ccc;
-}
-
-/* ================================================================
-   ===== NEW: ASCII DIAGRAMS & CODE BLOCKS =====
-   ================================================================ */
+/* ---------- ASCII diagrams & code blocks ---------- */
 pre.ascii-diagram {
     background: var(--bg-code);
     color: var(--text-code);
@@ -1181,7 +948,6 @@ pre.ascii-diagram {
     white-space: pre;
     -webkit-overflow-scrolling: touch;
 }
-
 pre.ascii-diagram code {
     background: none;
     padding: 0;
@@ -1189,7 +955,6 @@ pre.ascii-diagram code {
     color: inherit;
     white-space: pre;
 }
-
 pre.code-block {
     background: var(--bg-code);
     color: var(--text-code);
@@ -1203,7 +968,6 @@ pre.code-block {
     line-height: 1.5;
     position: relative;
 }
-
 pre.code-block::before {
     content: attr(class);
     position: absolute;
@@ -1214,8 +978,6 @@ pre.code-block::before {
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
-
-/* Inline code (override previous generic rule for better consistency) */
 code {
     background: var(--bg-inline-code);
     color: var(--text-inline-code);
@@ -1225,15 +987,7 @@ code {
     font-size: 0.9em;
 }
 
-/* Override assistant-content code to use the new variables */
-.assistant-content code {
-    background: var(--bg-inline-code);
-    color: var(--text-inline-code);
-}
-
-/* ================================================================
-   ===== NEW: TABLES =====
-   ================================================================ */
+/* ---------- Tables ---------- */
 table.md-table {
     width: 100%;
     border-collapse: collapse;
@@ -1243,37 +997,26 @@ table.md-table {
     overflow: hidden;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
-
 table.md-table thead {
     background: var(--bg-table-header);
     color: var(--text-table-header);
 }
-
 table.md-table th {
     padding: 12px 16px;
     text-align: left;
     font-weight: 600;
     border-bottom: 2px solid var(--border-table);
 }
-
 table.md-table td {
     padding: 10px 16px;
     border-bottom: 1px solid var(--border-table);
     background: var(--bg-table-cell);
     color: var(--text-primary);
 }
+table.md-table tbody tr:hover td { background: var(--bg-table-hover); }
+table.md-table tbody tr:last-child td { border-bottom: none; }
 
-table.md-table tbody tr:hover td {
-    background: var(--bg-table-hover);
-}
-
-table.md-table tbody tr:last-child td {
-    border-bottom: none;
-}
-
-/* ================================================================
-   ===== NEW: ADMONITIONS / CALLOUTS =====
-   ================================================================ */
+/* ---------- Admonitions ---------- */
 .admonition {
     border-left: 4px solid;
     border-radius: 8px;
@@ -1281,7 +1024,6 @@ table.md-table tbody tr:last-child td {
     overflow: hidden;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
-
 .admonition-header {
     padding: 10px 16px;
     font-weight: 600;
@@ -1290,94 +1032,35 @@ table.md-table tbody tr:last-child td {
     align-items: center;
     gap: 8px;
 }
-
 .admonition-content {
     padding: 10px 16px 14px;
     font-size: 14px;
     line-height: 1.6;
     color: var(--text-primary);
 }
+.admonition-icon { font-size: 16px; }
 
-.admonition-icon {
-    font-size: 16px;
-}
+.admonition-note    { border-color: #3b82f6; background: rgba(59, 130, 246, 0.08); }
+.admonition-note    .admonition-header { background: rgba(59, 130, 246, 0.15); color: #93c5fd; }
+.admonition-warning { border-color: #f59e0b; background: rgba(245, 158, 11, 0.08); }
+.admonition-warning .admonition-header { background: rgba(245, 158, 11, 0.15); color: #fcd34d; }
+.admonition-tip     { border-color: #10b981; background: rgba(16, 185, 129, 0.08); }
+.admonition-tip     .admonition-header { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; }
+.admonition-danger  { border-color: #ef4444; background: rgba(239, 68, 68, 0.08); }
+.admonition-danger  .admonition-header { background: rgba(239, 68, 68, 0.15); color: #fca5a5; }
+.admonition-info    { border-color: #6366f1; background: rgba(99, 102, 241, 0.08); }
+.admonition-info    .admonition-header { background: rgba(99, 102, 241, 0.15); color: #a5b4fc; }
+.admonition-success { border-color: #22c55e; background: rgba(34, 197, 94, 0.08); }
+.admonition-success .admonition-header { background: rgba(34, 197, 94, 0.15); color: #86efac; }
 
-/* Admonition type colors */
-.admonition-note {
-    border-color: #3b82f6;
-    background: rgba(59, 130, 246, 0.08);
-}
-
-.admonition-note .admonition-header {
-    background: rgba(59, 130, 246, 0.15);
-    color: #93c5fd;
-}
-
-.admonition-warning {
-    border-color: #f59e0b;
-    background: rgba(245, 158, 11, 0.08);
-}
-
-.admonition-warning .admonition-header {
-    background: rgba(245, 158, 11, 0.15);
-    color: #fcd34d;
-}
-
-.admonition-tip {
-    border-color: #10b981;
-    background: rgba(16, 185, 129, 0.08);
-}
-
-.admonition-tip .admonition-header {
-    background: rgba(16, 185, 129, 0.15);
-    color: #6ee7b7;
-}
-
-.admonition-danger {
-    border-color: #ef4444;
-    background: rgba(239, 68, 68, 0.08);
-}
-
-.admonition-danger .admonition-header {
-    background: rgba(239, 68, 68, 0.15);
-    color: #fca5a5;
-}
-
-.admonition-info {
-    border-color: #6366f1;
-    background: rgba(99, 102, 241, 0.08);
-}
-
-.admonition-info .admonition-header {
-    background: rgba(99, 102, 241, 0.15);
-    color: #a5b4fc;
-}
-
-.admonition-success {
-    border-color: #22c55e;
-    background: rgba(34, 197, 94, 0.08);
-}
-
-.admonition-success .admonition-header {
-    background: rgba(34, 197, 94, 0.15);
-    color: #86efac;
-}
-
-/* ================================================================
-   ===== NEW: DEFINITION LISTS (Medical Terminology) =====
-   ================================================================ */
-dl.def-list {
-    margin: 8px 0;
-    padding: 0;
-}
-
+/* ---------- Definition lists ---------- */
+dl.def-list { margin: 8px 0; padding: 0; }
 dl.def-list dt {
     font-weight: 700;
     color: var(--text-def-term);
     margin-top: 8px;
     font-size: 14px;
 }
-
 dl.def-list dd {
     margin-left: 16px;
     margin-bottom: 6px;
@@ -1386,37 +1069,28 @@ dl.def-list dd {
     line-height: 1.5;
 }
 
-/* ================================================================
-   ===== ENHANCED MESSAGE CONTENT TYPOGRAPHY =====
-   ================================================================ */
-.assistant-content h1 {
-    font-size: 1.5em;
-    margin: 16px 0 8px;
-    color: var(--text-heading);
+.assistant-content dl { margin: 8px 0 12px 0; padding: 0; }
+.assistant-content dt {
+    font-weight: 700;
+    color: var(--text-def-term);
+    margin-top: 8px;
+    font-size: 14px;
+}
+.assistant-content dd {
+    margin-left: 16px;
+    margin-bottom: 6px;
+    color: var(--text-primary);
+    font-size: 14px;
+    line-height: 1.5;
 }
 
-.assistant-content h2 {
-    font-size: 1.3em;
-    margin: 14px 0 6px;
-    color: var(--text-heading);
-}
-
-.assistant-content h3 {
-    font-size: 1.15em;
-    margin: 12px 0 4px;
-    color: var(--text-heading);
-}
-
-.assistant-content h4 {
-    font-size: 1.05em;
-    margin: 10px 0 4px;
-}
-
+/* ---------- Message typography ---------- */
+.assistant-content h1 { font-size: 1.5em;  margin: 16px 0 8px; color: var(--text-heading); }
+.assistant-content h2 { font-size: 1.3em;  margin: 14px 0 6px; color: var(--text-heading); }
+.assistant-content h3 { font-size: 1.15em; margin: 12px 0 4px; color: var(--text-heading); }
+.assistant-content h4 { font-size: 1.05em; margin: 10px 0 4px; }
 .assistant-content h5,
-.assistant-content h6 {
-    font-size: 1em;
-    margin: 8px 0 4px;
-}
+.assistant-content h6 { font-size: 1em;    margin: 8px 0 4px; }
 
 .assistant-content blockquote {
     border-left: 3px solid var(--border-blockquote);
@@ -1426,43 +1100,32 @@ dl.def-list dd {
     background: rgba(100, 100, 100, 0.08);
     border-radius: 0 6px 6px 0;
 }
-
 .assistant-content hr {
     border: none;
     border-top: 1px solid var(--border-hr);
     margin: 16px 0;
 }
-
 .assistant-content mark {
     background: rgba(255, 213, 0, 0.3);
     padding: 1px 4px;
     border-radius: 2px;
 }
-
 .assistant-content sub,
-.assistant-content sup {
-    font-size: 0.75em;
-}
+.assistant-content sup { font-size: 0.75em; }
 
-/* ================================================================
-   ===== FOOTNOTES =====
-   ================================================================ */
+/* ---------- Footnotes ---------- */
 sup.footnote-ref {
     font-size: 0.75em;
     vertical-align: super;
     line-height: 1;
 }
-
 sup.footnote-ref a {
     text-decoration: none;
     color: var(--accent);
     font-weight: 600;
     padding: 0 2px;
 }
-
-sup.footnote-ref a:hover {
-    text-decoration: underline;
-}
+sup.footnote-ref a:hover { text-decoration: underline; }
 
 .footnotes-list {
     margin-top: 24px;
@@ -1472,32 +1135,24 @@ sup.footnote-ref a:hover {
     border-top: 1px dashed var(--border);
     padding-top: 12px;
 }
-
 .footnotes-list li {
     margin-bottom: 6px;
     word-wrap: break-word;
 }
-
 .footnotes-list li a {
     color: var(--accent);
     text-decoration: none;
     margin-right: 4px;
 }
+.footnotes-list li a:hover { text-decoration: underline; }
 
-.footnotes-list li a:hover {
-    text-decoration: underline;
-}
-
-/* ================================================================
-   ===== TASK LIST ITEMS =====
-   ================================================================ */
+/* ---------- Task list ---------- */
 li.task-list-item {
     list-style: none;
     display: flex;
     align-items: baseline;
     gap: 8px;
 }
-
 li.task-list-item input[type="checkbox"] {
     margin: 0;
     accent-color: var(--accent);
@@ -1505,44 +1160,16 @@ li.task-list-item input[type="checkbox"] {
     height: 16px;
     flex-shrink: 0;
     pointer-events: none;
-    /* disabled */
 }
 
-/* ================================================================
-   ===== DEFINITION LISTS (new renderer) =====
-   ================================================================ */
-.assistant-content dl {
-    margin: 8px 0 12px 0;
-    padding: 0;
-}
-
-.assistant-content dt {
-    font-weight: 700;
-    color: var(--text-def-term);
-    margin-top: 8px;
-    font-size: 14px;
-}
-
-.assistant-content dd {
-    margin-left: 16px;
-    margin-bottom: 6px;
-    color: var(--text-primary);
-    font-size: 14px;
-    line-height: 1.5;
-}
-
-/* ================================================================
-   ===== ABBREVIATIONS =====
-   ================================================================ */
+/* ---------- Abbreviations ---------- */
 abbr {
     text-decoration: underline dotted;
     text-underline-offset: 2px;
     cursor: help;
 }
 
-/* ================================================================
-   ===== DETAILS / SUMMARY (collapsible) =====
-   ================================================================ */
+/* ---------- Details / summary ---------- */
 .assistant-content details {
     margin: 12px 0;
     background: var(--quick-action-bg);
@@ -1551,7 +1178,6 @@ abbr {
     padding: 0;
     overflow: hidden;
 }
-
 .assistant-content summary {
     padding: 10px 16px;
     font-weight: 600;
@@ -1560,20 +1186,11 @@ abbr {
     border-bottom: 1px solid var(--border);
     list-style-position: outside;
     margin: -1px -1px 0 -1px;
-    /* collapse border overlap */
 }
+.assistant-content details[open] summary { border-bottom: 1px solid var(--border); }
+.assistant-content details > *:not(summary) { padding: 8px 16px 12px; }
 
-.assistant-content details[open] summary {
-    border-bottom: 1px solid var(--border);
-}
-
-.assistant-content details>*:not(summary) {
-    padding: 8px 16px 12px;
-}
-
-/* ================================================================
-   ===== KEYBOARD SHORTCUTS =====
-   ================================================================ */
+/* ---------- Keyboard shortcuts ---------- */
 kbd {
     display: inline-block;
     padding: 2px 6px;
@@ -1588,9 +1205,7 @@ kbd {
     white-space: nowrap;
 }
 
-/* ================================================================
-   ===== VIDEO =====
-   ================================================================ */
+/* ---------- Video ---------- */
 .assistant-content video {
     max-width: 100%;
     border-radius: 8px;
@@ -1598,69 +1213,17 @@ kbd {
     background: #000;
 }
 
-/* ================================================================
-   ===== MERMAID DIAGRAMS =====
-   ================================================================ */
+/* ---------- Mermaid ---------- */
 .mermaid {
     margin: 16px 0;
     text-align: center;
     overflow-x: auto;
 }
 
-/* ================================================================
-   ===== ENSURE ALL RICH IMAGES HAVE CURSOR POINTER =====
-   ================================================================ */
-.rich-image {
-    cursor: pointer;
-}
-
-/* ================================================================
-   ===== RESPONSIVE ADJUSTMENTS FOR NEW ELEMENTS =====
-   ================================================================ */
-@media (max-width: 768px) {
-    .footnotes-list {
-        padding-left: 16px;
-    }
-
-    li.task-list-item {
-        gap: 4px;
-    }
-
-    abbr {
-        text-underline-offset: 1px;
-    }
-
-    pre.ascii-diagram,
-    pre.code-block {
-        font-size: 11px;
-        padding: 10px;
-    }
-
-    table.md-table {
-        font-size: 12px;
-    }
-
-    table.md-table th,
-    table.md-table td {
-        padding: 8px 10px;
-    }
-
-    .admonition-header {
-        font-size: 13px;
-    }
-
-    .admonition-content {
-        font-size: 13px;
-    }
-}
-
-/* ================================================================
-   ===== SHIMMER OVERLAY =====
-   ================================================================ */
+/* ---------- Shimmer skeleton ---------- */
 #shimmer-content {
     position: fixed;
-    top: 0;
-    left: 0;
+    top: 0; left: 0;
     width: 100%;
     height: 100%;
     background: var(--bg-primary, #1a1a2e);
@@ -1669,7 +1232,9 @@ kbd {
     flex-direction: column;
     transition: opacity 0.4s ease;
 }
+/* Override common's .hidden { display: none !important } so fade-out works */
 #shimmer-content.hidden {
+    display: flex !important;
     opacity: 0;
     pointer-events: none;
 }
@@ -1696,37 +1261,29 @@ kbd {
     gap: 0.5rem;
 }
 .shimmer-logo-icon {
-    width: 40px;
-    height: 40px;
+    width: 40px; height: 40px;
     border-radius: 6px;
-    background: #3a3a4e;
     background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite;
 }
 .shimmer-logo-text {
-    width: 80px;
-    height: 20px;
-    background: #3a3a4e;
+    width: 80px; height: 20px;
     background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite;
     border-radius: 4px;
 }
 .shimmer-btn-sm {
-    width: 40px;
-    height: 40px;
+    width: 40px; height: 40px;
     border-radius: 50%;
-    background: #3a3a4e;
     background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite;
     display: inline-block;
 }
 .shimmer-status {
-    height: 28px;
-    width: 140px;
-    background: #3a3a4e;
+    height: 28px; width: 140px;
     background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite;
@@ -1742,7 +1299,6 @@ kbd {
 }
 .shimmer-sidebar-item {
     height: 40px;
-    background: #3a3a4e;
     background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite;
@@ -1765,24 +1321,17 @@ kbd {
     flex-direction: row-reverse;
 }
 .shimmer-bubble {
-    height: 60px;
-    width: 200px;
-    background: #3a3a4e;
+    height: 60px; width: 200px;
     background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite;
     border-radius: 22px;
 }
-.shimmer-bubble.short {
-    width: 120px;
-}
-.shimmer-bubble.long {
-    width: 280px;
-}
+.shimmer-bubble.short { width: 120px; }
+.shimmer-bubble.long  { width: 280px; }
 .shimmer-welcome {
     height: 80px;
     width: 60%;
-    background: #3a3a4e;
     background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite;
@@ -1792,7 +1341,6 @@ kbd {
 .shimmer-input {
     height: 50px;
     width: 100%;
-    background: #3a3a4e;
     background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite;
@@ -1804,14 +1352,20 @@ kbd {
     height: calc(100vh - 110px);
 }
 
-@keyframes shimmer {
-    0% { background-position: -200px 0; }
-    100% { background-position: calc(200px + 100%) 0; }
-}
+/* ---------- Real content gate ---------- */
+#real-content { display: none; }
+#real-content.visible { display: block; }
 
-#real-content {
-    display: none;
-}
-#real-content.visible {
-    display: block;
+/* ---------- Responsive ---------- */
+@media (max-width: 768px) {
+    .footnotes-list { padding-left: 16px; }
+    li.task-list-item { gap: 4px; }
+    abbr { text-underline-offset: 1px; }
+    pre.ascii-diagram,
+    pre.code-block { font-size: 11px; padding: 10px; }
+    table.md-table { font-size: 12px; }
+    table.md-table th,
+    table.md-table td { padding: 8px 10px; }
+    .admonition-header { font-size: 13px; }
+    .admonition-content { font-size: 13px; }
 }

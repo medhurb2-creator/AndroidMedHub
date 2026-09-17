@@ -2895,8 +2895,8 @@
       "image": null,
       "options": [
         {
-          "text": "2 ATP (net gain for the body)",
-          "isCorrect": false,
+          "text": "Muscle gains 2 ATP from glycolysis to lactate",
+          "isCorrect": true,
           "explanation": "The body as a whole loses energy, but muscle gains 2 ATP."
         },
         {

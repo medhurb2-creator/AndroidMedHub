@@ -1,12 +1,29 @@
-/* ===== Subject‑Specific Page – Mobile‑first ===== */
+/* ==========================================================================
+   SUBJECT-SPECIFIC — page-specific styles
+   Requires common.css (tokens, header-row base, buttons base, .no-data base,
+   .color-dot base, .hidden, keyframes shimmer, utilities).
+   Adds ONLY: page-sticky header, subject-header-info, mode toggle,
+   topic selection tree, selection summary, recent topics, dark overrides,
+   responsive, shimmer skeleton, real-content gate.
+   ========================================================================== */
 
-/* ----- Global / reset-ish ----- */
+/* ---------- Page container ----------
+   Original CSS never styled .page-container. Common now constrains it
+   to 1200px with side padding, misaligning the fixed header.
+   Block those to preserve the original full-width shell. */
+.page-container {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+}
+
+/* ---------- Legacy subject header (no HTML consumer, kept for compat) ---------- */
 .subject-header {
     margin-bottom: 2rem;
     padding: 0 1rem;
 }
 
-/* ----- HEADER – TWO ROWS ONLY ----- */
+/* ---------- Fixed header (sticky wrapper) ---------- */
 .fixed-header {
     position: sticky;
     top: 0;
@@ -15,13 +32,12 @@
     border-bottom: 1px solid var(--border);
 }
 
+/* Header row padding (common's .header-row base provides flexbox + space-between) */
 .header-row {
-    display: flex;
-    align-items: center;
     padding: 0.5rem 1rem;
 }
 
-/* Superior row (logo, back, theme) */
+/* Superior row */
 .header-row.top {
     justify-content: space-between;
     background: var(--bg-card);
@@ -41,6 +57,7 @@
     font-weight: 600;
     font-size: 1.2rem;
 }
+/* Pill-shaped back button (common's .header-row .left-group .btn-text is flat text) */
 .header-row.top .left-group .btn-text {
     font-size: 0.9rem;
     padding: 0.3rem 0.6rem;
@@ -53,13 +70,14 @@
 }
 .header-row.top .left-group .btn-text:hover {
     background: var(--accent);
-    color: white;
+    color: #fff;
     border-color: var(--accent);
 }
 .header-row.top .right-group {
     display: flex;
     align-items: center;
 }
+/* Pill theme toggle — higher specificity than common's .header-row .btn-outline */
 .header-row.top .btn-outline {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
@@ -70,13 +88,13 @@
     line-height: 1;
     transition: background 0.2s, color 0.2s;
 }
-.header-row.top .btn-outline:hover {
+.header-row.top .btn-outline:hover:not(:disabled) {
     background: var(--accent);
-    color: white;
+    color: #fff;
     border-color: var(--accent);
 }
 
-/* Inferior row (Internal Exam / Export as PDF) */
+/* Inferior row (mode toggle) */
 .header-row.bottom {
     justify-content: center;
     gap: 1.5rem;
@@ -95,9 +113,7 @@
     cursor: pointer;
     transition: all 0.2s;
 }
-.mode-btn:hover {
-    color: var(--text-primary);
-}
+.mode-btn:hover { color: var(--text-primary); }
 .mode-btn.active {
     background: var(--bg-card);
     border-color: var(--accent);
@@ -105,7 +121,7 @@
     box-shadow: var(--shadow-sm);
 }
 
-/* ----- SUBJECT METADATA (outside header) ----- */
+/* ---------- Subject metadata ---------- */
 .subject-header-info {
     display: flex;
     justify-content: space-between;
@@ -137,7 +153,7 @@
     margin: 0;
 }
 
-/* ----- Subject Title (legacy) – keep for backward compatibility ----- */
+/* ---------- Legacy subject title (kept for backward compat) ---------- */
 .subject-title {
     display: flex;
     align-items: center;
@@ -145,22 +161,23 @@
     margin-top: 1rem;
     flex-wrap: wrap;
 }
-.subject-icon {
-    font-size: 2rem;
-}
+.subject-icon { font-size: 2rem; }    /* dead: HTML uses .icon */
+
+/* Page-specific colour-dot scale (common's is 12×12) */
 .color-dot {
     width: 16px;
     height: 16px;
     border-radius: 50%;
     display: inline-block;
 }
+
 .total-questions {
     color: var(--text-muted);
     margin-top: 0.25rem;
     font-size: 0.95rem;
 }
 
-/* ----- Topic Selection Area ----- */
+/* ---------- Topic selection ---------- */
 .topic-selection {
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -185,21 +202,15 @@
     transition: background 0.2s;
     position: relative;
 }
-.topic-item:last-child {
-    border-bottom: none;
-}
+.topic-item:last-child { border-bottom: none; }
 
-/* Locked topics */
+/* Locked state + tooltip */
 .topic-item.locked {
     opacity: 0.7;
-    background: rgba(0,0,0,0.02);
+    background: rgba(0, 0, 0, 0.02);
 }
-.topic-item.locked label {
-    cursor: not-allowed;
-}
-.topic-item.locked .topic-name {
-    color: var(--text-muted);
-}
+.topic-item.locked label { cursor: not-allowed; }
+.topic-item.locked .topic-name { color: var(--text-muted); }
 .topic-item.locked .tooltip {
     visibility: hidden;
     opacity: 0;
@@ -230,6 +241,7 @@
     vertical-align: middle;
 }
 
+/* Topic label — overrides common's label base */
 .topic-item label {
     display: flex;
     align-items: center;
@@ -261,7 +273,7 @@
     white-space: nowrap;
 }
 
-/* ----- Selection Summary (new styles merged) ----- */
+/* ---------- Selection summary ---------- */
 .selection-summary {
     background: var(--bg-secondary);
     border-radius: var(--radius);
@@ -312,16 +324,13 @@
     cursor: not-allowed;
 }
 
-/* ----- Recent Topics Section ----- */
+/* ---------- Recent topics ---------- */
 .recent-section {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 1.5rem;
     margin: 0 1rem 2rem;
-}
-.recent-section.hidden {
-    display: none;
 }
 .recent-section h3 {
     margin-bottom: 1rem;
@@ -340,62 +349,30 @@
 }
 .recent-topic:hover {
     background: var(--accent);
-    color: white;
+    color: #fff;
     border-color: var(--accent);
 }
-.no-data {
-    color: var(--text-muted);
-    font-style: italic;
-    padding: 1rem 0;
-    text-align: center;
-}
 
-/* ----- Footer ----- */
+/* Override common's .no-data padding (2rem 1rem → 1rem 0) */
+.no-data { padding: 1rem 0; }
+
+/* ---------- Footer (kept even though HTML footer is empty) ---------- */
 footer {
     text-align: center;
     padding: 1rem;
     color: var(--text-muted);
 }
 
-/* ----- Dark Theme Adjustments ----- */
+/* ---------- Dark theme overrides ---------- */
 body.dark-theme .topic-item.locked {
-    background: rgba(255,255,255,0.02);
+    background: rgba(255, 255, 255, 0.02);
 }
 body.dark-theme .topic-item.locked .tooltip {
     background: var(--bg-secondary);
     border-color: var(--border-dark);
 }
 
-/* ----- Responsive Tweaks ----- */
-@media screen and (max-width: 480px) {
-    .topic-stats {
-        font-size: 0.75rem;
-    }
-    .selection-actions {
-        flex-direction: column;
-    }
-    .selection-actions button {
-        width: 100%;
-    }
-    .mode-btn {
-        font-size: 0.8rem;
-        padding: 0.3rem 0.8rem;
-    }
-    .selection-summary {
-        flex-direction: column;
-        align-items: stretch;
-    }
-    .action-buttons {
-        justify-content: stretch;
-    }
-    .action-buttons button {
-        flex: 1;
-    }
-}
-
-/* ============================================================
-   SHIMMER OVERLAY (for loading)
-   ============================================================ */
+/* ---------- Shimmer skeleton ---------- */
 #shimmer-content {
     display: block;
     background: #1a1a2e;
@@ -404,9 +381,8 @@ body.dark-theme .topic-item.locked .tooltip {
     padding: 0;
     font-family: system-ui, -apple-system, sans-serif;
 }
-.shimmer-wrapper {
-    padding: 1rem;
-}
+.shimmer-wrapper { padding: 1rem; }
+
 .shimmer-header {
     display: flex;
     justify-content: space-between;
@@ -425,7 +401,6 @@ body.dark-theme .topic-item.locked .tooltip {
     width: 32px;
     height: 32px;
     border-radius: 6px;
-    background: #3a3a4e;
     background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite;
@@ -433,7 +408,6 @@ body.dark-theme .topic-item.locked .tooltip {
 .shimmer-logo-text {
     width: 80px;
     height: 20px;
-    background: #3a3a4e;
     background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite;
@@ -443,7 +417,6 @@ body.dark-theme .topic-item.locked .tooltip {
     width: 40px;
     height: 40px;
     border-radius: 50%;
-    background: #3a3a4e;
     background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite;
@@ -459,7 +432,6 @@ body.dark-theme .topic-item.locked .tooltip {
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    background: #3a3a4e;
     background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite;
@@ -467,7 +439,6 @@ body.dark-theme .topic-item.locked .tooltip {
 .shimmer-title {
     width: 150px;
     height: 24px;
-    background: #3a3a4e;
     background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite;
@@ -482,7 +453,6 @@ body.dark-theme .topic-item.locked .tooltip {
 .shimmer-stat {
     width: 100px;
     height: 28px;
-    background: #3a3a4e;
     background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite;
@@ -496,7 +466,6 @@ body.dark-theme .topic-item.locked .tooltip {
 .shimmer-btn {
     flex: 1;
     height: 44px;
-    background: #3a3a4e;
     background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite;
@@ -509,16 +478,28 @@ body.dark-theme .topic-item.locked .tooltip {
 }
 .shimmer-topic {
     height: 36px;
-    background: #3a3a4e;
     background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite;
     border-radius: var(--radius-sm);
 }
-@keyframes shimmer {
-    0% { background-position: -200px 0; }
-    100% { background-position: calc(200px + 100%) 0; }
-}
-#real-content {
-    display: none;
+
+/* ---------- Real-content gate ---------- */
+#real-content { display: none; }
+
+/* ---------- Responsive ---------- */
+@media screen and (max-width: 480px) {
+    .topic-stats { font-size: 0.75rem; }
+    .selection-actions { flex-direction: column; }
+    .selection-actions button { width: 100%; }
+    .mode-btn {
+        font-size: 0.8rem;
+        padding: 0.3rem 0.8rem;
+    }
+    .selection-summary {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .action-buttons { justify-content: stretch; }
+    .action-buttons button { flex: 1; }
 }

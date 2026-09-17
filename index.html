@@ -8,21 +8,21 @@
     <meta name="application-name" content="MedVix" />
     <meta name="description" content="MedVix — Learn. Practice. Connect. Grow. Achieve." />
     <title>MedVix</title>
-    <!-- High-resolution favicon (modern browsers) -->
-<link rel="icon" type="image/png" sizes="192x192" href="/assets/images/logo.png">
 
-<!-- Apple touch icon (iOS home screen) -->
-<link rel="apple-touch-icon" href="/assets/images/logo.png">
-<link rel="icon" type="image/png" sizes="512x512" href="/assets/images/logo.png">
+    <!-- Favicons -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/assets/images/logo.png">
+    <link rel="apple-touch-icon" href="/assets/images/logo.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="/assets/images/logo.png">
 
-    <!-- Global CSS (shared by all pages) -->
+    <!-- Global CSS -->
     <link rel="stylesheet" href="./css/common.css" />
     <link rel="stylesheet" href="/libs/fontawesome/css/all.min.css" />
 
     <!-- Manifest & preloads -->
     <link rel="manifest" href="/manifest.json" />
     <link rel="preload" href="/assets/images/splash.png" as="image" />
-    <!-- In index.html -->
+
+    <!-- Third-party libs -->
     <link rel="stylesheet" href="/libs/quill/quill.snow.css">
     <script src="/libs/quill/quill.min.js"></script>
     <script defer src="/libs/chart/chart.min.js"></script>
@@ -33,10 +33,9 @@
     <script src="/libs/pdfkit.standalone.js"></script>
 
     <!-- ============================================================
-         SPLASH‑SPECIFIC CSS – only what’s needed for the overlay
+         SPLASH-ONLY CSS
          ============================================================ -->
     <style id="medvix-splash-css">
-        /* ===== Splash overlay ===== */
         #app-bootstrap {
             position: fixed;
             inset: 0;
@@ -53,7 +52,6 @@
             transition: opacity 0.5s ease;
         }
 
-        /* Gradient at bottom */
         #app-bootstrap::after {
             content: '';
             position: absolute;
@@ -66,7 +64,6 @@
             z-index: 0;
         }
 
-        /* Referral badge */
         #app-bootstrap .referral-badge {
             position: relative;
             z-index: 1;
@@ -90,20 +87,10 @@
         }
 
         @keyframes medvixSplashBadgePulse {
-
-            0%,
-            100% {
-                opacity: 0.8;
-                transform: scale(1);
-            }
-
-            50% {
-                opacity: 1;
-                transform: scale(1.04);
-            }
+            0%, 100% { opacity: 0.8; transform: scale(1); }
+            50%      { opacity: 1;   transform: scale(1.04); }
         }
 
-        /* Loading section */
         #app-bootstrap .loading-section {
             position: relative;
             z-index: 1;
@@ -126,9 +113,7 @@
         }
 
         @keyframes medvixSplashSpin {
-            to {
-                transform: rotate(360deg);
-            }
+            to { transform: rotate(360deg); }
         }
 
         #app-bootstrap .progress-track {
@@ -153,13 +138,8 @@
         }
 
         @keyframes medvixSplashProgressShimmer {
-            0% {
-                background-position: 0% 0%;
-            }
-
-            100% {
-                background-position: 200% 0%;
-            }
+            0%   { background-position: 0% 0%; }
+            100% { background-position: 200% 0%; }
         }
 
         #app-bootstrap .loading-text {
@@ -176,28 +156,12 @@
             display: inline-block;
             animation: medvixSplashDotPulse 1.4s ease-in-out infinite;
         }
-
-        #app-bootstrap .loading-text .dot:nth-child(2) {
-            animation-delay: 0.2s;
-        }
-
-        #app-bootstrap .loading-text .dot:nth-child(3) {
-            animation-delay: 0.4s;
-        }
+        #app-bootstrap .loading-text .dot:nth-child(2) { animation-delay: 0.2s; }
+        #app-bootstrap .loading-text .dot:nth-child(3) { animation-delay: 0.4s; }
 
         @keyframes medvixSplashDotPulse {
-
-            0%,
-            60%,
-            100% {
-                opacity: 0.3;
-                transform: translateY(0);
-            }
-
-            30% {
-                opacity: 1;
-                transform: translateY(-4px);
-            }
+            0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+            30%           { opacity: 1;   transform: translateY(-4px); }
         }
 
         #app-bootstrap .version-info {
@@ -212,17 +176,138 @@
             margin-top: 0.25rem;
         }
 
-        /* SPA mount point – initially empty */
         #app-root {
             min-height: 100vh;
             position: relative;
             z-index: 1;
         }
 
-        /* When app is ready, hide bootstrap */
         .app-ready #app-bootstrap {
             opacity: 0 !important;
             pointer-events: none;
+        }
+    </style>
+
+    <!-- ============================================================
+         ICON COLOR SYSTEM — semantic palette for Font Awesome icons
+         (kept as inline fallback; canonical rules live in common.css §23b)
+         ============================================================ -->
+    <style id="medvix-icon-colors">
+        .icon-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: .45rem;
+            line-height: 1;
+        }
+
+        .icon-btn i,
+        .nav-link i,
+        .btn-primary i,
+        .btn-secondary i,
+        .btn-text i,
+        .btn-outline i {
+            font-size: 1em;
+            pointer-events: none;
+        }
+
+        [data-tooltip] { position: relative; }
+
+        [data-tooltip]:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 120%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--bg-card, #222);
+            color: var(--text-primary, #fff);
+            border: 1px solid var(--border, #444);
+            border-radius: 6px;
+            padding: .35rem .55rem;
+            font-size: .75rem;
+            white-space: nowrap;
+            z-index: 9999;
+            pointer-events: none;
+        }
+    </style>
+
+    <!-- ============================================================
+         GOOGLE PLAY IN-APP UPDATE — FLEXIBLE RESTART BANNER
+         ============================================================ -->
+    <style id="medvix-update-banner-css">
+        #play-update-banner {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 9998; /* below splash (99999), above app-root (1) */
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 14px 16px calc(14px + env(safe-area-inset-bottom, 0px)) 16px;
+            background: #0f172a;
+            color: #ffffff;
+            box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.25);
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            font-size: 14px;
+            line-height: 1.3;
+            transform: translateY(100%);
+            opacity: 0;
+            transition: transform 0.35s ease, opacity 0.35s ease;
+            pointer-events: none;
+        }
+
+        #play-update-banner[data-visible="true"] {
+            transform: translateY(0);
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        #play-update-banner .pub-text {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+            flex: 1 1 auto;
+        }
+
+        #play-update-banner .pub-title {
+            font-weight: 600;
+            font-size: 14px;
+            color: #ffffff;
+        }
+
+        #play-update-banner .pub-subtitle {
+            font-size: 12.5px;
+            color: rgba(255, 255, 255, 0.78);
+        }
+
+        #play-update-banner .pub-restart {
+            flex: 0 0 auto;
+            background: #22c55e;
+            color: #ffffff;
+            border: 0;
+            border-radius: 8px;
+            padding: 10px 16px;
+            font-weight: 600;
+            font-size: 13.5px;
+            letter-spacing: 0.4px;
+            cursor: pointer;
+            transition: background 0.15s ease, transform 0.1s ease;
+            font-family: inherit;
+            text-transform: uppercase;
+        }
+
+        #play-update-banner .pub-restart:active {
+            background: #16a34a;
+            transform: scale(0.97);
+        }
+
+        #play-update-banner .pub-restart:disabled {
+            background: #64748b;
+            cursor: progress;
+            opacity: 0.85;
         }
     </style>
 </head>
@@ -230,7 +315,7 @@
 <body>
 
     <!-- ============================================================
-         TEMPORARY SPLASH SCREEN – removed after first page loads
+         TEMPORARY SPLASH SCREEN
          ============================================================ -->
     <div id="app-bootstrap" aria-live="polite" aria-label="Loading MedVix">
         <div class="referral-badge" id="referralBadge">
@@ -247,21 +332,32 @@
             </div>
         </div>
 
-        <div class="version-info">v1.0.2</div>
+        <div class="version-info">version 1.0.3</div>
     </div>
 
     <!-- ============================================================
-         SPA APPLICATION HOST – page HTML is injected here
+         SPA APPLICATION HOST
          ============================================================ -->
     <div id="app-root" data-app="medvix"></div>
 
     <!-- ============================================================
-         DEEP‑LINK CAPTURE (Capacitor)
+         GOOGLE PLAY IN-APP UPDATE — FLEXIBLE RESTART BANNER
+         Hidden by default; app.js toggles data-visible="true".
+         ============================================================ -->
+    <div id="play-update-banner" role="status" aria-live="polite" data-visible="false" hidden>
+        <div class="pub-text">
+            <div class="pub-title">MedVix update ready</div>
+            <div class="pub-subtitle">Restart to apply the new version.</div>
+        </div>
+        <button id="play-update-restart" class="pub-restart" type="button">Restart</button>
+    </div>
+
+    <!-- ============================================================
+         DEEP-LINK CAPTURE (Capacitor)
          ============================================================ -->
     <script>
         if (window.Capacitor?.Plugins?.App) {
             const App = window.Capacitor.Plugins.App;
-            // Capture launch URL (app opened via deep‑link)
             App.getLaunchUrl().then(result => {
                 if (result?.url) {
                     console.log('[DeepLink] Launch URL:', result.url);
@@ -269,10 +365,8 @@
                 }
             }).catch(err => console.warn('[DeepLink] getLaunchUrl error:', err));
 
-            // Listen for deep‑links while app is already running
             App.addListener('appUrlOpen', (data) => {
                 console.log('[DeepLink] appUrlOpen:', data.url);
-                // If router is ready, navigate immediately; otherwise store for later
                 if (window.router && typeof window.router.navigateTo === 'function') {
                     window.router.navigateTo(data.url);
                 } else {
@@ -283,9 +377,271 @@
     </script>
 
     <!-- ============================================================
-         SINGLE ENTRY POINT – app.js bootstraps everything
+         UPDATE BANNER HELPER (global, no module needed)
+         ============================================================ -->
+    <script>
+        window.MedVixUpdateBanner = {
+            show() {
+                const el = document.getElementById('play-update-banner');
+                if (!el) return;
+                el.hidden = false;
+                // allow paint before transitioning
+                requestAnimationFrame(() => {
+                    el.dataset.visible = 'true';
+                });
+            },
+            hide() {
+                const el = document.getElementById('play-update-banner');
+                if (!el) return;
+                el.dataset.visible = 'false';
+                setTimeout(() => { el.hidden = true; }, 350);
+            },
+            setBusy(isBusy) {
+                const btn = document.getElementById('play-update-restart');
+                if (!btn) return;
+                btn.disabled = !!isBusy;
+                btn.textContent = isBusy ? 'Restarting…' : 'Restart';
+            },
+            isVisible() {
+                const el = document.getElementById('play-update-banner');
+                return !!el && el.dataset.visible === 'true';
+            }
+        };
+    </script>
+
+    <!-- ============================================================
+         SINGLE ENTRY POINT
          ============================================================ -->
     <script type="module" src="/scripts/app.js"></script>
+
+    <!-- ============================================================
+         EMOJI → FONT AWESOME REPLACEMENT
+         - Replaces emojis using the map loaded from /emoji-map.json
+         - Also converts text nodes whose entire content is a raw
+           Font Awesome class string (e.g. "fa-solid fa-bone") into
+           real <i> elements. This catches pages that do:
+               el.textContent = meta.icon;   // meta.icon = 'fa-solid fa-bone'
+         ============================================================ -->
+    <script>
+    (async function () {
+        // ------------------------------------------------------------
+        // 1. Load emoji map + palette
+        // ------------------------------------------------------------
+        let PALETTE = {};
+        let EMOJI_MAP = {};
+
+        async function loadMap() {
+            try {
+                const res = await fetch('/emoji-map.json', { cache: 'default' });
+                if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+                const data = await res.json();
+                PALETTE   = (data && data.palette) || {};
+                EMOJI_MAP = (data && data.emojis)  || {};
+                const count = Object.keys(EMOJI_MAP).length;
+                if (count === 0) {
+                    console.warn('[Emoji] /emoji-map.json loaded but contains no entries.');
+                    return false;
+                }
+                console.info(`[Emoji] Loaded ${count} entries from /emoji-map.json`);
+                return true;
+            } catch (err) {
+                console.warn('[Emoji] Could not load /emoji-map.json:', err);
+                return false;
+            }
+        }
+
+        const ready = await loadMap();
+        if (!ready) return;
+
+        // ------------------------------------------------------------
+        // 2. Helpers
+        // ------------------------------------------------------------
+        function escapeRegExp(str) {
+            return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        function resolveColor(name) {
+            if (!name) return null;
+            if (typeof name !== 'string') return null;
+            if (name.startsWith('#') || name.startsWith('rgb')) return name;
+            return PALETTE[name] || null;
+        }
+
+        const keys = Object.keys(EMOJI_MAP).sort((a, b) => b.length - a.length);
+        const emojiRegex     = new RegExp(keys.map(escapeRegExp).join('|'), 'gu');
+        const emojiTestRegex = new RegExp(keys.map(escapeRegExp).join('|'), 'u');
+
+        // ------------------------------------------------------------
+        // 3. FA-class-text detection
+        // ------------------------------------------------------------
+        const FA_TEXT_REGEX = /^\s*(?:fa-solid|fa-regular|fa-brands|fas|far|fab)(?:\s+fa-[\w-]+)+\s*$/;
+
+        // ------------------------------------------------------------
+        // 4. Build an <i class="fa-solid ..."> element from a class string
+        // ------------------------------------------------------------
+        function buildIconFromClass(className) {
+            const i = document.createElement('i');
+            let cls = className.trim();
+            cls = cls.replace(/^fas\b/, 'fa-solid')
+                     .replace(/^far\b/, 'fa-regular')
+                     .replace(/^fab\b/, 'fa-brands');
+            if (!/^fa-(solid|regular|brands)\b/.test(cls)) {
+                cls = 'fa-solid ' + cls;
+            }
+            i.className = cls;
+            i.setAttribute('aria-hidden', 'true');
+            return i;
+        }
+
+        // ------------------------------------------------------------
+        // 5. Build an icon from an emoji-map entry
+        // ------------------------------------------------------------
+        function buildIconFromEntry(info) {
+            const i = document.createElement('i');
+            i.className = `fa-solid ${info.icon}`;
+            i.setAttribute('aria-hidden', 'true');
+            if (info.label) i.title = info.label;
+            const color = resolveColor(info.color);
+            if (color) i.style.color = color;
+            return i;
+        }
+
+        // ------------------------------------------------------------
+        // 6. Replace emojis in text nodes
+        // ------------------------------------------------------------
+        function replaceEmojis(root) {
+            const walker = document.createTreeWalker(
+                root,
+                NodeFilter.SHOW_TEXT,
+                {
+                    acceptNode(node) {
+                        return node.nodeValue && emojiTestRegex.test(node.nodeValue)
+                            ? NodeFilter.FILTER_ACCEPT
+                            : NodeFilter.FILTER_REJECT;
+                    }
+                }
+            );
+
+            const textNodes = [];
+            while (walker.nextNode()) textNodes.push(walker.currentNode);
+
+            textNodes.forEach(node => {
+                const text = node.nodeValue;
+                const fragment = document.createDocumentFragment();
+                let lastIndex = 0;
+                let match;
+
+                emojiRegex.lastIndex = 0;
+                while ((match = emojiRegex.exec(text)) !== null) {
+                    if (match.index > lastIndex) {
+                        fragment.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+                    }
+                    const emoji = match[0];
+                    const info = EMOJI_MAP[emoji];
+                    fragment.appendChild(info ? buildIconFromEntry(info) : document.createTextNode(emoji));
+                    lastIndex = emojiRegex.lastIndex;
+                }
+
+                if (lastIndex < text.length) {
+                    fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
+                }
+
+                node.parentNode.replaceChild(fragment, node);
+            });
+        }
+
+        // ------------------------------------------------------------
+        // 7. Replace text nodes that are just an FA class string
+        // ------------------------------------------------------------
+        function replaceFAClassText(root) {
+            const walker = document.createTreeWalker(
+                root,
+                NodeFilter.SHOW_TEXT,
+                {
+                    acceptNode(node) {
+                        return node.nodeValue && FA_TEXT_REGEX.test(node.nodeValue)
+                            ? NodeFilter.FILTER_ACCEPT
+                            : NodeFilter.FILTER_REJECT;
+                    }
+                }
+            );
+
+            const textNodes = [];
+            while (walker.nextNode()) textNodes.push(walker.currentNode);
+
+            textNodes.forEach(node => {
+                const className = node.nodeValue.trim();
+                const icon = buildIconFromClass(className);
+                node.parentNode.replaceChild(icon, node);
+            });
+        }
+
+        // ------------------------------------------------------------
+        // 8. Ensure icon-only buttons get aria-labels
+        // ------------------------------------------------------------
+        function enhanceIconButtons(root) {
+            root.querySelectorAll('button, a').forEach(el => {
+                const icons = el.querySelectorAll('i.fa-solid, i.fa-regular, i.fa-brands');
+                const text = el.textContent.trim();
+                if (icons.length === 1 && text === '') {
+                    const label = icons[0].title || 'Button';
+                    if (!el.getAttribute('aria-label')) el.setAttribute('aria-label', label);
+                    if (!el.title) el.title = label;
+                }
+            });
+        }
+
+        // ------------------------------------------------------------
+        // 9. Strip emojis from placeholder attributes
+        // ------------------------------------------------------------
+        function cleanPlaceholders(root) {
+            root.querySelectorAll('[placeholder]').forEach(el => {
+                const ph = el.getAttribute('placeholder');
+                if (!ph) return;
+                emojiRegex.lastIndex = 0;
+                const cleaned = ph.replace(emojiRegex, '').trim();
+                if (cleaned !== ph) el.setAttribute('placeholder', cleaned);
+            });
+        }
+
+        function process(root) {
+            if (!root) return;
+            if (root.nodeType !== 1 && root.nodeType !== 9) return;
+            replaceEmojis(root);
+            replaceFAClassText(root);
+            enhanceIconButtons(root);
+            cleanPlaceholders(root);
+        }
+
+        // ------------------------------------------------------------
+        // 10. Initial run + SPA observer
+        // ------------------------------------------------------------
+        process(document.body);
+
+        const observer = new MutationObserver(mutations => {
+            mutations.forEach(m => {
+                if (m.type === 'characterData' && m.target && m.target.parentNode) {
+                    process(m.target.parentNode);
+                    return;
+                }
+
+                m.addedNodes.forEach(node => {
+                    if (node.nodeType === 1) {
+                        process(node);
+                    } else if (node.nodeType === 3 && node.parentNode && node.parentNode.nodeType === 1) {
+                        process(node.parentNode);
+                    }
+                });
+            });
+        });
+
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+            characterData: true
+        });
+    })();
+    </script>
 
 </body>
 

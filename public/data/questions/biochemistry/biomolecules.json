@@ -4264,7 +4264,7 @@
       "options": [
         {
           "text": "Hydrogen bonds between i and i+4 residues",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "α‑Helices are stabilized by H‑bonds between carbonyl of residue i and amide of i+4."
         },
         {
@@ -4274,11 +4274,11 @@
         },
         {
           "text": "3.6 amino acids per turn",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "α‑Helix has 3.6 residues per turn."
         },
         {
-          "text": "Both A and C",
+          "text": "Both Hydrogen bonds between i and i+4 residues and 3.6 amino acids per turn",
           "isCorrect": true,
           "explanation": "Both statements are true for α‑helices. But the question expects one answer? The original set didn't have this question; I'm adding it. I'll structure as single correct answer D (Both A and C). Let's make options: A: H‑bonds i to i+4, B: zig‑zag, C: 3.6 residues/turn, D: Both A and C, E: None. So D correct."
         }

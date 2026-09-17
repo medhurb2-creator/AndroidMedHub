@@ -1,12 +1,27 @@
-/* frontend-user/css/shared-note.css */
+/* ==========================================================================
+   SHARED NOTE — page-specific styles
+   Requires common.css (tokens, reset, .logo base, :where(header|footer)
+   defaults, .btn-outline base, keyframes, utilities).
+   Adds ONLY: page-container block, header padding/height, logo overrides,
+   main-nav, main layout, note card, Quill-style content typography,
+   note actions, footer overrides, responsive.
+   ========================================================================== */
 
-/* ==================== Shared Note Page Styles ==================== */
+/* ---------- Page container ----------
+   Original CSS never styled .page-container, so it was a plain block.
+   Common now constrains it to 1200px with side padding. Block that
+   to preserve the original full-width layout. */
+.page-container {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+}
 
-/* Header navigation (matching other pages) */
+/* ---------- Header override ----------
+   Common's :where(header:not([class])) provides display: flex +
+   justify-content + align-items + padding: 1rem 0. This page overrides
+   padding and adds height, bg, border. */
 header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
     padding: 0.5rem 1.5rem;
     height: 10vh;
     min-height: 60px;
@@ -14,24 +29,20 @@ header {
     border-bottom: 1px solid var(--border);
 }
 
+/* ---------- Logo override ----------
+   Common's .logo uses 700 weight / 1.3rem; this page uses 600 / 1.2rem. */
 .logo {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
     font-weight: 600;
     font-size: 1.2rem;
 }
+/* `.logo img` border-radius is identical in common — removed */
 
-.logo img {
-    border-radius: 0.5rem;
-}
-
+/* ---------- Main navigation ---------- */
 .main-nav {
     display: flex;
     gap: 1.5rem;
     align-items: center;
 }
-
 .main-nav a {
     color: var(--text-secondary);
     font-weight: 500;
@@ -40,10 +51,7 @@ header {
     text-decoration: none;
     transition: background 0.2s;
 }
-
-.main-nav a:hover {
-    background: var(--bg-secondary);
-}
+.main-nav a:hover { background: var(--bg-secondary); }
 
 .header-right {
     display: flex;
@@ -51,7 +59,7 @@ header {
     align-items: center;
 }
 
-/* Main container */
+/* ---------- Main layout ---------- */
 main {
     min-height: 70vh;
     padding: 2rem 1.5rem;
@@ -66,8 +74,9 @@ main {
     margin: 0 auto;
 }
 
-/* Loading and error states */
-.loading, .error {
+/* ---------- Loading & error states ---------- */
+.loading,
+.error {
     text-align: center;
     padding: 3rem;
     background: var(--bg-card);
@@ -76,13 +85,12 @@ main {
     color: var(--text-secondary);
     font-size: 1.2rem;
 }
-
 .error {
     color: var(--danger);
     border-color: var(--danger);
 }
 
-/* Note card */
+/* ---------- Note card ---------- */
 .note-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -91,7 +99,6 @@ main {
     box-shadow: var(--shadow-lg);
     transition: background-color 0.3s, border-color 0.3s;
 }
-
 .note-card h1 {
     font-size: 2rem;
     margin-bottom: 1rem;
@@ -119,30 +126,26 @@ main {
     margin-bottom: 2rem;
 }
 
-/* Quill content styling */
+/* Quill-rendered content typography */
 .note-content h1,
 .note-content h2,
 .note-content h3 {
     margin: 1.5rem 0 1rem;
     font-weight: 600;
 }
-
 .note-content p {
     margin: 1rem 0;
 }
-
 .note-content ul,
 .note-content ol {
     margin: 1rem 0 1rem 2rem;
 }
-
 .note-content img {
     max-width: 100%;
     height: auto;
     border-radius: var(--radius);
     margin: 1rem 0;
 }
-
 .note-content blockquote {
     border-left: 4px solid var(--accent);
     padding: 0.5rem 1rem;
@@ -150,7 +153,6 @@ main {
     margin: 1rem 0;
     font-style: italic;
 }
-
 .note-content code {
     background: var(--bg-secondary);
     padding: 0.2rem 0.4rem;
@@ -158,7 +160,6 @@ main {
     font-family: monospace;
     font-size: 0.9rem;
 }
-
 .note-content pre {
     background: var(--bg-secondary);
     padding: 1rem;
@@ -174,42 +175,32 @@ main {
     border-top: 1px solid var(--border);
     padding-top: 2rem;
 }
+.note-actions button { flex: 0 0 auto; }
 
-.note-actions button {
-    flex: 0 0 auto;
-}
-
-/* Footer */
+/* ---------- Footer override ----------
+   Common's :where(footer:not([class])) provides padding: 1.5rem 0 +
+   text-align: center. This page overrides padding and adds border,
+   color, font-size. */
 footer {
-    border-top: 1px solid var(--border);
     padding: 1.5rem;
-    text-align: center;
+    border-top: 1px solid var(--border);
     color: var(--text-muted);
     font-size: 0.875rem;
 }
 
-/* Responsive */
+/* ---------- Responsive ---------- */
 @media (max-width: 640px) {
-    header {
-        padding: 0.5rem 1rem;
-    }
-    .main-nav {
-        gap: 0.5rem;
-    }
+    header { padding: 0.5rem 1rem; }
+
+    .main-nav { gap: 0.5rem; }
     .main-nav a {
         padding: 0.3rem 0.5rem;
         font-size: 0.9rem;
     }
-    .note-card {
-        padding: 1.5rem;
-    }
-    .note-card h1 {
-        font-size: 1.5rem;
-    }
-    .note-actions {
-        flex-direction: column;
-    }
-    .note-actions button {
-        width: 100%;
-    }
+
+    .note-card { padding: 1.5rem; }
+    .note-card h1 { font-size: 1.5rem; }
+
+    .note-actions { flex-direction: column; }
+    .note-actions button { width: 100%; }
 }

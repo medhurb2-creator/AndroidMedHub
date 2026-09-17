@@ -8,17 +8,17 @@
       "options": [
         {
           "text": "Hydrochlorothiazide",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Thiazides are a first‑line option for hypertension according to JNC 8."
         },
         {
           "text": "ACE inhibitors",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "ACE inhibitors are recommended as first‑line therapy for hypertension, especially in non‑black patients."
         },
         {
           "text": "Calcium channel blockers",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Calcium channel blockers are also first‑line agents for hypertension."
         },
         {
@@ -84,7 +84,7 @@
       "options": [
         {
           "text": "Hypokalemia",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Thiazides increase sodium delivery to the distal nephron, enhancing K+ secretion and causing hypokalemia."
         },
         {
@@ -94,16 +94,16 @@
         },
         {
           "text": "Hypercalcemia",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Thiazides decrease renal calcium excretion, leading to mild hypercalcemia."
         },
         {
           "text": "Hyponatremia",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Thiazides impair free water clearance and can cause hyponatremia, especially in elderly patients."
         },
         {
-          "text": "Both A and D",
+          "text": "Both Hypokalemia and Hyponatremia",
           "isCorrect": true,
           "explanation": "Hypokalemia and hyponatremia are characteristic adverse effects; hypercalcemia also occurs."
         }
@@ -388,22 +388,22 @@
       "options": [
         {
           "text": "Dry cough",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "ACE inhibitors commonly cause a dry, persistent cough due to bradykinin accumulation."
         },
         {
           "text": "Angioedema",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Angioedema is a rare but life‑threatening effect mediated by bradykinin."
         },
         {
           "text": "Hyperkalemia",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Reduced aldosterone leads to potassium retention, especially with renal impairment or K+ supplements."
         },
         {
           "text": "First‑dose hypotension",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Especially in volume‑depleted patients, the first dose can cause significant hypotension."
         },
         {
@@ -464,12 +464,12 @@
       "options": [
         {
           "text": "Dry cough",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "ARBs do not inhibit bradykinin degradation, so cough is much less common."
         },
         {
           "text": "Angioedema",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Angioedema is also less frequent with ARBs, though it can still occur."
         },
         {
@@ -478,7 +478,7 @@
           "explanation": "Hyperkalemia risk is comparable between ACEi and ARBs."
         },
         {
-          "text": "Both A and B",
+          "text": "Both Angioedema and Dry cough",
           "isCorrect": true,
           "explanation": "ARBs are preferred in patients who develop cough or angioedema from ACE inhibitors."
         },
@@ -578,17 +578,17 @@
       "options": [
         {
           "text": "Supraventricular tachycardia",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Verapamil and diltiazem slow AV nodal conduction, making them useful for SVT rate control."
         },
         {
           "text": "Angina",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "They reduce myocardial oxygen demand by decreasing heart rate and contractility."
         },
         {
           "text": "Hypertension",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Both are effective antihypertensives."
         },
         {
@@ -654,17 +654,17 @@
       "options": [
         {
           "text": "Asthma",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Non‑selective beta‑blockers can cause bronchospasm; even beta‑1 selective agents can lose selectivity at high doses."
         },
         {
           "text": "Heart block",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Beta‑blockers slow AV conduction and can worsen heart block."
         },
         {
           "text": "Bradycardia",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Beta‑blockers decrease heart rate and are contraindicated in severe bradycardia."
         },
         {
@@ -806,7 +806,7 @@
       "options": [
         {
           "text": "Hypertrichosis",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Minoxidil causes fluid retention and hypertrichosis (hair growth)."
         },
         {
@@ -825,7 +825,7 @@
           "explanation": "Fluid retention occurs, but hypertrichosis is the most distinctive adverse effect."
         },
         {
-          "text": "Both A and D",
+          "text": "Both Hypertrichosis and Fluid retention",
           "isCorrect": true,
           "explanation": "Minoxidil causes fluid retention and hypertrichosis; beta‑blocker and diuretic are co‑administered to counteract."
         }
@@ -996,12 +996,12 @@
       "options": [
         {
           "text": "Has no first‑pass metabolism",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Isosorbide mononitrate is the active metabolite with 100% bioavailability and longer duration."
         },
         {
           "text": "Is longer acting",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "It has a longer half‑life, allowing once‑daily dosing."
         },
         {
@@ -1010,7 +1010,7 @@
           "explanation": "Isosorbide dinitrate is a prodrug; mononitrate is already active."
         },
         {
-          "text": "Both A and B",
+          "text": "Both Has no first‑pass metabolism and Is longer acting",
           "isCorrect": true,
           "explanation": "Mononitrate avoids first‑pass metabolism and provides prolonged effect."
         },
@@ -1034,17 +1034,17 @@
       "options": [
         {
           "text": "Headache",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Nitrates commonly cause headache (vasodilation), hypotension, and reflex tachycardia."
         },
         {
           "text": "Hypotension",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Venodilation can cause orthostatic hypotension."
         },
         {
           "text": "Reflex tachycardia",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Baroreflex activation increases heart rate."
         },
         {
@@ -1224,7 +1224,7 @@
       "options": [
         {
           "text": "Bradycardia, AV block, arrhythmias",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Digoxin toxicity causes cardiac arrhythmias (bradycardia, AV block, ventricular tachycardia) and can cause hyperkalemia (if acute overdose)."
         },
         {
@@ -1234,7 +1234,7 @@
         },
         {
           "text": "Hyperkalemia",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Acute toxicity inhibits Na+/K+ ATPase, causing extracellular potassium accumulation."
         },
         {
@@ -1243,7 +1243,7 @@
           "explanation": "Chronic therapeutic use may be associated with hypokalemia, but acute toxicity often causes hyperkalemia."
         },
         {
-          "text": "Both A and C",
+          "text": "Bradycardia, AV block, arrhythmias, Hyperkalemia",
           "isCorrect": true,
           "explanation": "Digoxin toxicity can cause both bradyarrhythmias and hyperkalemia."
         }
@@ -1300,22 +1300,22 @@
       "options": [
         {
           "text": "Pulmonary fibrosis",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Amiodarone causes pulmonary fibrosis, thyroid disorders, corneal deposits, hepatotoxicity, and skin discoloration."
         },
         {
           "text": "Thyroid dysfunction",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Both hypo‑ and hyperthyroidism can occur due to iodine content."
         },
         {
           "text": "Corneal microdeposits",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Corneal deposits are common but rarely affect vision."
         },
         {
           "text": "Hepatotoxicity",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Liver enzyme elevation and hepatitis can occur."
         },
         {
@@ -2174,17 +2174,17 @@
       "options": [
         {
           "text": "Flushing (prostaglandin‑mediated)",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Niacin causes flushing, hepatotoxicity at high doses, and can worsen glucose control."
         },
         {
           "text": "Hepatotoxicity",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "High‑dose, sustained‑release niacin can be hepatotoxic."
         },
         {
           "text": "Hyperglycemia",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Niacin can induce insulin resistance and hyperglycemia."
         },
         {
@@ -2250,17 +2250,17 @@
       "options": [
         {
           "text": "Pregnancy",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "ACE inhibitors are contraindicated in pregnancy (fetal toxicity), bilateral renal artery stenosis (risk of renal failure), and angioedema."
         },
         {
           "text": "Bilateral renal artery stenosis",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Renal perfusion depends on angiotensin II; ACEi can cause acute renal failure."
         },
         {
           "text": "History of angioedema",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Previous ACEi‑induced angioedema is a contraindication."
         },
         {
@@ -2364,16 +2364,16 @@
       "options": [
         {
           "text": "Heart rate remains >70 bpm despite beta‑blockers",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Ivabradine is used in HFrEF to reduce heart rate if beta‑blockers are insufficient or not tolerated."
         },
         {
           "text": "Patient is intolerant to beta‑blockers",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "It can be used when beta‑blockers are contraindicated or not tolerated."
         },
         {
-          "text": "Both A and B",
+          "text": "Both Patient is intolerant to beta‑blockers and Heart rate remains >70 bpm despite beta‑blockers",
           "isCorrect": true,
           "explanation": "Ivabradine is an alternative or addition to beta‑blockade to achieve target heart rate."
         },
@@ -2592,17 +2592,17 @@
       "options": [
         {
           "text": "Sick sinus syndrome",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Diltiazem depresses SA and AV node and causes vasodilation; contraindicated in these conditions."
         },
         {
           "text": "Second‑ or third‑degree AV block",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "It can worsen AV block."
         },
         {
           "text": "Severe hypotension",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Vasodilation can further lower blood pressure."
         },
         {
@@ -2668,7 +2668,7 @@
       "options": [
         {
           "text": "Hospitalization with continuous ECG monitoring for QT",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Dofetilide can cause torsades; initiation requires monitoring in hospital, and dose must be adjusted for renal function."
         },
         {
@@ -2687,7 +2687,7 @@
           "explanation": "It is contraindicated in severe renal impairment; dose adjustment is required."
         },
         {
-          "text": "Both A and D",
+          "text": "Both Hospitalization with continuous ECG monitoring for QT and Avoid in renal impairment",
           "isCorrect": true,
           "explanation": "Hospitalization for monitoring and renal dose adjustment are essential."
         }
@@ -2706,12 +2706,12 @@
       "options": [
         {
           "text": "Amiodarone",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Amiodarone has class III and beta‑blocking effects; sotalol is a beta‑blocker with class III action."
         },
         {
           "text": "Sotalol",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Sotalol is a non‑selective beta‑blocker that also prolongs repolarization (class III)."
         },
         {
@@ -2720,7 +2720,7 @@
           "explanation": "Dronedarone is similar to amiodarone but lacks beta‑blocking properties."
         },
         {
-          "text": "Both A and B",
+          "text": "Both Amiodarone and Sotalol",
           "isCorrect": true,
           "explanation": "Both amiodarone and sotalol have mixed class II and III effects."
         },
@@ -2858,17 +2858,17 @@
       "options": [
         {
           "text": "History of stroke or TIA",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Prasugrel is contraindicated in patients with prior stroke/TIA, and caution in elderly and low‑weight patients due to bleeding risk."
         },
         {
           "text": "Age >75",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Higher bleeding risk; use with caution."
         },
         {
           "text": "Body weight <60 kg",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Increased exposure; use with caution."
         },
         {
@@ -2934,17 +2934,17 @@
       "options": [
         {
           "text": "Sodium polystyrene sulfonate",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "These agents bind potassium in the gut to lower serum potassium."
         },
         {
           "text": "Patiromer",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Patiromer is a newer potassium binder, well‑tolerated."
         },
         {
           "text": "Zirconium cyclosilicate",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "ZS‑9 is a selective potassium binder with rapid onset."
         },
         {
@@ -2971,7 +2971,7 @@
       "image": null,
       "options": [
         {
-          "text": "Epoprostenol",
+          "text": "Epoprostenol and Treprostinil",
           "isCorrect": true,
           "explanation": "Epoprostenol (IV) and treprostinil (subcutaneous, IV, inhaled) are prostacyclin analogs used in PAH."
         },
@@ -2989,12 +2989,8 @@
           "text": "Riociguat",
           "isCorrect": false,
           "explanation": "Riociguat is a soluble guanylate cyclase stimulator."
-        },
-        {
-          "text": "Treprostinil",
-          "isCorrect": true,
-          "explanation": "Treprostinil is also a prostacyclin analog."
         }
+
       ],
       "explanation": {
         "overview": "Epoprostenol (IV) and treprostinil (subcutaneous, IV, inhaled) are prostacyclin analogs used in PAH.",

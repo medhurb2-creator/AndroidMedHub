@@ -2052,44 +2052,7 @@
         "clinicalCorrelation": "This distinction guides antibiotic therapy: Actinomyces is treated with penicillin; Nocardia requires TMP-SMX."
       }
     },
-    {
-      "questionId": "gram_positive_bacilli_055",
-      "difficulty": 2,
-      "question": "A patient with cat scratch presents with suppurative lymphadenitis. Which gram-positive rod is most likely?",
-      "image": null,
-      "options": [
-        {
-          "text": "Bartonella henselae (gram-negative rod, but question stem expects gram-positive context; check options: none are classic gram-positive rods; but question might be trick: Bartonella is actually gram-negative; however the set is gram-positive bacilli. So likely Listeria? No, cat scratch usually Bartonella. But Bartonella is gram-negative. The options: maybe there's a misdirection. I'll list potential: Listeria monocytogenes? No. Erysipelothrix? No. Actually, a gram-positive rod associated with cat bites is Pasteurella multocida (gram-negative). So none. I'll adjust: the only plausible gram-positive rod is maybe Corynebacterium? But cat scratch is Bartonella, not a rod. This question might be out of place. I'll rephrase: maybe the question is about Erysipelothrix (fish, swine) or Actinomyces. I'll change the scenario: a fish handler with hand lesion is Erysipelothrix. So I'll replace with that.)",
-          "isCorrect": false,
-          "explanation": ""
-        },
-        {
-          "text": "I'll replace the entire question with one about Bacillus cereus or Listeria to stay consistent. I'll generate a new question: Which gram-positive rod is a common cause of late-onset neonatal sepsis with meningitis?",
-          "isCorrect": false,
-          "explanation": ""
-        },
-        {
-          "text": "Wait, I need to output valid JSON with correct answer. I'll just create a proper question.",
-          "isCorrect": false,
-          "explanation": ""
-        },
-        {
-          "text": "I'll create a new question 55: A 2-day-old neonate presents with meningitis. CSF Gram stain shows gram-positive rods. The most likely pathogen is:",
-          "isCorrect": false,
-          "explanation": ""
-        },
-        {
-          "text": "I'll make that the question and options accordingly.",
-          "isCorrect": false,
-          "explanation": ""
-        }
-      ],
-      "explanation": {
-        "overview": "",
-        "highYield": "",
-        "clinicalCorrelation": ""
-      }
-    },
+    
     {
       "questionId": "gram_positive_bacilli_056",
       "difficulty": 2,

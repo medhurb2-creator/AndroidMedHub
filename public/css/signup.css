@@ -1,8 +1,15 @@
-/* frontend-user/css/signup.css */
+/* ==========================================================================
+   SIGNUP — page-specific styles
+   Requires common.css (tokens, reset, header-row base, buttons base,
+   .error-message, input/label base, keyframes fadeSlide/spin/slideUp,
+   focus-visible default).
+   Adds ONLY: page-sticky header shell, logo-area, nav links, multi-step
+   form, password reveal + strength meter, checkbox tweaks, success step,
+   instruction banner, auto-save indicator, dark-theme overrides, loading
+   state, responsive.
+   ========================================================================== */
 
-/* ===== MULTI-STEP FORM STYLES ===== */
-
-/* Fixed header styles (unchanged) */
+/* ---------- Page-sticky fixed header ---------- */
 .fixed-header {
     position: sticky;
     top: 0;
@@ -12,50 +19,23 @@
     padding: 0.5rem 1rem;
 }
 
-.header-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.header-row.top {
-    margin-bottom: 0.3rem;
-}
-
+/* ---------- Logo area (common has .left-group, this page uses .logo-area) ---------- */
 .header-row .logo-area {
     display: flex;
     align-items: center;
     gap: 0.5rem;
 }
-
 .header-row .logo-area img {
     width: 32px;
     height: 32px;
     border-radius: 6px;
 }
-
 .header-row .logo-area span {
     font-weight: 600;
     font-size: 1.2rem;
 }
 
-.header-row .btn-outline {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    padding: 0.3rem 0.6rem;
-    border-radius: 30px;
-    font-size: 1.2rem;
-    cursor: pointer;
-    line-height: 1;
-    transition: background 0.2s, color 0.2s, border-color 0.2s;
-}
-
-.header-row .btn-outline:hover {
-    background: var(--accent);
-    color: white;
-    border-color: var(--accent);
-}
-
+/* ---------- Nav links (back + login) ---------- */
 .header-row .nav-link {
     color: var(--text-secondary);
     text-decoration: none;
@@ -65,31 +45,23 @@
     border: none;
     padding: 0.3rem 0.6rem;
 }
-
 .header-row .nav-link:hover {
     color: var(--text-primary);
     text-decoration: underline;
 }
+.header-row .login-link { font-weight: 500; }
+.header-row .login-link:hover { color: var(--accent); }
 
-.header-row .login-link {
-    font-weight: 500;
-}
-
-.header-row .login-link:hover {
-    color: var(--accent);
-}
-
+/* ---------- Form container override ----------
+   Common provides background, border, radius, padding, shadow.
+   Page overrides width, margin, and adds a transition. */
 .form-container {
     max-width: 650px;
     margin: 2rem auto;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    padding: 2rem;
-    box-shadow: var(--shadow-lg);
     transition: all 0.3s ease;
 }
 
+/* ---------- Page heading (common's h1 is left-aligned / 2rem) ---------- */
 h1 {
     font-size: 1.8rem;
     margin-bottom: 0.5rem;
@@ -108,27 +80,14 @@ h1 {
     font-size: 0.9rem;
 }
 
-/* Step transitions */
+/* Step transitions (keyframes come from common's fadeSlide) */
 .step {
     animation: fadeSlide 0.4s ease;
 }
 
-@keyframes fadeSlide {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-/* ===== FORM GROUPS ===== */
-
+/* ---------- Form groups ---------- */
 .form-group {
-    margin-bottom: 1.5rem;
+    margin-bottom: 1.5rem;    /* common: 1.25rem */
     position: relative;
 }
 
@@ -137,51 +96,34 @@ h1 {
     gap: 1rem;
     margin-bottom: 1.5rem;
 }
-
 .form-row .half {
     flex: 1;
     margin-bottom: 0;
 }
 
+/* Override common's label base */
 label {
-    display: block;
     margin-bottom: 0.5rem;
-    font-weight: 500;
-    color: var(--text-secondary);
     font-size: 0.9rem;
 }
 
+/* Override common's input base — 2px border + page radius scale */
 input,
 select,
 textarea {
-    width: 100%;
     padding: 0.75rem 1rem;
-    border: 2px solid var(--border);
+    border-width: 2px;
     border-radius: var(--radius);
-    background-color: var(--bg-secondary);
-    color: var(--text-primary);
-    font-family: inherit;
     font-size: 1rem;
-    transition: all 0.2s ease;
 }
 
-input:focus,
-select:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-}
-
-input.error {
-    border-color: var(--danger);
-}
-
+/* Field-level error state (JS toggled) */
+input.error { border-color: var(--danger); }
 input.error:focus {
     box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
 }
 
-/* ===== PASSWORD REVEAL BUTTON ===== */
-
+/* ---------- Password reveal button ---------- */
 .reveal-btn {
     position: absolute;
     right: 1rem;
@@ -194,13 +136,9 @@ input.error:focus {
     font-size: 1.1rem;
     transition: color 0.2s;
 }
+.reveal-btn:hover { color: var(--accent); }
 
-.reveal-btn:hover {
-    color: var(--accent);
-}
-
-/* ===== PASSWORD STRENGTH METER ===== */
-
+/* ---------- Password strength meter ---------- */
 .strength-meter {
     height: 6px;
     background: var(--border);
@@ -210,65 +148,38 @@ input.error:focus {
     overflow: hidden;
     position: relative;
 }
-
 .strength-meter .fill {
     height: 100%;
     transition: width 0.3s ease;
 }
+.strength-meter.strength-weak   .fill { width: 33%;  background: var(--danger);  }
+.strength-meter.strength-medium .fill { width: 66%;  background: var(--warning); }
+.strength-meter.strength-strong .fill { width: 100%; background: var(--success); }
 
-.strength-meter.strength-weak .fill {
-    width: 33%;
-    background: var(--danger);
-}
-
-.strength-meter.strength-medium .fill {
-    width: 66%;
-    background: var(--warning);
-}
-
-.strength-meter.strength-strong .fill {
-    width: 100%;
-    background: var(--success);
-}
-
-/* Password strength text (optional) */
 .strength-text {
     font-size: 0.75rem;
     margin-top: 0.25rem;
     color: var(--text-muted);
 }
 
-/* ===== CHECKBOX STYLES ===== */
-
+/* ---------- Checkbox group override (common uses gap: 0.5rem) ---------- */
 .form-group.checkbox {
     display: flex;
     align-items: flex-start;
     gap: 0.75rem;
 }
-
 .form-group.checkbox label {
     margin-bottom: 0;
     font-weight: normal;
     font-size: 0.9rem;
 }
-
 .form-group.checkbox input[type="checkbox"] {
     width: auto;
     margin-top: 0.2rem;
     accent-color: var(--accent);
 }
 
-/* ===== ERROR MESSAGES ===== */
-
-.error-message {
-    color: var(--danger);
-    font-size: 0.75rem;
-    margin-top: 0.25rem;
-    min-height: 1.2rem;
-}
-
-/* ===== HELPER TEXT ===== */
-
+/* ---------- Helper text (block display) ---------- */
 small,
 .small {
     display: block;
@@ -277,15 +188,13 @@ small,
     margin-top: 0.25rem;
 }
 
-/* ===== BUTTON GROUP ===== */
-
+/* ---------- Button group ---------- */
 .button-group {
     display: flex;
     gap: 1rem;
     margin-top: 2rem;
     justify-content: space-between;
 }
-
 .button-group button {
     flex: 1;
     padding: 0.875rem;
@@ -293,45 +202,41 @@ small,
     font-weight: 600;
 }
 
-/* ===== STEP 3 SUCCESS STYLES ===== */
-
+/* ---------- Success step ---------- */
 .success-icon {
     font-size: 4rem;
     text-align: center;
     margin: 1rem 0;
     animation: bounce 0.6s ease;
 }
-
 @keyframes bounce {
-
-    0%,
-    100% {
-        transform: translateY(0);
-    }
-
-    50% {
-        transform: translateY(-20px);
-    }
+    0%, 100% { transform: translateY(0);     }
+    50%      { transform: translateY(-20px); }
 }
 
 #step3 h2 {
     margin: 1rem 0;
     color: var(--success);
 }
-
 #step3 p {
     margin: 1rem 0 2rem;
     color: var(--text-secondary);
 }
-
 #countdown {
     font-weight: 700;
     font-size: 1.5rem;
     color: var(--accent);
 }
+#step3 {
+    text-align: center;
+    padding: 2rem 1rem;
+}
+#step3 .btn-primary {
+    margin-top: 1.5rem;
+    min-width: 200px;
+}
 
-/* ===== INSTRUCTION TEXT ===== */
-
+/* ---------- Instruction banner ---------- */
 .instruction {
     background: var(--bg-secondary);
     padding: 1rem;
@@ -342,77 +247,72 @@ small,
     color: var(--text-secondary);
 }
 
-/* ===== FOOTER STYLES ===== */
-
+/* ---------- Footer (kept in case JS injects one) ---------- */
 footer {
     margin-top: 2rem;
     text-align: center;
 }
-
 footer .btn-text {
     color: var(--text-muted);
     font-size: 0.9rem;
 }
+footer .btn-text:hover { color: var(--accent); }
 
-footer .btn-text:hover {
+/* ---------- Auto-save indicator ---------- */
+.auto-save-indicator {
+    position: fixed;
+    bottom: 1rem;
+    right: 1rem;
+    background: var(--success);
+    color: #fff;
+    padding: 0.5rem 1rem;
+    border-radius: 9999px;
+    font-size: 0.8rem;
+    box-shadow: var(--shadow);
+    animation: slideUp 0.3s ease;
+    z-index: 1000;
+}
+
+/* ---------- Security questions step ---------- */
+#step2 .form-group {
+    margin-bottom: 1.5rem;
+}
+#step2 label {
+    font-weight: 600;
     color: var(--accent);
+    margin-bottom: 0.5rem;
+}
+#step2 input {
+    background: var(--bg-secondary);
 }
 
-/* ===== RESPONSIVE ADJUSTMENTS ===== */
+/* ---------- Terms & Privacy links ---------- */
+.form-group.checkbox a {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 500;
+}
+.form-group.checkbox a:hover { text-decoration: underline; }
 
-@media (max-width: 640px) {
-    .form-container {
-        padding: 1.5rem;
-        margin: 1rem;
-    }
-
-    .form-row {
-        flex-direction: column;
-        gap: 1.5rem;
-    }
-
-    .button-group {
-        flex-direction: column;
-    }
-
-    .button-group button {
-        width: 100%;
-    }
-
-    h1 {
-        font-size: 1.5rem;
-    }
-
-    .reveal-btn {
-        top: 2.3rem;
-    }
+/* ---------- Disabled state ---------- */
+button:disabled,
+input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
-/* ===== DARK THEME ADJUSTMENTS ===== */
-
-.dark-theme input,
-.dark-theme select,
-.dark-theme textarea {
-    background-color: var(--bg-secondary);
-    border-color: var(--border-dark);
+/* ---------- Focus-visible (common uses 2px, this page 3px) ---------- */
+*:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
 }
 
-.dark-theme .instruction {
-    background-color: rgba(37, 99, 235, 0.2);
-}
-
-.dark-theme .step-indicator {
-    background: rgba(37, 99, 235, 0.2);
-}
-
-/* ===== LOADING STATE ===== */
-
+/* ---------- Loading state (on .form-container) ---------- */
 .form-container.loading {
     opacity: 0.7;
     pointer-events: none;
     position: relative;
 }
-
 .form-container.loading::after {
     content: '';
     position: absolute;
@@ -427,93 +327,32 @@ footer .btn-text:hover {
     animation: spin 0.8s linear infinite;
 }
 
-/* ===== ANIMATIONS ===== */
+/* ---------- Dark theme ---------- */
+.dark-theme input,
+.dark-theme select,
+.dark-theme textarea {
+    background-color: var(--bg-secondary);
+    border-color: var(--border-dark);
+}
+.dark-theme .instruction {
+    background-color: rgba(37, 99, 235, 0.2);
+}
+.dark-theme .step-indicator {
+    background: rgba(37, 99, 235, 0.2);
+}
 
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
+/* ---------- Responsive ---------- */
+@media (max-width: 640px) {
+    .form-container {
+        padding: 1.5rem;
+        margin: 1rem;
     }
-}
-
-/* ===== SECURITY QUESTIONS SECTION ===== */
-
-#step2 .form-group {
-    margin-bottom: 1.5rem;
-}
-
-#step2 label {
-    font-weight: 600;
-    color: var(--accent);
-    margin-bottom: 0.5rem;
-}
-
-#step2 input {
-    background: var(--bg-secondary);
-}
-
-/* ===== SUCCESS STEP STYLES ===== */
-
-#step3 {
-    text-align: center;
-    padding: 2rem 1rem;
-}
-
-#step3 .btn-primary {
-    margin-top: 1.5rem;
-    min-width: 200px;
-}
-
-/* ===== AUTO-SAVE INDICATOR (if used) ===== */
-
-.auto-save-indicator {
-    position: fixed;
-    bottom: 1rem;
-    right: 1rem;
-    background: var(--success);
-    color: white;
-    padding: 0.5rem 1rem;
-    border-radius: 9999px;
-    font-size: 0.8rem;
-    box-shadow: var(--shadow);
-    animation: slideUp 0.3s ease;
-    z-index: 1000;
-}
-
-@keyframes slideUp {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
+    .form-row {
+        flex-direction: column;
+        gap: 1.5rem;
     }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-/* ===== TERMS LINK STYLES ===== */
-
-.form-group.checkbox a {
-    color: var(--accent);
-    text-decoration: none;
-    font-weight: 500;
-}
-
-.form-group.checkbox a:hover {
-    text-decoration: underline;
-}
-
-/* ===== DISABLED STATE ===== */
-
-button:disabled,
-input:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-/* ===== FOCUS VISIBLE FOR ACCESSIBILITY ===== */
-
-*:focus-visible {
-    outline: 3px solid var(--accent);
-    outline-offset: 2px;
+    .button-group { flex-direction: column; }
+    .button-group button { width: 100%; }
+    h1 { font-size: 1.5rem; }
+    .reveal-btn { top: 2.3rem; }
 }

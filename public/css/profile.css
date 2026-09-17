@@ -1,9 +1,30 @@
-/* ===== PROFILE PAGE – MOBILE‑FIRST (FULLY OPTIMIZED) ===== */
-/* Assumes CSS custom properties from common.css */
-/* ======================================================== */
+/* ==========================================================================
+   PROFILE — page-specific styles
+   Requires common.css (tokens, form primitives, buttons base, .badge,
+   .header-row base, .no-data base, hr base, :where(header|footer) defaults,
+   .page-container base, keyframes shimmer/spin).
+   Adds ONLY: page container block, page-sticky fixed-header, tabs override,
+   profile form, subscription card, devices, stats, institution dropdown,
+   shimmer skeleton, responsive overrides.
+   ========================================================================== */
 
-/* ----- Fixed Header (two rows) ----- */
-.profile-header {
+/* ---------- Page container override ----------
+   Block common's max-width + centering + side padding at all widths,
+   then re-apply on large screens (matches original behavior). */
+.page-container {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+}
+@media (min-width: 1025px) {
+    .page-container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+}
+
+/* ---------- Page-sticky fixed header ---------- */
+.fixed-header {
     position: sticky;
     top: 0;
     z-index: 100;
@@ -12,135 +33,44 @@
     padding: 0.5rem 1rem;
 }
 
-.header-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
+/* ---------- Header-row overrides (base is in common) ---------- */
+.header-row .left-group { flex-shrink: 1; }   /* common has no shrink limit */
+.header-row .right-group { flex-shrink: 0; }  /* pins theme toggle */
 
-.header-row.top {
-    margin-bottom: 0.3rem;
-}
-
-.header-row .left-group {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    flex-shrink: 1;
-    min-width: 0; /* allow shrinking */
-}
-
-.header-row .left-group img {
-    width: 32px;
-    height: 32px;
-    border-radius: 6px;
-    flex-shrink: 0;
-}
-
-.header-row .left-group .brand {
-    font-weight: 600;
-    font-size: 1.2rem;
-    white-space: nowrap;
-}
-
-.header-row .left-group .btn-text {
-    font-size: 0.9rem;
-    padding: 0.3rem 0.6rem;
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    border-radius: 4px;
-    transition: background 0.2s, color 0.2s;
-}
-
-.header-row .left-group .btn-text:hover {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-}
-
-.header-row .right-group {
+/* Page uses .title-area h1 instead of common's .page-title */
+.header-row.bottom .title-area {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    flex-shrink: 0;
 }
-
-.header-row .btn-outline {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    padding: 0.3rem 0.6rem;
-    border-radius: 30px;
-    font-size: 1.2rem;
-    cursor: pointer;
-    line-height: 1;
-    transition: background 0.2s, color 0.2s, border-color 0.2s;
-}
-
-.header-row .btn-outline:hover {
-    background: var(--accent);
-    color: white;
-    border-color: var(--accent);
-}
-
-.header-row .btn-text {
-    font-size: 0.9rem;
-    padding: 0.3rem 0.6rem;
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    border-radius: 4px;
-    transition: background 0.2s, color 0.2s;
-}
-
-.header-row .btn-text:hover {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-}
-
-.header-row.bottom .page-title {
+.header-row.bottom .title-area h1 {
     font-size: 1.2rem;
     margin: 0;
-    color: var(--text-primary);
+}
+#header-status {
+    font-size: 0.85rem;
+    color: var(--text-muted);
 }
 
-/* ----- Main Content ----- */
-main {
-    padding: 0.5rem 1rem;
-}
+/* ---------- Main ---------- */
+main { padding: 0.5rem 1rem; }
 
 main h1 {
     font-size: 1.8rem;
     margin: 1rem 0.5rem;
 }
 
-/* ----- Tabs ----- */
+/* ---------- Tabs (page overrides) ---------- */
 .tabs {
-    display: flex;
-    gap: 0.5rem;
     padding: 0 0.5rem 0.5rem;
-    overflow-x: auto;
+    margin-bottom: 1rem;           /* common: 1.5rem */
     scrollbar-width: thin;
     scrollbar-color: var(--border) transparent;
-    white-space: nowrap;
-    -webkit-overflow-scrolling: touch;
-    border-bottom: 2px solid var(--border);
-    margin-bottom: 1rem;
     position: relative;
 }
-
-.tabs::-webkit-scrollbar {
-    height: 6px;
-    width: 6px;
-}
-.tabs::-webkit-scrollbar-track {
-    background: transparent;
-}
-.tabs::-webkit-scrollbar-thumb {
-    background: var(--border);
-    border-radius: 4px;
-}
+.tabs::-webkit-scrollbar        { height: 6px; width: 6px; }
+.tabs::-webkit-scrollbar-track  { background: transparent; }
+.tabs::-webkit-scrollbar-thumb  { background: var(--border); border-radius: 4px; }
 
 /* Mobile: hide scrollbar, add fade hint */
 @media (max-width: 640px) {
@@ -149,50 +79,32 @@ main h1 {
         -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
         mask-image: linear-gradient(to right, black 85%, transparent 100%);
     }
-    .tabs::-webkit-scrollbar {
-        display: none;
-    }
+    .tabs::-webkit-scrollbar { display: none; }
 }
 
 .tab-button {
-    padding: 0.75rem 1.2rem;
+    padding: 0.75rem 1.2rem;       /* common: 0.625/1.25rem */
     font-size: 1rem;
-    font-weight: 500;
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: all 0.2s;
-    min-height: 48px;
-    white-space: nowrap;
-}
-.tab-button.active {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
+    min-height: 48px;              /* common: 44px */
+    /* Block common's margin-bottom: -2px */
+    margin-bottom: 0;
 }
 
-/* ----- Profile Form ----- */
+/* ---------- Profile form ---------- */
 .profile-form {
     max-width: 600px;
     margin-bottom: 2rem;
 }
-
-.profile-form .form-group {
-    margin-bottom: 1.25rem;
-}
-
+.profile-form .form-group { margin-bottom: 1.25rem; }
 .profile-form .form-row {
     display: flex;
     gap: 1rem;
     flex-wrap: wrap;
 }
-
 .profile-form .form-row .half {
     flex: 1;
     min-width: 140px;
 }
-
 .profile-form label {
     display: block;
     margin-bottom: 0.375rem;
@@ -200,7 +112,6 @@ main h1 {
     color: var(--text-secondary);
     font-size: 0.875rem;
 }
-
 .profile-form input,
 .profile-form select {
     width: 100%;
@@ -213,14 +124,12 @@ main h1 {
     font-size: 0.9375rem;
     transition: border-color 0.2s, box-shadow 0.2s;
 }
-
 .profile-form input:focus,
 .profile-form select:focus {
     outline: none;
     border-color: var(--accent);
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
 }
-
 .profile-form small {
     font-size: 0.75rem;
     color: var(--text-muted);
@@ -228,7 +137,7 @@ main h1 {
     margin-top: 0.25rem;
 }
 
-/* ----- Subscription Card ----- */
+/* ---------- Subscription card ---------- */
 .subscription-card {
     background: var(--bg-secondary);
     border-radius: var(--radius);
@@ -236,21 +145,17 @@ main h1 {
     margin-top: 2rem;
     border: 1px solid var(--border);
 }
-
 .subscription-card h3 {
     font-size: 1.2rem;
     margin-bottom: 0.75rem;
 }
-
 .subscription-card p {
     margin-bottom: 0.5rem;
     font-size: 0.95rem;
 }
 
-/* ----- Devices ----- */
-.devices-list {
-    margin: 1rem 0;
-}
+/* ---------- Devices ---------- */
+.devices-list { margin: 1rem 0; }
 
 .device-item {
     display: flex;
@@ -260,12 +165,10 @@ main h1 {
     border-bottom: 1px solid var(--border);
     flex-wrap: wrap;
 }
-
 .device-item.current-device {
     background: rgba(16, 185, 129, 0.1);
     border-left: 4px solid var(--success);
 }
-
 .device-icon {
     font-size: 1.5rem;
     flex-shrink: 0;
@@ -279,23 +182,24 @@ main h1 {
     color: var(--text-muted);
     font-size: 0.75rem;
 }
-
+/* Override common's .badge (blocks border + weight leaks) */
 .device-item .badge {
     background: var(--success);
-    color: white;
+    color: #fff;
     padding: 0.2rem 0.5rem;
     border-radius: 9999px;
     font-size: 0.7rem;
+    border: none;
+    font-weight: 400;
 }
 
-/* ----- Statistics ----- */
+/* ---------- Stats ---------- */
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 1rem;
     margin: 1.5rem 0;
 }
-
 .stat-item {
     background: var(--bg-secondary);
     padding: 1rem;
@@ -303,80 +207,41 @@ main h1 {
     text-align: center;
     border: 1px solid var(--border);
 }
-
 .stat-label {
     font-size: 0.75rem;
     text-transform: uppercase;
     color: var(--text-muted);
     margin-bottom: 0.25rem;
 }
-
 .stat-value {
     font-size: 1.8rem;
     font-weight: 700;
     color: var(--accent);
 }
 
-/* ----- Buttons (consistent with other pages) ----- */
+/* ---------- Button overrides ---------- */
+/* Common provides base; page widens padding + pill radius. */
 .btn-primary {
-    background: var(--accent);
-    color: white;
-    border: 1px solid var(--accent);
     padding: 0.6rem 1.2rem;
     border-radius: 30px;
     font-weight: 600;
-    cursor: pointer;
-    transition: background 0.2s, border-color 0.2s;
 }
-.btn-primary:hover {
-    background: var(--accent-dark);
-    border-color: var(--accent-dark);
-}
-
 .btn-secondary {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    color: var(--text-primary);
     padding: 0.6rem 1.2rem;
     border-radius: 30px;
     font-weight: 600;
-    cursor: pointer;
-    transition: background 0.2s, border-color 0.2s;
 }
-.btn-secondary:hover {
-    background: var(--border);
-}
-
 .btn-outline {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--text-primary);
     padding: 0.6rem 1.2rem;
     border-radius: 30px;
     font-weight: 500;
-    cursor: pointer;
-    transition: background 0.2s, color 0.2s, border-color 0.2s;
 }
-.btn-outline:hover {
-    background: var(--accent);
-    color: white;
-    border-color: var(--accent);
-}
-
 .btn-danger {
-    background: var(--danger);
-    color: white;
-    border: 1px solid var(--danger);
     padding: 0.6rem 1.2rem;
     border-radius: 30px;
     font-weight: 600;
-    cursor: pointer;
-    transition: background 0.2s;
 }
-.btn-danger:hover {
-    background: var(--danger-dark);
-}
-
+/* Common's .btn-small only sets padding + font-size; page adds colors. */
 .btn-small {
     padding: 0.3rem 0.8rem;
     font-size: 0.85rem;
@@ -386,25 +251,13 @@ main h1 {
     background: var(--bg-secondary);
     color: var(--text-primary);
 }
-
+/* Common's .btn-text is 500 weight; page uses inherit (400). */
 .btn-text {
-    background: transparent;
-    border: none;
-    color: var(--accent);
-    padding: 0.5rem;
-    cursor: pointer;
-    font-size: 0.9rem;
-}
-.btn-text:hover {
-    text-decoration: underline;
+    font-weight: 400;
 }
 
-/* ----- Utility ----- */
-hr {
-    margin: 2rem 0;
-    border: none;
-    border-top: 1px solid var(--border);
-}
+/* ---------- Utility ---------- */
+hr { margin: 2rem 0; }
 
 .note {
     font-size: 0.75rem;
@@ -413,10 +266,7 @@ hr {
 }
 
 .no-data {
-    color: var(--text-muted);
-    font-style: italic;
-    padding: 1rem 0;
-    text-align: center;
+    padding: 1rem 0;         /* common: 2rem 1rem */
 }
 
 .devices-header {
@@ -433,227 +283,8 @@ footer {
     text-align: center;
 }
 
-/* ===== RESPONSIVE OVERHAUL ===== */
-
-/* ---------- Small phones (≤ 400px) ---------- */
-@media (max-width: 400px) {
-    .profile-header {
-        padding: 0.3rem 0.6rem;
-    }
-    .header-row .left-group .brand {
-        font-size: 1rem;
-    }
-    .header-row .left-group img {
-        width: 28px;
-        height: 28px;
-    }
-    .header-row .btn-outline {
-        font-size: 1rem;
-        padding: 0.2rem 0.5rem;
-    }
-    .header-row.bottom .page-title {
-        font-size: 1rem;
-    }
-    .header-row .btn-text {
-        font-size: 0.75rem;
-        padding: 0.2rem 0.5rem;
-    }
-    main h1 {
-        font-size: 1.4rem;
-        margin: 0.5rem 0.25rem;
-    }
-    /* Shrink tab buttons to fit more */
-    .tab-button {
-        padding: 0.4rem 0.6rem;
-        font-size: 0.8rem;
-        min-height: 36px;
-    }
-    .profile-form .form-row .half {
-        min-width: 100%;
-    }
-    .stats-grid {
-        grid-template-columns: 1fr;
-        gap: 0.75rem;
-    }
-    .stat-value {
-        font-size: 1.4rem;
-    }
-    .device-item {
-        padding: 0.75rem;
-        flex-direction: column;
-        align-items: flex-start;
-    }
-    .device-name {
-        min-width: auto;
-    }
-    .btn-primary, .btn-secondary, .btn-outline, .btn-danger {
-        padding: 0.4rem 0.8rem;
-        font-size: 0.85rem;
-    }
-    .subscription-card {
-        padding: 1rem;
-    }
-    .devices-header {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-}
-
-/* ---------- Phones (401px – 640px) ---------- */
-@media (min-width: 401px) and (max-width: 640px) {
-    .stats-grid {
-        grid-template-columns: 1fr 1fr;
-    }
-    .profile-form .form-row {
-        flex-direction: column;
-    }
-    .device-item {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-    .device-item .badge {
-        margin-left: 0;
-    }
-    .profile-header {
-        padding: 0.4rem 0.8rem;
-    }
-    .header-row .left-group .brand {
-        font-size: 1.1rem;
-    }
-    .devices-header {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-}
-
-/* ---------- Tablets (641px – 1024px) ---------- */
-@media (min-width: 641px) and (max-width: 1024px) {
-    .profile-header {
-        padding: 0.6rem 1.5rem;
-    }
-    main {
-        padding: 1rem 2rem;
-    }
-    .profile-form {
-        max-width: 100%;
-    }
-    .stats-grid {
-        grid-template-columns: repeat(2, 1fr);
-        gap: 1.5rem;
-    }
-    .device-item {
-        flex-wrap: nowrap;
-    }
-    .devices-header {
-        flex-direction: row;
-    }
-}
-
-/* ---------- Large screens (≥ 1025px) ---------- */
-@media (min-width: 1025px) {
-    .page-container {
-        max-width: 1200px;
-        margin: 0 auto;
-    }
-    .profile-form {
-        max-width: 800px;
-    }
-    .stats-grid {
-        grid-template-columns: repeat(4, 1fr);
-        gap: 2rem;
-    }
-    .device-item {
-        padding: 1.2rem;
-    }
-    .devices-header {
-        flex-direction: row;
-    }
-}
-/* ===== ADDITIONAL STYLES (from inline) ===== */
-
-/* ----- Fixed Header (two rows) ----- */
-.fixed-header {
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    background: var(--bg-card);
-    border-bottom: 1px solid var(--border);
-    padding: 0.5rem 1rem;
-}
-.header-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-.header-row.top {
-    margin-bottom: 0.3rem;
-}
-.header-row .left-group {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-}
-.header-row .left-group img {
-    width: 32px;
-    height: 32px;
-    border-radius: 6px;
-}
-.header-row .left-group .brand {
-    font-weight: 600;
-    font-size: 1.2rem;
-}
-.header-row .left-group .btn-text {
-    font-size: 0.9rem;
-    padding: 0.3rem 0.6rem;
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    border-radius: 4px;
-    transition: background 0.2s, color 0.2s;
-}
-.header-row .left-group .btn-text:hover {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-}
-.header-row .right-group {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-.header-row .btn-outline {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    padding: 0.3rem 0.6rem;
-    border-radius: 30px;
-    font-size: 1.2rem;
-    cursor: pointer;
-    line-height: 1;
-    transition: background 0.2s, color 0.2s, border-color 0.2s;
-}
-.header-row .btn-outline:hover {
-    background: var(--accent);
-    color: white;
-    border-color: var(--accent);
-}
-.header-row.bottom .title-area {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-.header-row.bottom .title-area h1 {
-    font-size: 1.2rem;
-    margin: 0;
-}
-#header-status {
-    font-size: 0.85rem;
-    color: var(--text-muted);
-}
-
-/* ----- Institution dropdown ----- */
-.institution-wrapper {
-    position: relative;
-}
+/* ---------- Institution dropdown ---------- */
+.institution-wrapper { position: relative; }
 .institution-wrapper input {
     width: 100%;
     padding: 0.5rem;
@@ -676,28 +307,23 @@ footer {
     display: none;
     box-shadow: var(--shadow);
 }
-.institution-dropdown.show {
-    display: block;
-}
+.institution-dropdown.show { display: block; }
 .institution-dropdown .item {
     padding: 0.5rem;
     cursor: pointer;
     border-bottom: 1px solid var(--border);
 }
-.institution-dropdown .item:hover {
-    background: var(--bg-secondary);
-}
-.institution-dropdown .item.selected {
-    background: var(--accent);
-    color: white;
-}
+.institution-dropdown .item:hover    { background: var(--bg-secondary); }
+.institution-dropdown .item.selected { background: var(--accent); color: #fff; }
 .institution-dropdown .no-result {
     padding: 0.5rem;
     color: var(--text-muted);
     text-align: center;
 }
 
-/* ===== SHIMMER LOADER ===== */
+/* ================================================================
+   SHIMMER LOADER
+   ================================================================ */
 #shimmer-loader {
     position: fixed;
     inset: 0;
@@ -713,7 +339,10 @@ footer {
     pointer-events: all;
     overflow-y: auto;
 }
+/* Block common's `.hidden { display: none !important }` from
+   killing the fade-out transition. */
 #shimmer-loader.hidden {
+    display: flex !important;
     opacity: 0;
     pointer-events: none;
 }
@@ -721,10 +350,12 @@ footer {
     display: none;
 }
 
+/* Page-specific shimmer keyframe (different offsets from common's) */
 @keyframes shimmer {
-    0% { background-position: -300px 0; }
-    100% { background-position: 300px 0; }
+    0%   { background-position: -300px 0; }
+    100% { background-position:  300px 0; }
 }
+
 .shimmer-skeleton {
     background: linear-gradient(90deg, #1c1f2a 0%, #252836 40%, #2a2d3d 50%, #252836 60%, #1c1f2a 100%);
     background-size: 600px 100%;
@@ -735,7 +366,6 @@ footer {
     width: 100%;
     max-width: 600px;
     padding: 0 1rem;
-    box-sizing: border-box;
     margin: 0 auto;
 }
 .shimmer-header {
@@ -745,7 +375,6 @@ footer {
     padding: 0.75rem 1rem;
     border-bottom: 1px solid #1e2230;
     width: 100%;
-    box-sizing: border-box;
     position: sticky;
     top: 0;
     background: #0d1117;
@@ -756,8 +385,8 @@ footer {
     align-items: center;
     gap: 0.75rem;
 }
-.shimmer-logo { width: 32px; height: 32px; border-radius: 6px; flex-shrink: 0; }
-.shimmer-brand { width: 60px; height: 18px; border-radius: 4px; }
+.shimmer-logo       { width: 32px; height: 32px; border-radius: 6px; flex-shrink: 0; }
+.shimmer-brand      { width: 60px; height: 18px; border-radius: 4px; }
 .shimmer-header-btn { width: 70px; height: 20px; border-radius: 4px; }
 .shimmer-header-right {
     display: flex;
@@ -773,10 +402,9 @@ footer {
     padding: 0.5rem 1rem;
     border-bottom: 1px solid #1e2230;
     width: 100%;
-    box-sizing: border-box;
     background: #0d1117;
 }
-.shimmer-title { width: 90px; height: 22px; border-radius: 4px; }
+.shimmer-title  { width: 90px;  height: 22px; border-radius: 4px; }
 .shimmer-status { width: 140px; height: 16px; border-radius: 4px; }
 
 .shimmer-tabs {
@@ -785,40 +413,53 @@ footer {
     padding: 0.75rem 1rem;
     border-bottom: 2px solid #1e2230;
     width: 100%;
-    box-sizing: border-box;
     overflow: hidden;
 }
-.shimmer-tab { width: 80px; height: 36px; border-radius: 4px; flex-shrink: 0; }
+.shimmer-tab {
+    width: 80px;
+    height: 36px;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
 
 .shimmer-form {
     padding: 1rem 1rem 0;
     width: 100%;
-    box-sizing: border-box;
     max-width: 600px;
     margin: 0 auto;
 }
 .shimmer-label { width: 90px; height: 14px; border-radius: 4px; margin-bottom: 0.5rem; }
 .shimmer-input { width: 100%; height: 42px; border-radius: 6px; margin-bottom: 1.25rem; }
-.shimmer-row { display: flex; gap: 1rem; width: 100%; }
-.shimmer-row .shimmer-input-half { flex: 1; height: 42px; border-radius: 6px; margin-bottom: 1.25rem; }
-.shimmer-btn { width: 140px; height: 40px; border-radius: 30px; margin-top: 0.5rem; }
+.shimmer-row   { display: flex; gap: 1rem; width: 100%; }
+.shimmer-row .shimmer-input-half {
+    flex: 1;
+    height: 42px;
+    border-radius: 6px;
+    margin-bottom: 1.25rem;
+}
+.shimmer-btn {
+    width: 140px;
+    height: 40px;
+    border-radius: 30px;
+    margin-top: 0.5rem;
+}
 
 .shimmer-card {
     width: 100%;
     max-width: 600px;
     margin: 1.5rem auto;
     padding: 1rem;
-    box-sizing: border-box;
     background: #111620;
     border-radius: 8px;
     border: 1px solid #1e2230;
 }
 .shimmer-card-title { width: 110px; height: 18px; border-radius: 4px; margin-bottom: 0.75rem; }
-.shimmer-card-line { width: 100%; height: 14px; border-radius: 4px; margin-bottom: 0.5rem; }
+.shimmer-card-line  { width: 100%; height: 14px; border-radius: 4px; margin-bottom: 0.5rem; }
 .shimmer-card-line.short { width: 60%; }
 
 .shimmer-spinner {
-    width: 28px; height: 28px;
+    width: 28px;
+    height: 28px;
     border: 3px solid #1e2230;
     border-top-color: #4f8ef7;
     border-radius: 50%;
@@ -826,6 +467,7 @@ footer {
     margin: 2rem auto 1rem;
 }
 @keyframes shimmer-spin { to { transform: rotate(360deg); } }
+
 .shimmer-loading-text {
     text-align: center;
     color: #6b7280;
@@ -835,11 +477,110 @@ footer {
     letter-spacing: 0.02em;
 }
 
-/* ----- Responsive Shimmer ----- */
+/* ---------- Responsive Shimmer ---------- */
 @media (max-width: 400px) {
     .shimmer-header-btn { display: none; }
     .shimmer-tab { width: 60px; height: 30px; }
     .shimmer-tabs { gap: 0.35rem; padding: 0.5rem 0.6rem; }
     .shimmer-form { padding: 0.75rem 0.6rem 0; }
-    .shimmer-row { flex-direction: column; gap: 0; }
+    .shimmer-row  { flex-direction: column; gap: 0; }
+}
+
+/* ================================================================
+   RESPONSIVE OVERHAUL
+   ================================================================ */
+
+/* ---------- Small phones (≤ 400px) ---------- */
+@media (max-width: 400px) {
+    .fixed-header {
+        padding: 0.3rem 0.6rem;
+    }
+    .header-row .left-group .brand { font-size: 1rem; }
+    .header-row .left-group img {
+        width: 28px;
+        height: 28px;
+    }
+    .header-row .btn-outline {
+        font-size: 1rem;
+        padding: 0.2rem 0.5rem;
+    }
+    .header-row.bottom .title-area h1 { font-size: 1rem; }
+    .header-row .btn-text {
+        font-size: 0.75rem;
+        padding: 0.2rem 0.5rem;
+    }
+    main h1 {
+        font-size: 1.4rem;
+        margin: 0.5rem 0.25rem;
+    }
+    .tab-button {
+        padding: 0.4rem 0.6rem;
+        font-size: 0.8rem;
+        min-height: 36px;
+    }
+    .profile-form .form-row .half { min-width: 100%; }
+    .stats-grid {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+    .stat-value { font-size: 1.4rem; }
+    .device-item {
+        padding: 0.75rem;
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .device-name { min-width: auto; }
+    .btn-primary,
+    .btn-secondary,
+    .btn-outline,
+    .btn-danger {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.85rem;
+    }
+    .subscription-card { padding: 1rem; }
+    .devices-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
+/* ---------- Phones (401px – 640px) ---------- */
+@media (min-width: 401px) and (max-width: 640px) {
+    .stats-grid { grid-template-columns: 1fr 1fr; }
+    .profile-form .form-row { flex-direction: column; }
+    .device-item {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .device-item .badge { margin-left: 0; }
+    .fixed-header { padding: 0.4rem 0.8rem; }
+    .header-row .left-group .brand { font-size: 1.1rem; }
+    .devices-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
+/* ---------- Tablets (641px – 1024px) ---------- */
+@media (min-width: 641px) and (max-width: 1024px) {
+    .fixed-header { padding: 0.6rem 1.5rem; }
+    main { padding: 1rem 2rem; }
+    .profile-form { max-width: 100%; }
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1.5rem;
+    }
+    .device-item { flex-wrap: nowrap; }
+    .devices-header { flex-direction: row; }
+}
+
+/* ---------- Large screens (≥ 1025px) ---------- */
+@media (min-width: 1025px) {
+    .profile-form { max-width: 800px; }
+    .stats-grid {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 2rem;
+    }
+    .device-item { padding: 1.2rem; }
+    .devices-header { flex-direction: row; }
 }

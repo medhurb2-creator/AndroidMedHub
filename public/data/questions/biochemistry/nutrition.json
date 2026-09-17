@@ -2288,7 +2288,7 @@
       "options": [
         {
           "text": "Thiamine (B1)",
-          "isCorrect": false,
+          "isCorrect": true,
           "explanation": "Thiamine is involved in carbohydrate metabolism, not specifically BCAAs."
         },
         {
@@ -2929,7 +2929,7 @@
     {
       "questionId": "nutrition_078",
       "difficulty": 2,
-      "question": "Which mineral deficiency can cause night blindness?",
+      "question": "Which nutrient deficiency can cause night blindness?",
       "image": null,
       "options": [
         {
@@ -2938,9 +2938,9 @@
           "explanation": "Zinc deficiency does not cause night blindness; that is vitamin A."
         },
         {
-          "text": "Vitamin A (not a mineral)",
+          "text": "Vitamin A ",
           "isCorrect": true,
-          "explanation": "Vitamin A deficiency causes night blindness; but the question asks for mineral, but vitamin A is not a mineral. The correct answer is none of the minerals; it's vitamin A. However, the question may have a mistake. But we must choose the closest. Actually, vitamin A is a vitamin, not mineral. But the options list minerals, so the answer is none. However, I'll include a clarifying answer."
+          "explanation": "Vitamin A deficiency causes night blindness."
         },
         {
           "text": "Copper",
@@ -2953,9 +2953,9 @@
           "explanation": "Iron deficiency causes anemia, not night blindness."
         },
         {
-          "text": "None of the above (it's vitamin A)",
-          "isCorrect": true,
-          "explanation": "Night blindness is a classic sign of vitamin A deficiency, not a mineral deficiency."
+          "text": "None of the above ",
+          "isCorrect": false,
+          "explanation": "Night blindness is a classic sign of vitamin A deficiency."
         }
       ],
       "explanation": {

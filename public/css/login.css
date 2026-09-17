@@ -1,276 +1,269 @@
-/* public/css/login.css */
+/* ==========================================================================
+   LOGIN — page-specific styles
+   Requires common.css (tokens, buttons, .logo, .form-container base, inputs,
+   .error-message, .form-group, :where(header|footer) defaults).
+   Adds ONLY: page layout shell, header/footer overrides, form-row,
+   reveal button, action button group, security note, responsive.
+   ========================================================================== */
 
-/* ===== header ===== */
-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1rem 2rem;
-  background: var(--bg-secondary, #fff);
-  border-bottom: 1px solid var(--border, #e2e8f0);
-}
-
-header .logo {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  font-weight: 700;
-  font-size: 1.25rem;
-  color: var(--text-primary, #0f172a);
-}
-
-header .logo img {
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
-}
-
-header .btn-outline {
-  background: transparent;
-  border: 1px solid var(--border, #e2e8f0);
-  border-radius: 9999px;
-  padding: 0.4rem 0.9rem;
-  font-size: 1.25rem;
-  cursor: pointer;
-  line-height: 1;
-  transition: background 0.2s, border-color 0.2s;
-  color: var(--text-primary, #0f172a);
-}
-
-header .btn-outline:hover {
-  background: var(--bg-hover, #f1f5f9);
-  border-color: var(--text-muted, #94a3b8);
-}
-
-/* ===== page container ===== */
+/* ---------- Page container ----------
+   Not used by the current HTML, but kept for safety. Blocks common's
+   max-width / padding / margin so this page's flex shell is unaffected. */
 .page-container {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-primary, #f8fafc);
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-primary, #f8fafc);
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
+/* ---------- Header ----------
+   Common's :where(header:not([class])) supplies display:flex + centering
+   + padding: 1rem 0. Here we only add horizontal padding, bg, border. */
+header {
+    padding: 1rem 2rem;
+    background: var(--bg-secondary, #fff);
+    border-bottom: 1px solid var(--border, #e2e8f0);
+}
+
+/* Common's .logo provides layout + weight + color; this page tightens gap
+   and shrinks font-size slightly. */
+header .logo {
+    gap: 0.75rem;
+    font-size: 1.25rem;
+}
+/* `header .logo img` removed — HTML width/height attrs cover sizing,
+   and common's `.logo img` provides border-radius. */
+
+/* Theme toggle — overrides common's default `.btn-outline` (blue-on-transparent). */
+header .btn-outline {
+    background: transparent;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 9999px;
+    padding: 0.4rem 0.9rem;
+    font-size: 1.25rem;
+    line-height: 1;
+    transition: background 0.2s, border-color 0.2s;
+    color: var(--text-primary, #0f172a);
+}
+header .btn-outline:hover {
+    background: var(--bg-hover, #f1f5f9);
+    border-color: var(--text-muted, #94a3b8);
+    /* Block common's `.btn-outline:hover { color: #fff }` from
+       making the icon unreadable on the light hover bg. */
+    color: var(--text-primary, #0f172a);
+}
+
+/* ---------- Main ---------- */
 main {
-  flex: 1 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
+    flex: 1 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
 }
 
-/* ===== form container ===== */
+/* ---------- Form container ----------
+   Common supplies max-width, bg, border, radius, padding, shadow.
+   Here we widen to full parent width and zero the common margin
+   because <main> centers the form via flex. */
 .form-container {
-  max-width: 450px;
-  width: 100%;
-  background: var(--bg-card, #ffffff);
-  border: 1px solid var(--border, #e2e8f0);
-  border-radius: var(--radius-lg, 16px);
-  padding: 2rem;
-  box-shadow: var(--shadow-lg, 0 10px 40px rgba(0, 0, 0, 0.08));
+    width: 100%;
+    margin: 0 auto;
+    border-radius: var(--radius-lg, 16px);
 }
+/* `.form-container h2` removed — identical to common's rule. */
 
-.form-container h2 {
-  margin-bottom: 1.5rem;
-  color: var(--text-primary, #0f172a);
-}
-
-/* ===== form rows ===== */
+/* ---------- Form row (remember + forgot) ---------- */
 .form-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1.5rem;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
 }
 
 .form-row label {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: var(--text-secondary, #475569);
-  font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--text-secondary, #475569);
+    font-size: 0.95rem;
+    /* Block common's `label` base from adding margin/weight */
+    font-weight: normal;
+    margin-bottom: 0;
 }
 
 .form-row .btn-link {
-  background: transparent;
-  border: none;
-  color: var(--accent, #2563eb);
-  font-weight: 500;
-  cursor: pointer;
-  font-size: 0.95rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  transition: background 0.2s;
+    background: transparent;
+    color: var(--accent, #2563eb);
+    font-weight: 500;
+    font-size: 0.95rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    transition: background 0.2s;
+    /* Block common's `.btn-link` underline at rest */
+    text-decoration: none;
 }
-
 .form-row .btn-link:hover {
-  background: var(--bg-hover, #f1f5f9);
-  text-decoration: underline;
+    background: var(--bg-hover, #f1f5f9);
+    text-decoration: underline;
+    /* Block common's `.btn-link:hover { color: var(--accent-dark) }` */
+    color: var(--accent, #2563eb);
 }
 
-/* ===== form groups ===== */
+/* ---------- Form groups ---------- */
 .form-group {
-  position: relative;
-  margin-bottom: 1.25rem;
+    /* Common provides margin-bottom; add relative positioning
+       so .reveal-btn can be absolutely positioned. */
+    position: relative;
 }
 
 .form-group label {
-  display: block;
-  margin-bottom: 0.4rem;
-  font-weight: 500;
-  color: var(--text-primary, #0f172a);
-  font-size: 0.95rem;
+    /* Common provides display:block + font-weight; override these. */
+    margin-bottom: 0.4rem;
+    color: var(--text-primary, #0f172a);
+    font-size: 0.95rem;
 }
 
+/* Input override — extra right padding for reveal button, custom bg-input */
 .form-group input[type="text"],
 .form-group input[type="password"] {
-  width: 100%;
-  padding: 0.7rem 2.5rem 0.7rem 1rem;
-  border: 1px solid var(--border, #e2e8f0);
-  border-radius: 8px;
-  background: var(--bg-input, #f8fafc);
-  color: var(--text-primary, #0f172a);
-  font-size: 1rem;
-  transition: border-color 0.2s, box-shadow 0.2s;
+    padding: 0.7rem 2.5rem 0.7rem 1rem;
+    border-radius: 8px;
+    background: var(--bg-input, #f8fafc);
+    font-size: 1rem;
 }
 
 .form-group input::placeholder {
-  color: var(--text-muted, #94a3b8);
+    color: var(--text-muted, #94a3b8);
 }
 
+/* Focus ring — page uses stronger opacity (0.15 vs common's 0.1) */
 .form-group input:focus {
-  outline: none;
-  border-color: var(--accent, #2563eb);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
-/* ===== dark theme overrides ===== */
+/* ---------- Dark theme token ---------- */
 .dark-theme {
-  --bg-input: #1e293b;
+    --bg-input: #1e293b;
 }
 
-/* ===== reveal button ===== */
+/* ---------- Reveal button ---------- */
 .reveal-btn {
-  position: absolute;
-  right: 0.75rem;
-  top: 70%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  color: var(--text-muted, #94a3b8);
-  padding: 0.25rem;
-  cursor: pointer;
-  font-size: 1.1rem;
-  transition: color 0.2s;
+    position: absolute;
+    right: 0.75rem;
+    top: 70%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--text-muted, #94a3b8);
+    padding: 0.25rem;
+    cursor: pointer;
+    font-size: 1.1rem;
+    transition: color 0.2s;
 }
-
 .reveal-btn:hover {
-  color: var(--text-primary, #0f172a);
+    color: var(--text-primary, #0f172a);
 }
 
-/* ===== error messages ===== */
+/* ---------- Error messages (override common's size/margin) ---------- */
 .error-message {
-  color: var(--danger, #dc2626);
-  font-size: 0.8rem;
-  margin-top: 0.3rem;
-  min-height: 1.2rem;
+    font-size: 0.8rem;
+    margin-top: 0.3rem;
 }
 
-/* ===== action buttons ===== */
+/* ---------- Action buttons ---------- */
 .action-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  margin-top: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
 }
 
 .action-buttons .btn-primary {
-  padding: 0.75rem 1.5rem;
-  border-radius: 9999px;
-  font-weight: 600;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: background 0.2s, transform 0.1s;
-  border: none;
-  background: var(--accent, #2563eb);
-  color: #fff;
+    /* Common provides background, color, border:none, cursor.
+       Override for pill + larger size. */
+    padding: 0.75rem 1.5rem;
+    border-radius: 9999px;
+    font-weight: 600;
+    font-size: 1rem;
+    transition: background 0.2s, transform 0.1s;
 }
-
-.action-buttons .btn-primary:hover {
-  background: var(--accent-dark, #1d4ed8);
-  transform: scale(1.01);
+.action-buttons .btn-primary:hover:not(:disabled) {
+    transform: scale(1.01);
 }
 
 .action-buttons .btn-secondary {
-  padding: 0.75rem 1.5rem;
-  border-radius: 9999px;
-  font-weight: 600;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: background 0.2s;
-  background: transparent;
-  color: var(--text-primary, #0f172a);
-  border: 1px solid var(--border, #e2e8f0);
-}
-
-.action-buttons .btn-secondary:hover {
-  background: var(--bg-hover, #f1f5f9);
-}
-
-/* ===== security note ===== */
-.security-note {
-  margin-top: 2rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--border, #e2e8f0);
-  font-size: 0.75rem;
-  color: var(--text-muted, #94a3b8);
-  text-align: center;
-}
-
-/* ===== footer ===== */
-footer {
-  flex-shrink: 0;
-  text-align: center;
-  padding: 1.5rem 1rem;
-}
-
-footer .btn-text {
-  background: transparent;
-  border: 1.5px solid var(--border, #e2e8f0);
-  border-radius: 9999px;
-  padding: 0.6rem 1.8rem;
-  font-size: 0.95rem;
-  font-weight: 500;
-  cursor: pointer;
-  color: var(--text-primary, #0f172a);
-  transition: background 0.2s, border-color 0.2s, transform 0.1s;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-footer .btn-text:hover {
-  background: var(--bg-hover, #f1f5f9);
-  border-color: var(--text-muted, #94a3b8);
-  transform: scale(1.02);
-}
-
-/* ===== responsive ===== */
-@media (max-width: 640px) {
-  header {
-    padding: 0.75rem 1rem;
-  }
-  header .logo span {
+    padding: 0.75rem 1.5rem;
+    border-radius: 9999px;
+    font-weight: 600;
     font-size: 1rem;
-  }
-  .form-container {
-    margin: 1.5rem 1rem;
-    padding: 1.5rem;
-  }
-  .form-row {
-    flex-direction: column;
-    align-items: flex-start;
-  }
+    background: transparent;
+    color: var(--text-primary, #0f172a);
+}
+.action-buttons .btn-secondary:hover:not(:disabled) {
+    background: var(--bg-hover, #f1f5f9);
+}
+
+/* ---------- Security note ---------- */
+.security-note {
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border, #e2e8f0);
+    font-size: 0.75rem;
+    color: var(--text-muted, #94a3b8);
+    text-align: center;
+}
+
+/* ---------- Footer ----------
+   Common's :where(footer:not([class])) provides padding: 1.5rem 0 +
+   text-align: center. Here we add horizontal padding + flex-shrink. */
+footer {
+    flex-shrink: 0;
+    padding: 1.5rem 1rem;
+}
+
+/* Bordered pill button — overrides common's minimal .btn-text */
+footer .btn-text {
+    background: transparent;
+    border: 1.5px solid var(--border, #e2e8f0);
+    border-radius: 9999px;
+    padding: 0.6rem 1.8rem;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--text-primary, #0f172a);
+    transition: background 0.2s, border-color 0.2s, transform 0.1s;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+footer .btn-text:hover {
+    background: var(--bg-hover, #f1f5f9);
+    border-color: var(--text-muted, #94a3b8);
+    transform: scale(1.02);
+    /* Block common's `.btn-text:hover` accent-blue color tint */
+    color: var(--text-primary, #0f172a);
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 640px) {
+    header {
+        padding: 0.75rem 1rem;
+    }
+    header .logo span {
+        font-size: 1rem;
+    }
+    .form-container {
+        margin: 1.5rem 1rem;
+        padding: 1.5rem;
+    }
+    .form-row {
+        flex-direction: column;
+        align-items: flex-start;
+    }
 }

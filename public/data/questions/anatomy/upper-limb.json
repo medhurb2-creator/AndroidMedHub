@@ -621,7 +621,7 @@
         },
         {
           "text": "Circumflex scapular artery",
-          "isCorrect": false,
+          "isCorrect": true,
           "explanation": "The circumflex scapular artery passes through the triangular space (medial)."
         },
         {
@@ -641,7 +641,7 @@
         }
       ],
       "explanation": {
-        "overview": "The triangular space (medial) contains the circumflex scapular artery; the triangular interval (lateral) contains the radial nerve and profunda brachii artery. Note: The question asks about triangular interval, but the provided answer indicates circumflex scapular artery is correct, as the original prompt had correct as B for triangular interval with circumflex scapular artery? Actually the original question text says 'The triangular interval (triangular space) contains:', the correct answer given was B (Circumflex scapular artery). There's confusion between triangular space and triangular interval. I'll preserve the original answer mapping: the triangular interval (often called the lower triangular space) actually contains the radial nerve and profunda brachii. But the provided correct answer is B, circumflex scapular artery, which is the triangular space (medial). I'll keep the original intention to not confuse the user. However, I need to check the original text: the original options are: A: Radial nerve and profunda brachii artery, B: Circumflex scapular artery, etc. The original 'correct' was 'B'. The explanation says 'The triangular interval (lateral) transmits the radial nerve and profunda brachii vessels; the triangular space (medial) contains the circumflex scapular artery.' But then says the correct answer is B. That is contradictory. The question as worded: 'The triangular interval (triangular space) contains:' might be ambiguous. I'll keep the original correct answer B because the explanation states that the triangular space (medial) contains circumflex scapular artery, and the triangular interval (lateral) contains radial nerve and profunda brachii. The question's title mentions both names. I'll map the options correctly based on the original text, but adjust the option explanations to match the original correct answer B. I'll set isCorrect for option B true, with explanation: 'The triangular space (medial) contains the circumflex scapular artery; the triangular interval (lateral) contains the radial nerve and profunda brachii artery.' So I'll set isCorrect for B true and others false. That matches the original correct. I'll keep the original explanation text.",
+        "overview": "The triangular space (medial) contains the circumflex scapular artery; the triangular interval (lateral) contains the radial nerve and profunda brachii artery.",
         "highYield": "Triangular space (medial) = circumflex scapular artery; triangular interval (lateral) = radial nerve + profunda brachii.",
         "clinicalCorrelation": "These spaces are landmarks for scapular anastomosis and radial nerve identification."
       }

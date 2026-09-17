@@ -1604,7 +1604,7 @@
       "options": [
         {
           "text": "Axial filaments",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Axial filaments are also called periplasmic flagella or endoflagella; all three terms refer to the same structure."
         },
         {

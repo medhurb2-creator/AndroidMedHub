@@ -274,16 +274,16 @@
       "options": [
         {
           "text": "Bacillus anthracis",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Bacillus species are aerobic gram‑positive spore‑forming rods."
         },
         {
           "text": "Clostridium botulinum",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Clostridium species are anaerobic gram‑positive spore‑forming rods."
         },
         {
-          "text": "Both A and B",
+          "text": "Both Bacillus anthracis and Clostridium botulinum",
           "isCorrect": true,
           "explanation": "Both Bacillus and Clostridium are gram‑positive spore‑forming rods; the best answer includes both."
         },
@@ -1148,17 +1148,17 @@
       "options": [
         {
           "text": "Urinary tract infections",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Uropathogenic E. coli (UPEC) is the most common cause of UTIs."
         },
         {
           "text": "Neonatal meningitis",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "E. coli K1 capsule type is a leading cause of neonatal meningitis."
         },
         {
           "text": "Traveler's diarrhea",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Enterotoxigenic E. coli (ETEC) is a major cause of traveler’s diarrhea."
         },
         {
@@ -1680,17 +1680,17 @@
       "options": [
         {
           "text": "Helicobacter pylori",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "H. pylori is strongly urease‑positive, used in rapid diagnosis."
         },
         {
           "text": "Proteus mirabilis",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Proteus is also urease‑positive."
         },
         {
           "text": "Klebsiella pneumoniae",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Klebsiella produces urease."
         },
         {
@@ -1718,17 +1718,17 @@
       "options": [
         {
           "text": "Meningitis in unvaccinated children",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Hib was a major cause of childhood bacterial meningitis before vaccination."
         },
         {
           "text": "Pneumonia",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Hib can cause pneumonia, especially in developing countries."
         },
         {
           "text": "Epiglottitis",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Hib epiglottitis is a life‑threatening airway emergency."
         },
         {
@@ -2060,7 +2060,7 @@
       "options": [
         {
           "text": "Gonorrhea",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "N. gonorrhoeae is the agent of the sexually transmitted infection gonorrhea."
         },
         {
@@ -2075,11 +2075,11 @@
         },
         {
           "text": "Pelvic inflammatory disease",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Ascending infection leads to PID, a serious complication in women."
         },
         {
-          "text": "Both A and D",
+          "text": "Both Gonorrhea and Pelvic inflammatory disease",
           "isCorrect": true,
           "explanation": "Gonorrhea and PID are classic manifestations; both are correct."
         }
@@ -3732,22 +3732,22 @@
       "options": [
         {
           "text": "Pseudomonas aeruginosa",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "P. aeruginosa is a leading cause of VAP."
         },
         {
           "text": "Klebsiella pneumoniae",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Klebsiella is a common nosocomial pathogen."
         },
         {
           "text": "Acinetobacter baumannii",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Acinetobacter is increasingly recognized in ICU pneumonia."
         },
         {
           "text": "All of the above",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "All three are common nosocomial pathogens, often multidrug‑resistant."
         },
         {
@@ -3770,17 +3770,17 @@
       "options": [
         {
           "text": "Streptococcus pneumoniae",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Pneumococci are encapsulated and show Quellung with type‑specific antisera."
         },
         {
           "text": "Haemophilus influenzae type b",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Hib capsule swells with specific antisera."
         },
         {
           "text": "Neisseria meningitidis",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Meningococci have a polysaccharide capsule that can be typed by Quellung."
         },
         {
@@ -4264,17 +4264,17 @@
       "options": [
         {
           "text": "Hib vaccine",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Hib conjugate vaccine links PRP to a protein carrier."
         },
         {
           "text": "Pneumococcal conjugate vaccine (PCV13)",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "PCV13 conjugates multiple polysaccharides to CRM197 protein."
         },
         {
           "text": "Meningococcal conjugate vaccine",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "MenACWY conjugates polysaccharides to diphtheria toxoid or CRM197."
         },
         {
@@ -4530,7 +4530,7 @@
       "options": [
         {
           "text": "Binding directly to MHC class II and T‑cell receptor outside antigen‑binding groove",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Superantigens activate many T cells non‑specifically, leading to cytokine release."
         },
         {
@@ -5206,42 +5206,7 @@
         "clinicalCorrelation": "Urgent surgical debridement is critical and improves survival."
       }
     },
-    {
-      "questionId": "bacteriology_138",
-      "difficulty": 2,
-      "question": "The 'black colonies' on TCBS agar are characteristic of:",
-      "image": null,
-      "options": [
-        {
-          "text": "Vibrio cholerae (sucrose fermenter – yellow, but the question is about black; actually, V. parahaemolyticus are green/blue. Wait, black colonies on TCBS are not typical. I'll ask about green colonies on TCBS). Better to rephrase: 'Green colonies on TCBS agar are indicative of:'",
-          "isCorrect": false,
-          "explanation": "Actually, V. cholerae ferments sucrose → yellow; V. parahaemolyticus does not → green. Let's ask: Which bacterium produces green colonies on TCBS agar?"
-        },
-        {
-          "text": "I'll ask: Which organism produces green colonies on TCBS agar?",
-          "isCorrect": false,
-          "explanation": ""
-        },
-        {
-          "text": "Let's re‑do this question: 'Which organism produces non‑sucrose‑fermenting (green) colonies on TCBS agar?'",
-          "isCorrect": false,
-          "explanation": ""
-        },
-        {
-          "text": "I'll correct: 'Green colonies on TCBS agar are characteristic of Vibrio parahaemolyticus.'",
-          "isCorrect": false,
-          "explanation": ""
-        },
-        {
-          "text": "I need to output a proper question. I'll create: 'On TCBS agar, sucrose‑fermenting bacteria appear yellow; which vibrio appears yellow?' Actually, I'll just make a new question about black colonies on a different medium, or stick to the existing correct fact. I'll write a proper question: 'Which organism produces non‑sucrose‑fermenting (green) colonies on TCBS agar?'",
-          "isCorrect": false,
-          "explanation": ""
-        }
-      ],
-      "explanation": {
-        "overview": "I need to output valid JSON. I will create a clean question: 'Which Vibrio species appears as green colonies on TCBS agar?' correct answer: V. parahaemolyticus. That's a known fact. I'll do that."
-      }
-    },
+
     {
       "questionId": "bacteriology_139",
       "difficulty": 2,
@@ -5812,44 +5777,7 @@
         "clinicalCorrelation": "It usually resolves without treatment; topical antipseudomonal agents may be used."
       }
     },
-    {
-      "questionId": "bacteriology_154",
-      "difficulty": 2,
-      "question": "The 'mousy' or 'grape‑like' odor is characteristic of:",
-      "image": null,
-      "options": [
-        {
-          "text": "Pseudomonas aeruginosa",
-          "isCorrect": false,
-          "explanation": "Pseudomonas has a grape‑like or fruity odor."
-        },
-        {
-          "text": "Proteus species",
-          "isCorrect": false,
-          "explanation": "Proteus has a foul odor."
-        },
-        {
-          "text": "Haemophilus influenzae",
-          "isCorrect": false,
-          "explanation": "Often described as 'mousy' or 'semen‑like' due to putrescine."
-        },
-        {
-          "text": "Escherichia coli",
-          "isCorrect": false,
-          "explanation": "E. coli has a fecal odor."
-        },
-        {
-          "text": "Bacteroides fragilis",
-          "isCorrect": false,
-          "explanation": "Bacteroides has a foul odor."
-        }
-      ],
-      "explanation": {
-        "overview": "I need a single correct answer for characteristic odor. Actually, Pseudomonas is 'grape‑like' or 'fruity'; H. influenzae is 'mousy' or 'musty'. Let's ask: 'Which organism has a characteristic 'mousy' or 'musty' odor?' Answer: H. influenzae. I'll set that.",
-        "highYield": "",
-        "clinicalCorrelation": ""
-      }
-    },
+
     {
       "questionId": "bacteriology_155",
       "difficulty": 2,

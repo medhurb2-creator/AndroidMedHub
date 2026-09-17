@@ -1,35 +1,38 @@
-/* frontend-user/css/privacy.css */
+/* ==========================================================================
+   PRIVACY POLICY — page-specific styles
+   Requires common.css (tokens, .logo base, .btn-outline base, .btn-text base,
+   .page-container base, :where(header|footer) defaults).
+   Adds ONLY: fixed header positioning, page-container offset, privacy
+   content typography, privacy footer, and a phone-breakpoint tweak.
+   ========================================================================== */
 
-/* ===== Fixed Header ===== */
+/* ---------- Fixed header ----------
+   Common's :where(header:not([class])) provides flex + centering + padding.
+   Page overrides padding and adds fixed positioning. */
 header {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     z-index: 1000;
+    padding: 0.75rem 1.5rem;
     background: var(--bg-card, #ffffff);
     border-bottom: 1px solid var(--border, #e0e0e0);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-    padding: 0.75rem 1.5rem;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
 }
 
+/* ---------- Logo overrides ---------- */
+/* Common uses 1.3rem; this page uses 1.25rem. */
 .logo {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    color: var(--text-primary, #222);
     font-size: 1.25rem;
-    font-weight: 700;
 }
-
+/* Common provides border-radius only; page constrains the image size. */
 .logo img {
     height: 40px;
     width: auto;
 }
 
+/* ---------- Theme toggle (overrides common's accent .btn-outline) ---------- */
 header .btn-outline {
     background: transparent;
     border: 1px solid var(--border, #ccc);
@@ -38,18 +41,31 @@ header .btn-outline {
     font-size: 1.2rem;
     cursor: pointer;
     transition: background 0.2s;
+    /* Reset common's accent color + border-color so the resting state
+       stays theme-neutral. */
+    color: var(--text-primary, #0f172a);
 }
 
-header .btn-outline:hover {
+/* Hover — must include :not(:disabled) to beat common's
+   `.btn-outline:hover:not(:disabled)` (specificity 0,3,0). */
+header .btn-outline:hover:not(:disabled) {
     background: var(--bg-hover, #f0f0f0);
+    /* Reset common's hover `color: #fff`. */
+    color: var(--text-primary, #0f172a);
+    border-color: var(--border, #ccc);
 }
 
-/* Spacing below fixed header */
+/* ---------- Page container ----------
+   Common provides max-width: 1200px + margin auto + side padding.
+   This page previously relied on the browser default full-width block.
+   Blocking those three preserves the original layout exactly. */
 .page-container {
-    padding-top: 80px;  /* adjust to header height */
+    max-width: none;
+    margin: 0;
+    padding: 80px 0 0;
 }
 
-/* ===== Main content container ===== */
+/* ---------- Main content card ---------- */
 .privacy-container {
     max-width: 900px;
     margin: 2rem auto;
@@ -60,6 +76,7 @@ header .btn-outline:hover {
     box-shadow: var(--shadow);
 }
 
+/* Common's h1 is 2rem; this page uses 2.2rem + accent + centered. */
 .privacy-container h1 {
     margin-bottom: 0.5rem;
     color: var(--accent);
@@ -75,11 +92,11 @@ header .btn-outline:hover {
     font-size: 0.95rem;
 }
 
+/* ---------- Long-form content ---------- */
 .privacy-content {
     color: var(--text-secondary);
     line-height: 1.7;
 }
-
 .privacy-content h2 {
     color: var(--accent);
     font-size: 1.5rem;
@@ -88,61 +105,55 @@ header .btn-outline:hover {
     border-bottom: 1px solid var(--border);
     padding-bottom: 0.5rem;
 }
-
 .privacy-content h3 {
     color: var(--text-primary);
     font-size: 1.2rem;
     margin-top: 1.5rem;
     margin-bottom: 0.5rem;
 }
-
 .privacy-content p {
     margin: 0.8rem 0;
     color: var(--text-secondary);
 }
-
 .privacy-content ul,
 .privacy-content ol {
     margin: 1rem 0;
     padding-left: 1.5rem;
 }
-
 .privacy-content li {
     margin-bottom: 0.5rem;
     line-height: 1.6;
     color: var(--text-secondary);
 }
-
 .privacy-content a {
     color: var(--accent);
     text-decoration: underline;
     transition: color 0.2s;
 }
-
 .privacy-content a:hover {
     color: var(--accent-hover);
     text-decoration: none;
 }
 
+/* ---------- Footer CTA block ---------- */
 .privacy-footer {
     margin-top: 3rem;
     padding-top: 2rem;
     border-top: 1px solid var(--border);
     text-align: center;
 }
-
 .privacy-footer p {
     margin-bottom: 1.5rem;
     font-size: 0.9rem;
     color: var(--text-muted);
 }
-
 .privacy-footer .btn-primary,
 .privacy-footer .btn-secondary {
     min-width: 180px;
     margin: 0.5rem;
 }
 
+/* ---------- Responsive ---------- */
 @media (max-width: 640px) {
     .page-container {
         padding-top: 70px;

@@ -2961,7 +2961,7 @@
       "explanation": {
         "overview": "Ethylene glycol (antifreeze) poisoning is a medical emergency. It causes a high‑gap acidosis, calcium oxalate crystalluria, and an osmolal gap.",
         "highYield": "Early: osmolal gap (due to unmetabolised EG). Later: high‑gap acidosis (glycolic acid), hypocalcaemia, and oxalate crystals in urine.",
-        "clinicalCorrection": "Treatment includes fomepizole (alcohol dehydrogenase inhibitor) or ethanol, and haemodialysis; calcium should be given cautiously."
+        "clinicalCorrelation": "Treatment includes fomepizole (alcohol dehydrogenase inhibitor) or ethanol, and haemodialysis; calcium should be given cautiously."
       }
     },
     {

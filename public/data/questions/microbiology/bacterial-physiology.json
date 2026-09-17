@@ -654,17 +654,17 @@
       "options": [
         {
           "text": "Transformation",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Transformation is a key mechanism of HGT."
         },
         {
           "text": "Transduction",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Transduction is a phage‑mediated HGT mechanism."
         },
         {
           "text": "Conjugation",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Conjugation is a direct cell‑contact HGT mechanism."
         },
         {

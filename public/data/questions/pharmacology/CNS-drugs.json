@@ -388,17 +388,17 @@
       "options": [
         {
           "text": "Gingival hyperplasia",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Phenytoin causes gingival overgrowth, coarsening of facial features, hirsutism, and with chronic use, cerebellar degeneration leading to ataxia and nystagmus."
         },
         {
           "text": "Hirsutism",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Hirsutism is also a known adverse effect."
         },
         {
           "text": "Cerebellar atrophy with long-term use",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Chronic phenytoin can cause cerebellar degeneration."
         },
         {
@@ -502,17 +502,17 @@
       "options": [
         {
           "text": "Sodium channel blockade",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Valproate blocks voltage-gated sodium channels."
         },
         {
           "text": "Increased GABA synthesis and inhibition of GABA degradation",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Valproate increases brain GABA levels by inhibiting GABA transaminase."
         },
         {
           "text": "T-type calcium channel blockade",
-          "isCorrect": true,
+          "isCorrect": false,
           "explanation": "Valproate also blocks T-type calcium channels."
         },
         {

@@ -11,15 +11,16 @@ import * as db from './db.js';
 
 // ==================== SUBJECT METADATA ====================
 const SUBJECT_META = {
-    anatomy: { name: 'Anatomy', icon: '💀', color: '#FF6B6B', questions: 720 },
-    physiology: { name: 'Physiology', icon: '🧠', color: '#4ECDC4', questions: 1150 },
-    biochemistry: { name: 'Biochemistry', icon: '🧪', color: '#45B7D1', questions: 810 },
-    histology: { name: 'Histology', icon: '🔬', color: '#96CEB4', questions: 700 },
-    embryology: { name: 'Embryology', icon: '🐣', color: '#FFEAA7', questions: 690 },
-    pathology: { name: 'Pathology', icon: '🩸', color: '#DDA0DD', questions: 1080 },
-    pharmacology: { name: 'Pharmacology', icon: '💊', color: '#FDCB6E', questions: 690 },
-    microbiology: { name: 'Microbiology', icon: '🦠', color: '#E17055', questions: 690 }
+    anatomy:        { name: 'Anatomy',       icon: 'fa-solid fa-bone',        color: '#FF6B6B', questions: 1245 },
+    physiology:     { name: 'Physiology',    icon: 'fa-solid fa-heart-pulse', color: '#4ECDC4', questions: 1860 },
+    biochemistry:   { name: 'Biochemistry',  icon: 'fa-solid fa-flask',       color: '#45B7D1', questions: 1650 },
+    histology:      { name: 'Histology',     icon: 'fa-solid fa-microscope',  color: '#96CEB4', questions: 1365 },
+    embryology:     { name: 'Embryology',    icon: 'fa-solid fa-egg',         color: '#FFEAA7', questions: 1245 },
+    pathology:      { name: 'Pathology',     icon: 'fa-solid fa-disease',     color: '#DDA0DD', questions: 2250 },
+    pharmacology:   { name: 'Pharmacology',  icon: 'fa-solid fa-pills',       color: '#FDCB6E', questions: 1635 },
+    microbiology:   { name: 'Microbiology',  icon: 'fa-solid fa-bacteria',    color: '#E17055', questions: 1650 }
 };
+
 
 // ==================== COMPLETE TOPICS FROM UPDATED BLUEPRINT ====================
 const TOPICS = {

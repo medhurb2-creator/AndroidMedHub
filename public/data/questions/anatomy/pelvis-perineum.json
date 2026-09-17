@@ -30,7 +30,7 @@
           "explanation": "The acetabulum is the hip joint socket and is not part of the pelvic inlet."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The pelvic inlet (superior pelvic aperture) is bounded posteriorly by the sacral promontory, laterally by the arcuate and pectineal lines, and anteriorly by the pubic symphysis.",
         "highYield": "Sacral promontory = posterior landmark of the pelvic inlet.",
@@ -69,7 +69,7 @@
           "explanation": "The ischial spine separates the greater and lesser sciatic notches, but the foramen requires ligamentous boundaries as well."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The greater sciatic foramen is formed by the greater sciatic notch of the ilium, the sacrotuberous ligament (posteriorly), and the sacrospinous ligament (inferiorly). It transmits the piriformis, superior and inferior gluteal vessels/nerves, sciatic nerve, and other structures.",
         "highYield": "Greater sciatic foramen = greater sciatic notch + sacrotuberous lig. + sacrospinous lig.",
@@ -79,7 +79,7 @@
       "image": null
     },
     {
-      "id": "pelvis_003",
+      "questionId": "pelvis_003",
       "question": "The lesser sciatic foramen transmits which structure?",
       "options": [
         {
@@ -108,7 +108,7 @@
           "explanation": "The inferior gluteal artery exits via the greater sciatic foramen."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The lesser sciatic foramen is formed by the lesser sciatic notch, sacrotuberous ligament, and sacrospinous ligament. It transmits the tendon of obturator internus, and the pudendal nerve and internal pudendal vessels (after they re‑enter the pelvis from the perineum).",
         "highYield": "Pudendal nerve & internal pudendal vessels → lesser sciatic foramen → pudendal canal.",
@@ -118,7 +118,7 @@
       "image": null
     },
     {
-      "id": "pelvis_004",
+      "questionId": "pelvis_004",
       "question": "Which bone contributes to both the acetabulum and the obturator foramen?",
       "options": [
         {
@@ -147,7 +147,7 @@
           "explanation": "The coccyx is a small terminal bone with no role in hip or pelvic openings."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The ischium forms the posteroinferior part of the acetabulum and part of the obturator foramen. The pubis forms the anterior part of the acetabulum and the rest of the obturator foramen.",
         "highYield": "Ischium contributes to both acetabulum and obturator foramen.",
@@ -157,7 +157,7 @@
       "image": null
     },
     {
-      "id": "pelvis_005",
+      "questionId": "pelvis_005",
       "question": "The ischial spine is an important landmark for pudendal nerve block and separates which two foramina?",
       "options": [
         {
@@ -186,23 +186,23 @@
           "explanation": "True and false pelvis are divisions of the pelvic cavity, not foramina."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The ischial spine separates the greater and lesser sciatic notches and serves as the attachment for the sacrospinous ligament. It is palpable transvaginally and used in pudendal nerve block.",
-        "highYield": "Ischial spine = divider between greater and lesser sciatic foramina.",
-        "clinicalCorrelation": "Transvaginal palpation of the ischial spine guides pudendal nerve block during childbirth."
+        "highYield": "Ischial spine = divquestionIder between greater and lesser sciatic foramina.",
+        "clinicalCorrelation": "Transvaginal palpation of the ischial spine guquestionIdes pudendal nerve block during childbirth."
       },
       "difficulty": 2,
       "image": null
     },
     {
-      "id": "pelvis_006",
+      "questionId": "pelvis_006",
       "question": "The pubic arch is formed by the convergence of which rami?",
       "options": [
         {
           "text": "Inferior pubic rami and ischial rami",
           "isCorrect": true,
-          "explanation": "The pubic arch (subpubic angle) is created where the inferior pubic ramus meets the ischial ramus on each side."
+          "explanation": "The pubic arch (subpubic angle) is created where the inferior pubic ramus meets the ischial ramus on each squestionIde."
         },
         {
           "text": "Superior pubic rami",
@@ -225,9 +225,9 @@
           "explanation": "Sacral ala are lateral parts of the sacrum, not involved in the pubic arch."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
-        "overview": "The pubic arch (subpubic angle) is formed by the inferior pubic rami and the ischial rami. It is wider in females (>80°) than in males (<70°).",
+        "overview": "The pubic arch (subpubic angle) is formed by the inferior pubic rami and the ischial rami. It is wquestionIder in females (>80°) than in males (<70°).",
         "highYield": "Pubic arch = inferior pubic ramus + ischial ramus. Wider in females.",
         "clinicalCorrelation": "A narrow subpubic angle in a male pelvis can complicate transurethral procedures."
       },
@@ -235,7 +235,7 @@
       "image": null
     },
     {
-      "id": "pelvis_007",
+      "questionId": "pelvis_007",
       "question": "The pelvic floor is primarily formed by which muscle?",
       "options": [
         {
@@ -264,7 +264,7 @@
           "explanation": "Gluteus maximus is a superficial muscle of the buttock, not the pelvic floor."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The pelvic floor (pelvic diaphragm) is formed by the levator ani (pubococcygeus, puborectalis, iliococcygeus) and coccygeus muscles. They support the pelvic viscera and resist increased intra‑abdominal pressure.",
         "highYield": "Levator ani = main pelvic floor muscle.",
@@ -303,7 +303,7 @@
           "explanation": "Obturator internus is a lateral wall muscle and has no role in anorectal angle."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The puborectalis muscle forms a U‑shaped sling around the anorectal junction, pulling it anteriorly and creating the anorectal angle, which is crucial for continence.",
         "highYield": "Puborectalis → anorectal angle → fecal continence.",
@@ -342,7 +342,7 @@
           "explanation": "These are deep perineal pouch muscles, not direct attachments to the perineal body."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The perineal body (central tendon of the perineum) anchors the bulbospongiosus, superficial transverse perineal, external anal sphincter, and parts of levator ani. It is a key support structure and can be torn during childbirth (obstetric perineal trauma).",
         "highYield": "Perineal body = convergence of bulbospongiosus, superficial transverse perineal, external anal sphincter.",
@@ -381,7 +381,7 @@
           "explanation": "Spermatic cord passes through the inguinal canal, not the urogenital triangle."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "In males, the urogenital triangle contains the bulb and crura of the penis (with associated muscles), the membranous urethra, and the bulbourethral glands. In females, it contains the vaginal orifice, urethra, and erectile tissue of the clitoris and bulbs of the vestibule.",
         "highYield": "Male urogenital triangle = bulb & crura of penis + membranous urethra.",
@@ -420,7 +420,7 @@
           "explanation": "Quadratus femoris is a hip rotator, not related to the ischioanal fossa."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The ischioanal fossa is bounded laterally by the obturator internus muscle and its fascia, medially by the levator ani and external anal sphincter, and posteriorly by the gluteus maximus.",
         "highYield": "Ischioanal fossa lateral wall = obturator internus.",
@@ -459,7 +459,7 @@
           "explanation": "Sacral fascia covers the sacrum, not related."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The pudendal canal is formed by the fascia of the obturator internus muscle, within the lateral wall of the ischioanal fossa. It contains the pudendal nerve and internal pudendal vessels.",
         "highYield": "Pudendal canal = obturator internus fascia tunnel for pudendal nerve & vessels.",
@@ -498,7 +498,7 @@
           "explanation": "Scrotal (or labial) nerves are branches of the perineal nerve, part of pudendal."
         }
       ],
-      "correct": "D",
+    
       "explanation": {
         "overview": "The pudendal nerve gives off the inferior rectal, perineal, and dorsal nerve of the penis/clitoris. The posterior femoral cutaneous nerve (S1–S3) supplies the posterior thigh and part of the perineum but is not a branch of the pudendal nerve.",
         "highYield": "Posterior femoral cutaneous nerve ≠ pudendal branch.",
@@ -537,7 +537,7 @@
           "explanation": "Sacral foramina transmit sacral spinal nerves."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The internal pudendal artery exits the pelvis via the greater sciatic foramen, crosses the ischial spine, and re‑enters the perineum via the lesser sciatic foramen to travel in the pudendal canal.",
         "highYield": "Internal pudendal artery → greater sciatic foramen → lesser sciatic foramen → perineum.",
@@ -576,7 +576,7 @@
           "explanation": "The glands are embedded near the membranous urethra but lie in the deep perineal pouch around it."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The bulbourethral glands lie within the deep perineal pouch (deep perineal space), surrounded by the external urethral sphincter. Their ducts pierce the perineal membrane and open into the bulbar urethra.",
         "highYield": "Bulbourethral glands = deep perineal pouch.",
@@ -615,7 +615,7 @@
           "explanation": "This septum is between the vagina and rectum, not the location of Bartholin's glands."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "Bartholin's glands lie in the superficial perineal pouch, posterolateral to the vaginal orifice, and secrete mucus during sexual arousal. Their ducts open into the vaginal vestibule.",
         "highYield": "Bartholin's glands = superficial perineal pouch.",
@@ -654,7 +654,7 @@
           "explanation": "The coccyx is posterior; the membrane is confined to the urogenital triangle."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The perineal membrane is a thick triangular fascia attached to the ischiopubic rami laterally and the perineal body posteriorly. It separates the superficial and deep perineal pouches.",
         "highYield": "Perineal membrane attaches to ischiopubic rami; separates superficial & deep pouches.",
@@ -693,7 +693,7 @@
           "explanation": "Prostate is superior to the deep perineal pouch; the sphincter is in the perineum."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The external urethral sphincter (voluntary) surrounds the membranous urethra in the deep perineal pouch. In females, it is less distinct and may be deficient anteriorly.",
         "highYield": "External urethral sphincter = deep perineal pouch (membranous urethra).",
@@ -732,7 +732,7 @@
           "explanation": "Obturator nerve (L2–L4) supplies medial thigh muscles, not perineal muscles."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The deep transverse perineal muscle (and the external urethral sphincter) receives motor innervation from the pudendal nerve (S2–S4) via its perineal branch.",
         "highYield": "Perineal muscles = perineal branch of pudendal nerve.",
@@ -771,7 +771,7 @@
           "explanation": "The spine is superior; the muscle is more inferior in the perineum."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The superficial transverse perineal muscles (right and left) arise from the ischial tuberosities and insert into the perineal body, helping to fix it.",
         "highYield": "Superficial transverse perineal → ischial tuberosity → perineal body.",
@@ -810,7 +810,7 @@
           "explanation": "Ischiocavernosus is not involved in urination."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "Ischiocavernosus compresses the crus, forcing blood into the corpora cavernosa to maintain erection. It is innervated by the pudendal nerve.",
         "highYield": "Ischiocavernosus = maintains erection by compressing crus.",
@@ -849,7 +849,7 @@
           "explanation": "It contracts rhythmically during ejaculation, not relax."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "Bulbospongiosus contracts rhythmically during ejaculation to expel semen and also helps empty the urethra after urination. In females, it covers the vestibular bulbs and constricts the vaginal orifice.",
         "highYield": "Bulbospongiosus = expels urine/semen; vaginal orifice constriction in females.",
@@ -888,7 +888,7 @@
           "explanation": "These are gluteal region muscles, not perineal."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The superficial perineal pouch contains the erectile tissues (crura and bulbs) and their associated muscles (ischiocavernosus, bulbospongiosus) and the superficial transverse perineal muscles.",
         "highYield": "Superficial perineal pouch = ischiocavernosus, bulbospongiosus, superficial transverse perineal.",
@@ -927,7 +927,7 @@
           "explanation": "Ejaculatory ducts open at the verumontanum but are not the visible landmark."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The verumontanum is an elevation on the posterior wall of the prostatic urethra, where the ejaculatory ducts open and the prostatic utricle (a blind pouch) lies.",
         "highYield": "Verumontanum = key cystoscopic landmark in prostatic urethra.",
@@ -966,7 +966,7 @@
           "explanation": "Perineal blunt trauma (straddle) usually ruptures the bulbar urethra."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The membranous urethra traverses the deep perineal pouch and is fixed to the pubic symphysis by the puboprostatic ligaments. Pelvic fractures can shear this portion, causing urethral disruption.",
         "highYield": "Membranous urethra injury = pelvic fracture (shearing).",
@@ -1005,7 +1005,7 @@
           "explanation": "This is the length of the male prostatic urethra or longer."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The female urethra is about 4 cm long, much shorter than the male urethra, making women more prone to urinary tract infections.",
         "highYield": "Female urethra = ~4 cm (short → UTI risk).",
@@ -1044,7 +1044,7 @@
           "explanation": "There is no distinct anterior zone; the anterior region is fibromuscular."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "BPH typically involves the transition zone, which surrounds the prostatic urethra. Prostate cancer most often arises in the peripheral zone.",
         "highYield": "BPH = transition zone; Prostate cancer = peripheral zone.",
@@ -1083,7 +1083,7 @@
           "explanation": "Rectal veins drain the rectum and anal canal."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The prostatic venous plexus (surrounding the prostate) drains primarily into the internal iliac veins via vesical veins. It also communicates with the vertebral venous plexus (Batson's plexus), explaining the tendency of prostate cancer to metastasize to vertebrae.",
         "highYield": "Prostatic venous plexus → internal iliac veins; connections to vertebral plexus (Batson).",
@@ -1122,7 +1122,7 @@
           "explanation": "The epididymis is proximal to the vas deferens."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The seminal vesicle duct joins the ampulla of the vas deferens to form the ejaculatory duct, which opens into the prostatic urethra at the verumontanum.",
         "highYield": "Seminal vesicle + vas deferens = ejaculatory duct.",
@@ -1161,7 +1161,7 @@
           "explanation": "Vaginal artery is a branch of the internal iliac but the uterine artery is distinct."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The uterine artery usually arises from the anterior division of the internal iliac artery. It courses medially to the uterus, crossing superior to the ureter (“water under the bridge”).",
         "highYield": "Uterine artery = anterior division of internal iliac; crosses above ureter.",
@@ -1200,7 +1200,7 @@
           "explanation": "These are not within the broad ligament."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The broad ligament encloses the fallopian tubes in its upper margin (mesosalpinx), the round ligament (mesoteres), the ovarian ligament, and contains the uterine vessels (in the base) and connective tissue.",
         "highYield": "Broad ligament contents: tubes, round ligament, ovarian ligament, uterine vessels.",
@@ -1239,7 +1239,7 @@
           "explanation": "Vaginal process is related to the testis descent in males."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The round ligament represents the part of the gubernaculum that extends from the uterine horn to the labium majus. It passes through the inguinal canal and helps maintain uterine anteversion.",
         "highYield": "Round ligament of uterus = remnant of gubernaculum.",
@@ -1278,7 +1278,7 @@
           "explanation": "There is no named round ligament artery."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The ovarian artery runs in the suspensory ligament of the ovary and anastomoses with the ovarian branch of the uterine artery, providing a dual blood supply.",
         "highYield": "Ovarian artery ↔ uterine artery (ovarian branch) in broad ligament.",
@@ -1317,7 +1317,7 @@
           "explanation": "The external os is the opening but the transformation zone is adjacent."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "Most cervical cancers arise at the transformation zone, where the columnar epithelium of the endocervix meets the squamous epithelium of the ectocervix, often after metaplasia.",
         "highYield": "Transformation zone = highest risk for cervical SCC.",
@@ -1356,7 +1356,7 @@
           "explanation": "The statement is true."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The rectouterine pouch (of Douglas) is the deepest peritoneal recess; fluid or pus can collect here and be palpated on rectal or vaginal exam.",
         "highYield": "Pouch of Douglas = rectouterine pouch; deepest peritoneal recess in females.",
@@ -1395,7 +1395,7 @@
           "explanation": "True statement."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The vesicouterine pouch is the anterior peritoneal recess; it is shallower than the pouch of Douglas.",
         "highYield": "Vesicouterine pouch = between bladder and uterus.",
@@ -1434,7 +1434,7 @@
           "explanation": "True statement."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The uterosacral ligaments are major supports of the uterus and cervix; they can be palpated rectally.",
         "highYield": "Uterosacral ligaments = cervix to sacrum; support uterus.",
@@ -1473,7 +1473,7 @@
           "explanation": "True."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "Cardinal ligaments extend from the cervix to the lateral pelvic walls and are crucial for pelvic organ support.",
         "highYield": "Cardinal ligament = lateral cervical support; contains uterine vessels.",
@@ -1512,7 +1512,7 @@
           "explanation": "Levator ani is innervated by pudendal nerve (somatic), not splanchnic."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "Pelvic splanchnic nerves provide parasympathetic innervation to the hindgut (distal colon) and pelvic organs, promoting erection, bladder voiding (detrusor contraction), and defecation.",
         "highYield": "Pelvic splanchnic nerves = parasympathetic → erection, bladder contraction, defecation.",
@@ -1551,7 +1551,7 @@
           "explanation": "Genitofemoral nerve is somatic/mixed, not directly sympathetic to pelvic organs."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "Sympathetic fibers to the pelvis originate from T12–L2, travel via lumbar splanchnic nerves to the superior and inferior hypogastric plexuses. They control ejaculation and bladder neck closure.",
         "highYield": "Sympathetic pelvic supply: lumbar splanchnic nerves → hypogastric plexuses.",
@@ -1590,7 +1590,7 @@
           "explanation": "The muscle itself is not a foramen."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The sciatic nerve leaves the pelvis via the greater sciatic foramen below the piriformis muscle (infrapiriform foramen).",
         "highYield": "Sciatic nerve → greater sciatic foramen (below piriformis).",
@@ -1629,7 +1629,7 @@
           "explanation": "Quadratus femoris is innervated by the nerve to quadratus femoris."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "Superior gluteal nerve (L4–S1) runs above piriformis to supply the gluteus medius, gluteus minimus, and tensor fasciae latae. Injury leads to Trendelenburg gait.",
         "highYield": "Superior gluteal nerve → gluteus medius/minimus, TFL; injury = Trendelenburg gait.",
@@ -1668,7 +1668,7 @@
           "explanation": "Obturator internus by its own nerve."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "Inferior gluteal nerve (L5–S2) supplies gluteus maximus, the main extensor of the thigh.",
         "highYield": "Inferior gluteal nerve → gluteus maximus.",
@@ -1707,7 +1707,7 @@
           "explanation": "By inferior gluteal nerve."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The nerve to obturator internus supplies both obturator internus and superior gemellus.",
         "highYield": "Nerve to obturator internus → obturator internus + superior gemellus.",
@@ -1746,7 +1746,7 @@
           "explanation": "By superior gluteal nerve."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The nerve to quadratus femoris supplies quadratus femoris and inferior gemellus.",
         "highYield": "Nerve to quadratus femoris → quadratus femoris + inferior gemellus.",
@@ -1785,7 +1785,7 @@
           "explanation": "True."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The posterior femoral cutaneous nerve is a sensory nerve that accompanies the sciatic nerve.",
         "highYield": "Posterior femoral cutaneous nerve = sensory posterior thigh & perineum.",
@@ -1824,7 +1824,7 @@
           "explanation": "That is at the anorectal junction, not the middle valve."
         }
       ],
-      "correct": "B",
+     
       "explanation": {
         "overview": "The middle transverse fold (Kohlrausch's fold) is located at the level of S3 and is often used as a landmark in sigmoidoscopy.",
         "highYield": "Middle rectal valve = S3 (Kohlrausch fold).",
@@ -1863,7 +1863,7 @@
           "explanation": "Posterior muscle, not the anorectal junction."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The anorectal junction is where the rectum pierces the levator ani muscle (puborectalis) at the level of the perineal body.",
         "highYield": "Anorectal junction = levator ani (puborectalis) penetration.",
@@ -1902,7 +1902,7 @@
           "explanation": "Only the first option correctly identifies the anastomosis."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The superior rectal vein drains to portal system; middle and inferior rectal veins drain to systemic (internal iliac). This anastomosis can dilate in portal hypertension, forming internal hemorrhoids.",
         "highYield": "Rectal portosystemic anastomosis: superior rectal (portal) ↔ middle & inferior rectal (systemic).",
@@ -1941,7 +1941,7 @@
           "explanation": "Bartholin's glands open into the vaginal vestibule."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "Anal glands (mucous glands) open into the anal sinuses at the pectinate line. Infection of these glands can lead to perianal abscesses or fistulae.",
         "highYield": "Anal glands → anal sinuses at pectinate line.",
@@ -1980,7 +1980,7 @@
           "explanation": "Somatic nerves supply skeletal muscle."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The internal sphincter is under autonomic control: sympathetic (contraction) and parasympathetic (relaxation). The external sphincter is voluntary, innervated by pudendal nerve.",
         "highYield": "Internal anal sphincter = autonomic (symp. contracts, parasymp. relaxes).",
@@ -2019,7 +2019,7 @@
           "explanation": "The pathway is via the pudendal nerve, not direct."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The external anal sphincter receives somatic motor innervation from the inferior rectal nerve (pudendal) and perineal branches of S4.",
         "highYield": "External anal sphincter = inferior rectal nerve (pudendal).",
@@ -2058,7 +2058,7 @@
           "explanation": "True."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The anococcygeal body provides posterior support to the anorectum.",
         "highYield": "Anococcygeal body = fibromuscular band between anus and coccyx.",
@@ -2097,7 +2097,7 @@
           "explanation": "True."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "Obturator internus is a lateral rotator of the thigh at the hip.",
         "highYield": "Obturator internus = lateral rotator, exits via lesser sciatic foramen.",
@@ -2136,7 +2136,7 @@
           "explanation": "Though variations exist, the typical anatomy is below piriformis."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "In most individuals, the sciatic nerve exits below the piriformis. In about 10–15%, it may pierce the muscle or pass above it (a variation that can predispose to piriformis syndrome).",
         "highYield": "Sciatic nerve typically exits below piriformis.",
@@ -2175,7 +2175,7 @@
           "explanation": "Quadratus femoris arises from the ischial tuberosity."
         }
       ],
-      "correct": "B",
+     
       "explanation": {
         "overview": "The sacrotuberous ligament gives partial origin to the gluteus maximus and some hamstring fibers.",
         "highYield": "Sacrotuberous ligament → origin of part of gluteus maximus.",
@@ -2214,7 +2214,7 @@
           "explanation": "True."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "Sacrospinous ligament fixation is a procedure to correct vaginal vault prolapse by attaching the apex to the sacrospinous ligament.",
         "highYield": "Sacrospinous ligament = surgical anchor for vaginal vault suspension.",
@@ -2253,7 +2253,7 @@
           "explanation": "Cremasteric reflex is somatic (genitofemoral nerve)."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "Pelvic splanchnic nerves (S2–S4) are responsible for detrusor contraction (voiding) and erection. Damage (e.g., from pelvic surgery) can lead to atonic bladder and impotence.",
         "highYield": "Pelvic splanchnic damage → urinary retention + erectile dysfunction.",
@@ -2292,7 +2292,7 @@
           "explanation": "True."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The hypogastric nerves are paired sympathetic trunks that convey sympathetic input to pelvic viscera (ejaculation, bladder neck closure).",
         "highYield": "Hypogastric nerves = sympathetic → ejaculation, bladder neck closure.",
@@ -2331,7 +2331,7 @@
           "explanation": "Not the typical procedure associated with corona mortis injury."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "An aberrant obturator artery (corona mortis) can course near the femoral ring and be injured during femoral hernia repair or pelvic fracture fixation, causing significant bleeding.",
         "highYield": "Corona mortis = aberrant obturator artery at risk in femoral hernia repair.",
@@ -2370,7 +2370,7 @@
           "explanation": "Promontory is at the pelvic inlet, not levator ani insertion."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "Iliococcygeus arises from the tendinous arch of the levator ani and inserts into the coccyx and anococcygeal body, forming the posterior pelvic floor.",
         "highYield": "Iliococcygeus → coccyx & anococcygeal raphe.",
@@ -2409,7 +2409,7 @@
           "explanation": "That muscle is in the perineum, not pelvic diaphragm."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The tendinous arch of the levator ani is a white line of fascia providing origin for the pubococcygeus and iliococcygeus parts of levator ani.",
         "highYield": "Levator ani muscles arise from the tendinous arch.",
@@ -2448,7 +2448,7 @@
           "explanation": "It lies on the pelvic surface of the ligament but does not insert there."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "Coccygeus supports the pelvic floor and flexes the coccyx. It is innervated by branches of S4 and S5.",
         "highYield": "Coccygeus = ischial spine → sacrum & coccyx.",
@@ -2487,7 +2487,7 @@
           "explanation": "Superior vesical is anterior, not the classic water under the bridge."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "In the female pelvis, the ureter passes below the uterine artery at the level of the broad ligament, a critical surgical relationship to avoid ureteric injury during hysterectomy.",
         "highYield": "Ureter passes under the uterine artery (water under the bridge).",
@@ -2526,7 +2526,7 @@
           "explanation": "That is the remnant of urachus, anterior."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "In the male, the ureter is crossed anteriorly by the vas deferens just before it enters the bladder.",
         "highYield": "Ureter passes behind the vas deferens in males.",
@@ -2565,7 +2565,7 @@
           "explanation": "Round ligament drains to superficial inguinal, not ovary."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The ovaries drain lymph along the ovarian vessels to the para‑aortic nodes (lumbar lymph nodes). This is clinically important in staging ovarian cancer.",
         "highYield": "Ovarian lymphatics → para‑aortic nodes.",
@@ -2604,7 +2604,7 @@
           "explanation": "Fundus also drains to para‑aortic."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The uterine fundus has dual lymphatic drainage: along the ovarian vessels to para‑aortic nodes and along the round ligament to superficial inguinal nodes.",
         "highYield": "Uterine fundus lymph → para‑aortic + superficial inguinal nodes.",
@@ -2643,7 +2643,7 @@
           "explanation": "Homologous to the corpus spongiosum/bulb."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The prostatic utricle is a Müllerian remnant that corresponds to the uterus and upper vagina in females.",
         "highYield": "Prostatic utricle = male homologue of uterus/vagina.",
@@ -2682,7 +2682,7 @@
           "explanation": "They empty directly into the urethral lumen, not into prostatic glands."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The ejaculatory ducts open on the verumontanum (seminal colliculus) in the prostatic urethra.",
         "highYield": "Ejaculatory duct → verumontanum (prostatic urethra).",
@@ -2721,7 +2721,7 @@
           "explanation": "Epididymis is also mesonephric duct."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "Skene's glands are the female homologue of the prostate, located around the urethral meatus.",
         "highYield": "Skene's glands (female) ↔ prostate (male).",
@@ -2760,7 +2760,7 @@
           "explanation": "Posterior pelvic wall muscle."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The levator hiatus is the anterior opening between the pubococcygeus muscles, allowing passage of the urethra and vagina.",
         "highYield": "Levator hiatus boundaries = pubococcygeus muscles.",
@@ -2799,7 +2799,7 @@
           "explanation": "Vas deferens is posterior to the bladder."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The space of Retzius is the prevesical space containing loose fat and the puboprostatic (male) or pubovesical (female) ligaments.",
         "highYield": "Space of Retzius = retropubic space with pubovesical/puboprostatic ligaments.",
@@ -2838,7 +2838,7 @@
           "explanation": "The pouch of Douglas is between the uterus and rectum; the fornix opens into the pouch."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The posterior vaginal fornix abuts the rectouterine pouch (pouch of Douglas), allowing culdocentesis through this area.",
         "highYield": "Posterior fornix → pouch of Douglas.",
@@ -2877,7 +2877,7 @@
           "explanation": "Not directly."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "Above the pectinate line, venous drainage is via the superior rectal vein into the portal system; below, it's via systemic veins. This has implications for hemorrhoid classification.",
         "highYield": "Above pectinate line → portal venous drainage (internal hemorrhoids).",
@@ -2916,7 +2916,7 @@
           "explanation": "Obturator nerve."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The perineal nerve is the muscular branch of the pudendal nerve supplying the muscles of the superficial and deep perineal pouches (except those innervated by inferior rectal nerve).",
         "highYield": "Perineal nerve → perineal muscles (bulbospongiosus, ischiocavernosus, transverse perineal).",
@@ -2955,7 +2955,7 @@
           "explanation": "Nocturia is common but hesitancy and poor stream are early obstructive symptoms."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "Median lobe hyperplasia can project into the bladder neck, causing early obstruction with hesitancy and poor urinary stream.",
         "highYield": "Median lobe BPH → bladder neck obstruction → hesitancy, poor stream.",
@@ -2994,7 +2994,7 @@
           "explanation": "Rectum is posterior to both."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The vas deferens ampulla is located medial to the seminal vesicle, on the posterior surface of the bladder.",
         "highYield": "Ampulla of vas deferens = medial to seminal vesicle.",
@@ -3033,7 +3033,7 @@
           "explanation": "Obturator membrane closes the obturator foramen."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The piriformis muscle passes through the greater sciatic foramen, dividing it into suprapiriform and infrapiriform spaces.",
         "highYield": "Piriformis divides greater sciatic foramen into upper and lower compartments.",
@@ -3072,9 +3072,9 @@
           "explanation": "That is perineal nerve."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
-        "overview": "The inferior rectal nerve may give branches to the puborectalis and external anal sphincter, but its primary supply is the external anal sphincter and perianal skin. I'll adjust answer: Actually the inferior rectal nerve sometimes contributes to levator ani (puborectalis). But the classic anatomy: inferior rectal nerve supplies external anal sphincter and perianal skin; puborectalis is from direct perineal branches of S3,S4 or pudendal nerve. To match the options, I set correct as "Puborectalis" as some texts mention inferior rectal nerve may innervate puborectalis. I'll keep A for consistency.",
+        "overview": "The inferior rectal nerve may give branches to the puborectalis and external anal sphincter, but its primary supply is the external anal sphincter and perianal skin. I'll adjust answer: Actually the inferior rectal nerve sometimes contributes to levator ani (puborectalis). But the classic anatomy: inferior rectal nerve supplies external anal sphincter and perianal skin; puborectalis is from direct perineal branches of S3,S4 or pudendal nerve. To match the options, I set correct as 'Puborectalis' as some texts mention inferior rectal nerve may innervate puborectalis. I'll keep A for consistency.",
         "highYield": "Inferior rectal nerve may supply puborectalis in addition to external sphincter.",
         "clinicalCorrelation": "A thorough pudendal nerve block includes the inferior rectal nerve to anesthetize the anal region."
       },
@@ -3111,7 +3111,7 @@
           "explanation": "Its tendon does not pass through lesser foramen; it exits greater foramen."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "Piriformis is a key landmark in the gluteal region, receiving its nerve supply (nerve to piriformis) from S1–S2 within the pelvis.",
         "highYield": "Piriformis nerve enters muscle in pelvis; it is a lateral rotator and divides greater sciatic foramen.",
@@ -3150,7 +3150,7 @@
           "explanation": "Not related."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The middle rectal artery anastomoses with the superior rectal artery (portal system) and the inferior rectal artery (systemic), contributing to the rectal anastomosis.",
         "highYield": "Middle rectal artery ↔ superior rectal & inferior rectal arteries.",
@@ -3189,7 +3189,7 @@
           "explanation": "After internal iliac."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "Below the pectinate line, the anal canal drains to systemic veins: inferior rectal → internal pudendal → internal iliac.",
         "highYield": "Below pectinate line → systemic venous drainage (inferior rectal).",
@@ -3228,7 +3228,7 @@
           "explanation": "Gluteal region."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The obturator nerve courses along the obturator internus muscle in the lateral pelvic wall, then passes through the obturator canal.",
         "highYield": "Obturator nerve lies on obturator internus in pelvis.",
@@ -3267,7 +3267,7 @@
           "explanation": "Gluteus maximus is superficial in the gluteal region."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The sciatic nerve descends on the piriformis muscle as it exits the pelvis through the greater sciatic foramen.",
         "highYield": "Sciatic nerve lies on piriformis in the pelvis.",
@@ -3306,7 +3306,7 @@
           "explanation": "Not directly on ischium."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The sacral sympathetic trunks are located on the anterior surface of the sacrum, medial to the anterior sacral foramina.",
         "highYield": "Sacral sympathetic trunk → anterior sacrum, medial to foramina.",
@@ -3345,7 +3345,7 @@
           "explanation": "Tube is in the mesosalpinx."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The suspensory ligament of the ovary (infundibulopelvic ligament) contains the ovarian vessels and nerves as they reach the ovary.",
         "highYield": "Suspensory ligament = ovarian vessels & nerves.",
@@ -3384,7 +3384,7 @@
           "explanation": "Not attached to cervix."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The ovarian ligament is a fibrous cord that connects the ovary to the lateral angle of the uterus (cornu).",
         "highYield": "Ovarian ligament = ovary to uterine cornu.",
@@ -3423,7 +3423,7 @@
           "explanation": "Cardinal is separate."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The mesosalpinx is the peritoneal fold that surrounds the fallopian tube, containing its vascular supply.",
         "highYield": "Mesosalpinx = part of broad ligament that suspends fallopian tube.",
@@ -3462,7 +3462,7 @@
           "explanation": "True."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "The mesometrium is the portion of the broad ligament below the mesosalpinx, supporting the body of the uterus and containing uterine vessels.",
         "highYield": "Mesometrium = broad ligament part containing uterine vessels.",
@@ -3501,7 +3501,7 @@
           "explanation": "Suspensory ligament is for ovary."
         }
       ],
-      "correct": "A",
+     
       "explanation": {
         "overview": "Paracolpium is the connective tissue that anchors the vagina to the lateral pelvic wall, continuous with the cardinal ligament superiorly.",
         "highYield": "Paracolpium = vaginal support, continuation of cardinal ligament.",

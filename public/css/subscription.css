@@ -1,13 +1,83 @@
-/* ===== SUBSCRIPTION PAGE – COMPLETE STYLES ===== */
+/* ==========================================================================
+   SUBSCRIPTION — page-specific styles
+   Requires common.css (reset, tokens, buttons base, .hidden, keyframes
+   shimmer/spin, utilities).
+   Original file duplicated the entire .sub-header block THREE times.
+   This consolidation keeps one canonical copy of every rule.
+   ========================================================================== */
 
 /* ================================================================
-   SHIMMER OVERLAY (from inline <style id="theme-style">)
+   SHIMMER SKELETON
    ================================================================ */
-@keyframes shimmer {
-    0% { background-position: -200px 0; }
-    100% { background-position: calc(200px + 100%) 0; }
+#shimmer-content { display: block; }
+#real-content    { display: none; }
+
+.shimmer-header {
+    padding: 0.5rem 1rem;
+    background: #1e1e2f;
+    border-bottom: 1px solid #333;
+}
+.shimmer-header-top,
+.shimmer-header-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.shimmer-header-bottom { margin-top: 0.5rem; }
+
+.shimmer-logo {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.shimmer-logo-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
+    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
+    background-size: 200px 100%;
+    animation: shimmer 1.5s infinite;
+}
+.shimmer-logo-text {
+    width: 80px;
+    height: 20px;
+    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
+    background-size: 200px 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 4px;
+}
+.shimmer-btn-sm {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
+    background-size: 200px 100%;
+    animation: shimmer 1.5s infinite;
+    display: inline-block;
+}
+.shimmer-title-large {
+    height: 28px;
+    width: 200px;
+    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
+    background-size: 200px 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 4px;
+}
+.shimmer-status {
+    height: 28px;
+    width: 140px;
+    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
+    background-size: 200px 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 4px;
 }
 
+.shimmer-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1.5rem;
+    margin: 2rem 0;
+}
 .shimmer-plan-card {
     background: #2a2a3e;
     border: 1px solid #444;
@@ -17,138 +87,33 @@
     flex-direction: column;
     gap: 0.75rem;
 }
-
 .shimmer-line {
     height: 16px;
-    background: #3a3a4e;
     background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite;
     border-radius: 4px;
 }
-
-.shimmer-title {
-    height: 24px;
-    width: 60%;
-}
-
-.shimmer-price {
-    height: 32px;
-    width: 40%;
-}
-
-.shimmer-duration {
-    height: 18px;
-    width: 50%;
-}
-
-.shimmer-feature {
-    height: 14px;
-    width: 80%;
-}
-
+.shimmer-title    { height: 24px; width: 60%; }
+.shimmer-price    { height: 32px; width: 40%; }
+.shimmer-duration { height: 18px; width: 50%; }
+.shimmer-feature  { height: 14px; width: 80%; }
 .shimmer-btn {
     height: 40px;
     width: 100%;
     border-radius: var(--radius-sm);
 }
 
-.shimmer-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 1.5rem;
-    margin: 2rem 0;
-}
-
 .shimmer-banner {
     height: 60px;
-    background: #2a2a3e;
     border-radius: var(--radius);
     margin-bottom: 2rem;
     background: linear-gradient(90deg, #2a2a3e 25%, #444 50%, #2a2a3e 75%);
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite;
 }
-
-.shimmer-header {
-    padding: 0.5rem 1rem;
-    background: #1e1e2f;
-    border-bottom: 1px solid #333;
-}
-
-.shimmer-header-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.shimmer-header-bottom {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 0.5rem;
-}
-
-.shimmer-logo {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.shimmer-logo-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 6px;
-    background: #3a3a4e;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
-}
-
-.shimmer-logo-text {
-    width: 80px;
-    height: 20px;
-    background: #3a3a4e;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
-    border-radius: 4px;
-}
-
-.shimmer-btn-sm {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: #3a3a4e;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
-    display: inline-block;
-}
-
-.shimmer-title-large {
-    height: 28px;
-    width: 200px;
-    background: #3a3a4e;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
-    border-radius: 4px;
-}
-
-.shimmer-status {
-    height: 28px;
-    width: 140px;
-    background: #3a3a4e;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
-    border-radius: 4px;
-}
-
 .shimmer-payment-info {
     height: 80px;
-    background: #2a2a3e;
     border-radius: var(--radius);
     margin-top: 2rem;
     background: linear-gradient(90deg, #2a2a3e 25%, #444 50%, #2a2a3e 75%);
@@ -156,285 +121,9 @@
     animation: shimmer 1.5s infinite;
 }
 
-#shimmer-content {
-    display: block;
-}
-#real-content {
-    display: none;
-}
-
 /* ================================================================
-   THEME‑AWARE OVERRIDES (from inline <style> blocks)
-   ================================================================ */
-.sub-header {
-    background: var(--bg-card);
-    border-bottom: 1px solid var(--border);
-}
-.status-area .status-text {
-    color: var(--text-secondary);
-}
-.trial-btn {
-    background: var(--accent);
-    color: white;
-}
-.trial-btn:hover {
-    background: var(--accent-dark);
-}
-.plan-card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-}
-.plan-card:hover {
-    box-shadow: var(--shadow-lg);
-}
-.plan-card.popular {
-    border-color: var(--accent);
-    box-shadow: 0 4px 12px rgba(79, 140, 255, 0.2);
-}
-.plan-card.popular::before {
-    background: var(--accent);
-    color: white;
-}
-.plan-card .price {
-    color: var(--accent);
-}
-.plan-card .features li {
-    color: var(--text-secondary);
-}
-.plan-card .features li::before {
-    color: var(--accent);
-}
-.plan-card .limitations {
-    color: var(--warning);
-}
-.plan-card button {
-    background: var(--accent);
-    color: white;
-}
-.plan-card button:hover {
-    background: var(--accent-dark);
-}
-.custom-card .price input {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    border: 1px solid var(--border);
-}
-.custom-card .price input:focus {
-    border-color: var(--accent);
-}
-.custom-duration-preview {
-    color: var(--text-secondary);
-}
-.custom-duration-preview strong {
-    color: var(--text-primary);
-}
-.c2b-instructions {
-    background: var(--bg-secondary);
-}
-.c2b-instructions .till-number {
-    background: var(--bg-card);
-    border: 1px dashed var(--border);
-}
-.c2b-claim-form .form-group input {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    border: 1px solid var(--border);
-}
-.c2b-claim-form .form-group input:focus {
-    border-color: var(--accent);
-}
-.c2b-claim-form .form-group .hint {
-    color: var(--text-secondary);
-}
-.c2b-claim-form .btn-primary {
-    background: var(--accent);
-    color: white;
-}
-.c2b-claim-form .btn-primary:hover:not(:disabled) {
-    background: var(--accent-dark);
-}
-.inline-back-btn {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    color: var(--text-primary);
-}
-.inline-back-btn:hover {
-    background: var(--bg-card);
-    border-color: var(--accent);
-}
-.payment-info {
-    background: var(--bg-secondary);
-    color: var(--text-muted);
-}
-.payment-option {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-}
-.payment-option:hover {
-    border-color: var(--accent);
-    background: var(--bg-card);
-}
-.payment-option .text .desc {
-    color: var(--text-secondary);
-}
-.payment-option .badge {
-    background: var(--accent);
-    color: white;
-}
-.trial-features li {
-    color: var(--text-secondary);
-}
-.trial-features li::before {
-    color: var(--accent);
-}
-.trial-limitations {
-    color: var(--warning);
-}
-.section-title {
-    color: var(--text-primary);
-}
-.section-subtitle {
-    color: var(--text-muted);
-}
-.main-body {
-    padding: 1.5rem 1rem;
-    max-width: 1100px;
-    margin: 0 auto;
-}
-.sub-header-bottom h1 {
-    color: var(--text-primary);
-}
-.btn-text {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    color: var(--text-primary);
-}
-.btn-text:hover {
-    background: var(--bg-card);
-    border-color: var(--accent);
-}
-.btn-outline {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    color: var(--text-primary);
-}
-.btn-outline:hover {
-    background: var(--bg-card);
-    border-color: var(--accent);
-}
-body {
-    background: var(--bg-primary);
-    color: var(--text-primary);
-}
-
-/* ================================================================
-   REAL HEADER LAYOUT (from the second <style> block)
-   ================================================================ */
-.sub-header {
-    background: var(--bg-card);
-    border-bottom: 1px solid var(--border);
-    padding: 0.5rem 1rem;
-}
-
-.sub-header-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.sub-header-top .left-group {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.sub-header-top .right-group {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.sub-header-bottom {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 0.3rem;
-}
-
-.sub-header-bottom h1 {
-    font-size: 1.4rem;
-    margin: 0;
-    color: var(--text-primary);
-}
-
-.status-area {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    font-size: 0.9rem;
-}
-
-.status-area .status-text {
-    color: var(--text-secondary);
-}
-
-.trial-btn {
-    background: var(--accent);
-    color: white;
-    border: none;
-    padding: 0.3rem 0.8rem;
-    border-radius: 30px;
-    font-weight: 600;
-    cursor: pointer;
-}
-.trial-btn:hover {
-    background: var(--accent-dark);
-}
-
-.sub-back-bottom {
-    display: none;
-}
-
-.plan-card {
-    cursor: pointer;
-    transition: transform 0.2s, box-shadow 0.2s;
-}
-.plan-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 10px 20px rgba(0,0,0,0.15);
-}
-.plan-card.disabled {
-    opacity: 0.6;
-    pointer-events: none;
-    cursor: not-allowed;
-}
-.plan-card button {
-    pointer-events: none;
-}
-
-.btn-primary {
-    background: var(--accent);
-    color: white;
-    border: none;
-    padding: 0.75rem;
-    border-radius: var(--radius-sm);
-    font-weight: 600;
-    cursor: pointer;
-}
-.btn-primary:hover {
-    background: var(--accent-dark);
-}
-.btn-secondary {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    color: var(--text-primary);
-}
-.btn-secondary:hover {
-    background: var(--bg-card);
-}
-
-/* ================================================================
-   STICKY HEADER (two‑row, status & theme on right) – from subscription.css
+   STICKY HEADER — canonical single definition
+   (original file had this block 3× with incremental additions)
    ================================================================ */
 .sub-header {
     position: sticky;
@@ -443,9 +132,9 @@ body {
     background: var(--bg-card);
     border-bottom: 1px solid var(--border);
     padding: 0.5rem 1rem;
+    margin-bottom: 0.5rem;
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
-    margin-bottom: 0.5rem;
 }
 
 .sub-header-top {
@@ -454,18 +143,28 @@ body {
     align-items: center;
     flex-wrap: nowrap;
 }
-
+.sub-header-top .left-group,
+.sub-header-top .right-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.sub-header-top .right-group,
+.header-right {
+    flex-shrink: 0;
+}
 .header-right {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    flex-shrink: 0;
 }
 
 .sub-header-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-top: 0.3rem;
 }
-
 .sub-header-bottom h1 {
     font-size: 1.4rem;
     margin: 0;
@@ -479,14 +178,11 @@ body {
     font-size: 0.9rem;
     white-space: nowrap;
 }
-
-.status-area .status-text {
-    color: var(--text-secondary);
-}
+.status-area .status-text { color: var(--text-secondary); }
 
 .trial-btn {
     background: var(--accent);
-    color: white;
+    color: #fff;
     border: none;
     padding: 0.3rem 0.8rem;
     border-radius: 30px;
@@ -495,11 +191,12 @@ body {
     transition: background 0.2s;
     white-space: nowrap;
 }
+.trial-btn:hover { background: var(--accent-dark); }
 
-.trial-btn:hover {
-    background: var(--accent-dark);
-}
-
+/* ---------- Button overrides ----------
+   Page uses neutral-pill styling for .btn-text and .btn-outline,
+   which differs from common's flat-link / accent-outline defaults.
+   Hover rules use :not(:disabled) to beat common's (0,3,0) specificity. */
 .btn-text {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
@@ -513,8 +210,7 @@ body {
     white-space: nowrap;
     flex-shrink: 0;
 }
-
-.btn-text:hover {
+.btn-text:hover:not(:disabled) {
     background: var(--bg-card);
     border-color: var(--accent);
     color: var(--text-primary);
@@ -531,26 +227,46 @@ body {
     transition: var(--transition);
     flex-shrink: 0;
 }
-
-.btn-outline:hover {
+.btn-outline:hover:not(:disabled) {
     background: var(--bg-card);
     border-color: var(--accent);
+    color: var(--text-primary);
 }
 
-/* ===== CURRENT PLAN BANNER (hidden by default) ===== */
+/* ---------- Primary / secondary base overrides ---------- */
+.btn-primary {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 0.75rem;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+    cursor: pointer;
+}
+.btn-primary:hover:not(:disabled) { background: var(--accent-dark); }
+
+.btn-secondary {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+}
+.btn-secondary:hover:not(:disabled) { background: var(--bg-card); }
+
+/* ---------- Current-plan banner (hidden by default) ---------- */
 .current-plan-banner {
     background: var(--bg-secondary);
     border-radius: var(--radius);
     padding: 1rem 1.5rem;
     margin-bottom: 2rem;
-    display: flex;
+    display: none;
     align-items: center;
     gap: 1rem;
     flex-wrap: wrap;
-    display: none;
 }
 
-/* ===== MAIN BODY ===== */
+/* ================================================================
+   MAIN BODY
+   ================================================================ */
 .main-body {
     padding: 1.5rem 1rem;
     max-width: 1100px;
@@ -564,7 +280,6 @@ body {
     color: var(--text-primary);
     text-align: center;
 }
-
 .section-subtitle {
     font-size: 0.9rem;
     color: var(--text-muted);
@@ -573,7 +288,7 @@ body {
     margin-top: -0.5rem;
 }
 
-/* ===== INLINE VIEWS ===== */
+/* ---------- Inline view switcher ---------- */
 .body-view {
     display: none;
     animation: fadeSlideIn 0.35s ease;
@@ -582,10 +297,12 @@ body {
 
 @keyframes fadeSlideIn {
     from { opacity: 0; transform: translateY(18px); }
-    to   { opacity: 1; transform: translateY(0); }
+    to   { opacity: 1; transform: translateY(0);    }
 }
 
-/* ===== PAYMENT METHOD OPTIONS ===== */
+/* ================================================================
+   PAYMENT METHOD OPTIONS
+   ================================================================ */
 .payment-options {
     display: flex;
     flex-direction: column;
@@ -593,7 +310,6 @@ body {
     max-width: 620px;
     margin: 0 auto;
 }
-
 .payment-option {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
@@ -605,49 +321,41 @@ body {
     flex-direction: column;
     gap: 0.5rem;
 }
-
 .payment-option:hover {
     border-color: var(--accent);
     background: var(--bg-card);
     transform: translateX(4px);
 }
-
 .payment-option .option-header {
     display: flex;
     align-items: center;
     gap: 1rem;
 }
-
 .payment-option .icon {
     font-size: 1.8rem;
     width: 3rem;
     text-align: center;
     flex-shrink: 0;
 }
-
 .payment-option .text { flex: 1; }
 .payment-option .text .title { font-weight: 600; font-size: 1.05rem; }
-.payment-option .text .desc { font-size: 0.85rem; color: var(--text-secondary); }
-
+.payment-option .text .desc  { font-size: 0.85rem; color: var(--text-secondary); }
 .payment-option .badge {
     background: var(--accent);
-    color: white;
+    color: #fff;
     font-size: 0.7rem;
     padding: 0.15rem 0.6rem;
     border-radius: 999px;
     font-weight: 600;
     flex-shrink: 0;
 }
-
 .payment-option.hidden { display: none; }
 
-/* Trial features */
 .trial-features {
     list-style: none;
     padding: 0;
     margin: 0.2rem 0 0 0;
 }
-
 .trial-features li {
     font-size: 0.85rem;
     padding: 0.2rem 0;
@@ -656,27 +364,26 @@ body {
     gap: 0.4rem;
     color: var(--text-secondary);
 }
-
 .trial-features li::before {
     content: "✓";
     color: var(--accent);
     font-weight: bold;
 }
-
 .trial-limitations {
     font-size: 0.75rem;
     color: var(--warning);
     margin-top: 0.4rem;
 }
 
-/* ===== PLAN GRID ===== */
+/* ================================================================
+   PLAN GRID + PLAN CARDS
+   ================================================================ */
 .plan-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     gap: 1.5rem;
     margin: 2rem 0;
 }
-
 .plan-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -688,17 +395,14 @@ body {
     display: flex;
     flex-direction: column;
 }
-
 .plan-card:hover {
     transform: translateY(-4px);
     box-shadow: var(--shadow-lg);
 }
-
 .plan-card.popular {
     border: 2px solid var(--accent);
     box-shadow: 0 4px 12px rgba(79, 140, 255, 0.2);
 }
-
 .plan-card.popular::before {
     content: "🔥 POPULAR";
     position: absolute;
@@ -706,30 +410,39 @@ body {
     left: 50%;
     transform: translateX(-50%);
     background: var(--accent);
-    color: white;
+    color: #fff;
     padding: 0.25rem 1rem;
     border-radius: 9999px;
     font-size: 0.75rem;
     font-weight: 600;
     z-index: 2;
 }
-
 .plan-card.disabled {
     opacity: 0.6;
     pointer-events: none;
     cursor: not-allowed;
 }
 
-.plan-card h3 { margin-bottom: 0.5rem; font-size: 1.25rem; }
-.plan-card .price { font-size: 2rem; font-weight: 700; color: var(--accent); margin-bottom: 0.25rem; }
-.plan-card .duration { color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.9rem; }
-
+.plan-card h3 {
+    margin-bottom: 0.5rem;
+    font-size: 1.25rem;
+}
+.plan-card .price {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 0.25rem;
+}
+.plan-card .duration {
+    color: var(--text-muted);
+    margin-bottom: 1.5rem;
+    font-size: 0.9rem;
+}
 .plan-card .features {
     list-style: none;
     margin-bottom: 1.5rem;
     flex: 1;
 }
-
 .plan-card .features li {
     padding: 0.375rem 0;
     color: var(--text-secondary);
@@ -738,13 +451,11 @@ body {
     align-items: center;
     gap: 0.5rem;
 }
-
 .plan-card .features li::before {
     content: "✓";
     color: var(--accent);
     font-weight: bold;
 }
-
 .plan-card .limitations {
     font-size: 0.75rem;
     color: var(--warning);
@@ -755,7 +466,7 @@ body {
     width: 100%;
     margin-top: auto;
     background: var(--accent);
-    color: white;
+    color: #fff;
     border: none;
     padding: 0.75rem;
     border-radius: var(--radius-sm);
@@ -764,14 +475,13 @@ body {
     transition: var(--transition);
     pointer-events: auto;
 }
-
 .plan-card button:hover { background: var(--accent-dark); }
 .plan-card button.btn-secondary {
     background: transparent;
     color: var(--accent);
 }
 
-/* Custom card */
+/* Custom amount card */
 .custom-card .price input {
     width: 100%;
     padding: 0.5rem;
@@ -781,37 +491,32 @@ body {
     color: var(--text-primary);
     font-size: 1.2rem;
     text-align: center;
-    box-sizing: border-box;
 }
-
 .custom-card .price input:focus {
     outline: none;
     border-color: var(--accent);
+    box-shadow: none;               /* block common's input:focus ring */
 }
-
 .custom-duration-preview {
     font-size: 0.85rem;
     color: var(--text-secondary);
     margin-top: 0.2rem;
 }
-
 .custom-duration-preview strong { color: var(--text-primary); }
 
-/* ===== C2B INSTRUCTIONS ===== */
+/* ================================================================
+   C2B (M-PESA Buy Goods) INSTRUCTIONS + CLAIM FORM
+   ================================================================ */
 .c2b-instructions {
     background: var(--bg-secondary);
     border-radius: var(--radius);
     padding: 1.25rem;
-    margin: 1rem 0;
+    margin: 1rem auto;
     font-size: 0.95rem;
     max-width: 600px;
-    margin-left: auto;
-    margin-right: auto;
 }
-
 .c2b-instructions ol { margin: 0.5rem 0; padding-left: 1.25rem; }
 .c2b-instructions ol li { margin-bottom: 0.4rem; }
-
 .c2b-instructions .till-number {
     background: var(--bg-card);
     padding: 0.2rem 0.6rem;
@@ -823,16 +528,16 @@ body {
     display: inline-block;
 }
 
-.c2b-claim-form { max-width: 500px; margin: 0 auto; }
-
+.c2b-claim-form {
+    max-width: 500px;
+    margin: 0 auto;
+}
 .c2b-claim-form .form-group { margin-bottom: 1rem; }
-
 .c2b-claim-form .form-group label {
     display: block;
     font-weight: 500;
     margin-bottom: 0.25rem;
 }
-
 .c2b-claim-form .form-group input {
     width: 100%;
     padding: 0.6rem 0.8rem;
@@ -841,42 +546,32 @@ body {
     background: var(--bg-secondary);
     color: var(--text-primary);
     font-size: 1rem;
-    box-sizing: border-box;
 }
-
 .c2b-claim-form .form-group input:focus {
     outline: none;
     border-color: var(--accent);
+    box-shadow: none;
 }
-
 .c2b-claim-form .form-group .hint {
     font-size: 0.8rem;
     color: var(--text-secondary);
     margin-top: 0.2rem;
 }
-
 .c2b-claim-form .btn-primary {
     width: 100%;
     padding: 0.75rem;
     font-weight: 600;
-    background: var(--accent);
-    color: white;
-    border: none;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
     font-size: 1rem;
 }
-
 .c2b-claim-form .btn-primary:disabled {
     opacity: 0.6;
     cursor: not-allowed;
 }
 
-.c2b-claim-form .btn-primary:hover:not(:disabled) {
-    background: var(--accent-dark);
-}
-
-/* ===== VERIFICATION STATUS ===== */
+/* ================================================================
+   VERIFICATION STATUS
+   NOTE: hardcoded Bootstrap-style colors — pre-existing, kept as-is.
+   ================================================================ */
 .verification-status {
     margin-top: 1rem;
     padding: 0.75rem;
@@ -886,21 +581,18 @@ body {
     margin-left: auto;
     margin-right: auto;
 }
-
 .verification-status.success {
     display: block;
     background: #d4edda;
     color: #155724;
     border: 1px solid #c3e6cb;
 }
-
 .verification-status.error {
     display: block;
     background: #f8d7da;
     color: #721c24;
     border: 1px solid #f5c6cb;
 }
-
 .verification-status .close-status {
     float: right;
     background: var(--bg-card);
@@ -913,13 +605,14 @@ body {
     line-height: 1;
 }
 
-/* ===== BACK BUTTON (footer) ===== */
+/* ================================================================
+   FOOTER — BACK BUTTON + PAYMENT INFO
+   ================================================================ */
 .footer-back {
     margin-top: 1.5rem;
     display: flex;
     justify-content: center;
 }
-
 .inline-back-btn {
     display: inline-flex;
     align-items: center;
@@ -934,14 +627,12 @@ body {
     font-weight: 500;
     transition: var(--transition);
 }
-
 .inline-back-btn:hover {
     background: var(--bg-card);
     border-color: var(--accent);
     color: var(--text-primary);
 }
 
-/* ===== PAYMENT INFO ===== */
 .payment-info {
     margin-top: 2rem;
     padding: 1rem;
@@ -955,15 +646,27 @@ body {
     margin-right: auto;
 }
 
-/* ===== RESPONSIVE ===== */
+/* ================================================================
+   RESPONSIVE
+   ================================================================ */
 @media (max-width: 640px) {
     .plan-grid { grid-template-columns: 1fr; }
     .sub-header-bottom h1 { font-size: 1.2rem; }
     .main-body { padding: 1rem 0.75rem; }
-    .sub-header-top { flex-wrap: wrap; gap: 0.5rem; }
-    .status-area { font-size: 0.8rem; gap: 0.4rem; }
-    .trial-btn { padding: 0.25rem 0.6rem; font-size: 0.8rem; }
-    .current-plan-banner { flex-direction: column; align-items: flex-start; }
+    .sub-header-top {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    .status-area {
+        font-size: 0.8rem;
+        gap: 0.4rem;
+    }
+    .trial-btn {
+        padding: 0.25rem 0.6rem;
+        font-size: 0.8rem;
+    }
+    .current-plan-banner {
+        flex-direction: column;
+        align-items: flex-start;
+    }
 }
-
-.hidden { display: none !important; }

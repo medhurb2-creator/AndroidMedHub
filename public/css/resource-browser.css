@@ -1,55 +1,50 @@
-/* ============================================================
-   Resource Browser – Full Styles (Grid + Viewer)
-   ============================================================ */
+/* ==========================================================================
+   RESOURCE BROWSER — page-specific styles
+   Requires common.css (reset, body, tokens, buttons, .modal-*, .no-data,
+   keyframes spin/shimmer, utilities).
+   Adds: page-specific palette, 3-row fixed header, resource grid + card,
+   card menu + download progress, shimmer skeleton, load-more, viewer shell,
+   and viewer sub-components (#viewer scoped).
+   ========================================================================== */
 
-/* ----- Reset & Base ----- */
-* {
-    box-sizing: border-box;
-}
-
-body {
-    margin: 0;
-    padding: 0;
-    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    transition: background 0.2s, color 0.2s;
-}
-
-/* ----- CSS Variables (light theme default) ----- */
+/* ---------- Page theme tokens ---------- */
 :root {
-    --bg-primary: #f5f7fa;
+    --bg-primary:   #f5f7fa;
     --bg-secondary: #e9ecf0;
-    --bg-card: #ffffff;
+    --bg-card:      #ffffff;
     --text-primary: #1e1e2f;
     --text-secondary: #444;
-    --text-muted: #777;
-    --border: #d0d4dc;
+    --text-muted:   #777;
+    --border:       #d0d4dc;
     --border-light: #e0e4ea;
-    --accent: #2563eb;
-    --accent-dark: #1d4ed8;
+    --accent:       #2563eb;
+    --accent-dark:  #1d4ed8;
     --accent-light: #3b82f6;
-    --success: #16a34a;
+    --success:      #16a34a;
     --success-dark: #15803d;
-    --danger: #dc2626;
-    --danger-dark: #b91c1c;
-    --warning: #f59e0b;
-    --shadow: 0 4px 12px rgba(0,0,0,0.08);
+    --danger:       #dc2626;
+    --danger-dark:  #b91c1c;
+    --warning:      #f59e0b;
+    --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
     --radius: 12px;
-    --header-height: 130px;  /* ~3 rows */
+    --header-height: 130px;   /* 3 header rows */
 }
 
-/* ----- Dark Theme ----- */
 body.dark-theme {
-    --bg-primary: #1a1a2e;
+    --bg-primary:   #1a1a2e;
     --bg-secondary: #2a2a3e;
-    --bg-card: #25253a;
+    --bg-card:      #25253a;
     --text-primary: #eee;
     --text-secondary: #ccc;
-    --text-muted: #999;
-    --border: #444;
+    --text-muted:   #999;
+    --border:       #444;
     --border-light: #3a3a4e;
-    --shadow: 0 4px 12px rgba(0,0,0,0.4);
+    --shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* Body override — 0.2s theme transition (common uses 0.3s) */
+body {
+    transition: background 0.2s, color 0.2s;
 }
 
 /* ============================================================
@@ -63,21 +58,19 @@ body.dark-theme {
     z-index: 1000;
     background: var(--bg-card);
     border-bottom: 1px solid var(--border);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
     padding: 0.3rem 0.8rem;
     transition: background 0.2s;
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
 }
 
+/* Common's .header-row provides display:flex + justify-content:space-between
+   + align-items:center. Page adds padding + min-height. */
 .header-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
     padding: 0.2rem 0;
     min-height: 36px;
 }
-
 .header-row:last-child {
     padding-bottom: 0.3rem;
 }
@@ -90,9 +83,7 @@ body.dark-theme {
     font-size: 1.2rem;
     color: var(--text-primary);
 }
-.logo-area img {
-    border-radius: 8px;
-}
+.logo-area img { border-radius: 8px; }
 
 .nav-buttons {
     display: flex;
@@ -116,7 +107,7 @@ body.dark-theme {
 }
 .nav-buttons button:hover {
     background: var(--accent);
-    color: white;
+    color: #fff;
     border-color: var(--accent);
 }
 
@@ -132,7 +123,7 @@ body.dark-theme {
     letter-spacing: -0.3px;
 }
 
-/* Search & Filter Row */
+/* Search & filter row */
 .search-filter-row {
     display: flex;
     gap: 0.5rem;
@@ -151,8 +142,10 @@ body.dark-theme {
     outline: none;
     transition: border-color 0.2s;
 }
+/* Block common's input:focus blue ring — page only wants border color change. */
 .search-filter-row input[type="text"]:focus {
     border-color: var(--accent);
+    box-shadow: none;
 }
 
 .filter-wrapper {
@@ -174,7 +167,7 @@ body.dark-theme {
 }
 .filter-btn:hover {
     background: var(--accent);
-    color: white;
+    color: #fff;
 }
 
 .filter-dropdown {
@@ -190,9 +183,7 @@ body.dark-theme {
     overflow: hidden;
     z-index: 100;
 }
-.filter-dropdown.open {
-    display: block;
-}
+.filter-dropdown.open { display: block; }
 .filter-dropdown button {
     display: block;
     width: 100%;
@@ -205,12 +196,10 @@ body.dark-theme {
     cursor: pointer;
     transition: background 0.15s;
 }
-.filter-dropdown button:hover {
-    background: var(--bg-secondary);
-}
+.filter-dropdown button:hover { background: var(--bg-secondary); }
 .filter-dropdown button.active-filter {
     background: var(--accent);
-    color: white;
+    color: #fff;
 }
 
 /* ============================================================
@@ -246,7 +235,7 @@ body.dark-theme {
     display: flex;
     flex-direction: column;
     position: relative;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
 }
 .resource-card:hover {
     transform: translateY(-3px);
@@ -300,7 +289,7 @@ body.dark-theme {
 .type-badge {
     display: inline-block;
     background: var(--accent-light);
-    color: white;
+    color: #fff;
     padding: 0.1rem 0.5rem;
     border-radius: 9999px;
     font-size: 0.6rem;
@@ -319,21 +308,15 @@ body.dark-theme {
     padding-top: 0.3rem;
     border-top: 1px solid var(--border-light);
 }
-.downloaded-badge {
-    color: var(--success);
-    font-weight: 500;
-}
-.premium-badge {
-    color: var(--warning);
-    font-weight: 500;
-}
+.downloaded-badge { color: var(--success); font-weight: 500; }
+.premium-badge    { color: var(--warning); font-weight: 500; }
 
 .favorite-badge {
     position: absolute;
     top: 4px;
     right: 4px;
     background: var(--warning);
-    color: white;
+    color: #fff;
     border-radius: 50%;
     width: 22px;
     height: 22px;
@@ -342,12 +325,12 @@ body.dark-theme {
     justify-content: center;
     font-size: 0.7rem;
     font-weight: bold;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
     pointer-events: none;
     z-index: 2;
 }
 
-/* Card Actions */
+/* Card actions */
 .card-actions {
     display: flex;
     gap: 0.4rem;
@@ -371,25 +354,14 @@ body.dark-theme {
     align-items: center;
     justify-content: center;
     background: var(--accent);
-    color: white;
+    color: #fff;
 }
-.card-actions .main-btn:hover {
-    filter: brightness(1.1);
-}
-.card-actions .main-btn.btn-open {
-    background: var(--success);
-}
-.card-actions .main-btn.btn-download {
-    background: var(--accent);
-}
-.card-actions .main-btn.btn-cancel {
-    background: var(--danger);
-}
+.card-actions .main-btn:hover { filter: brightness(1.1); }
+.card-actions .main-btn.btn-open     { background: var(--success); }
+.card-actions .main-btn.btn-download { background: var(--accent); }
+.card-actions .main-btn.btn-cancel   { background: var(--danger); }
 
-.menu-wrapper {
-    position: relative;
-    flex-shrink: 0;
-}
+.menu-wrapper { position: relative; flex-shrink: 0; }
 .menu-btn {
     background: none;
     border: none;
@@ -402,9 +374,7 @@ body.dark-theme {
     display: flex;
     align-items: center;
 }
-.menu-btn:hover {
-    color: var(--text-primary);
-}
+.menu-btn:hover { color: var(--text-primary); }
 
 .menu-dropdown {
     position: absolute;
@@ -419,9 +389,7 @@ body.dark-theme {
     overflow: hidden;
     z-index: 50;
 }
-.menu-dropdown.open {
-    display: block;
-}
+.menu-dropdown.open { display: block; }
 .menu-dropdown button {
     display: block;
     width: 100%;
@@ -435,12 +403,8 @@ body.dark-theme {
     transition: background 0.15s;
     white-space: nowrap;
 }
-.menu-dropdown button:hover {
-    background: var(--bg-secondary);
-}
-.menu-dropdown .delete-btn {
-    color: var(--danger);
-}
+.menu-dropdown button:hover { background: var(--bg-secondary); }
+.menu-dropdown .delete-btn { color: var(--danger); }
 .menu-dropdown .favorite-btn.active {
     font-weight: 600;
     color: var(--warning);
@@ -455,18 +419,14 @@ body.dark-theme {
 .download-progress .spinner-small {
     width: 14px;
     height: 14px;
-    border: 2px solid rgba(255,255,255,0.3);
-    border-top-color: white;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #fff;
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
 }
 .download-progress .percent {
     font-weight: 600;
     font-size: 0.75rem;
-}
-
-@keyframes spin {
-    to { transform: rotate(360deg); }
 }
 
 /* ============================================================
@@ -482,7 +442,6 @@ body.dark-theme {
 }
 .shimmer-thumbnail {
     aspect-ratio: 16 / 10;
-    background: var(--bg-secondary);
     background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--border) 50%, var(--bg-secondary) 75%);
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite;
@@ -495,14 +454,13 @@ body.dark-theme {
 }
 .shimmer-line {
     height: 10px;
-    background: var(--bg-secondary);
     background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--border) 50%, var(--bg-secondary) 75%);
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite;
     border-radius: 4px;
 }
 .shimmer-title { height: 14px; width: 80%; }
-.shimmer-meta { height: 10px; width: 60%; }
+.shimmer-meta  { height: 10px; width: 60%; }
 .shimmer-badge { height: 16px; width: 40%; border-radius: 9999px; }
 .shimmer-stats { height: 10px; width: 50%; }
 .shimmer-actions {
@@ -513,7 +471,6 @@ body.dark-theme {
 .shimmer-btn {
     height: 32px;
     flex: 1;
-    background: var(--bg-secondary);
     background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--border) 50%, var(--bg-secondary) 75%);
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite;
@@ -523,28 +480,21 @@ body.dark-theme {
     width: 28px;
     height: 28px;
     flex-shrink: 0;
-    background: var(--bg-secondary);
     background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--border) 50%, var(--bg-secondary) 75%);
     background-size: 200px 100%;
     animation: shimmer 1.5s infinite;
     border-radius: 50%;
 }
 
-@keyframes shimmer {
-    0% { background-position: -200px 0; }
-    100% { background-position: calc(200px + 100%) 0; }
-}
-
 /* ============================================================
    NO DATA / LOAD MORE
    ============================================================ */
+/* Override common's .no-data padding (2rem 1rem → 2rem) */
 .no-data {
-    text-align: center;
     padding: 2rem;
-    color: var(--text-muted);
-    font-style: italic;
     grid-column: 1 / -1;
 }
+
 #load-more-container {
     text-align: center;
     margin: 1.5rem 0 2rem;
@@ -561,7 +511,7 @@ body.dark-theme {
 }
 #load-more-btn:hover {
     background: var(--accent);
-    color: white;
+    color: #fff;
 }
 .loading-spinner-small {
     display: inline-block;
@@ -589,8 +539,7 @@ body.dark-theme {
 }
 
 /* ============================================================
-   EMBEDDED VIEWER (from viewer.css)
-   Scoped to #viewer
+   EMBEDDED VIEWER — scoped to #viewer
    ============================================================ */
 #viewer .viewer-container {
     display: flex;
@@ -601,7 +550,7 @@ body.dark-theme {
     position: relative;
 }
 
-/* ------- Header ------- */
+/* ---------- Header ---------- */
 #viewer .viewer-header {
     display: flex;
     justify-content: space-between;
@@ -669,7 +618,7 @@ body.dark-theme {
     background: var(--bg-hover, #3a3a4e);
 }
 
-/* ------- Main viewing area ------- */
+/* ---------- Main viewing area ---------- */
 #viewer .viewer-main {
     flex: 1;
     overflow: auto;
@@ -694,7 +643,10 @@ body.dark-theme {
     touch-action: none;
 }
 
-/* ------- Page container & canvas wrappers ------- */
+/* ---------- Page container & canvas wrappers ----------
+   Block common's `.page-container { max-width: 1200px; margin: 0 auto;
+   padding: 0 1.5rem }` which would otherwise constrain JS-injected PDF
+   page containers inside the viewer. */
 #viewer .page-container {
     display: flex;
     flex-direction: column;
@@ -704,10 +656,13 @@ body.dark-theme {
     gap: 0.5rem;
     transform-origin: 0 0;
     will-change: transform;
+    max-width: none;
+    margin: 0;
+    padding: 0;
 }
 #viewer .page-container .canvas-wrapper {
     background: white;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     border-radius: 4px;
     overflow: visible;
     width: fit-content;
@@ -728,7 +683,7 @@ body.dark-theme {
     will-change: transform;
 }
 
-/* ------- Text layer & search highlight ------- */
+/* ---------- Text layer & search highlight ---------- */
 #viewer .textLayer {
     position: absolute;
     top: 0;
@@ -756,7 +711,7 @@ body.dark-theme {
     outline: 1px solid orange;
 }
 
-/* ------- Footer ------- */
+/* ---------- Footer ---------- */
 #viewer .viewer-footer {
     background: var(--bg-card);
     border-top: 1px solid var(--border);
@@ -797,7 +752,7 @@ body.dark-theme {
     text-align: center;
 }
 
-/* ------- Search bar ------- */
+/* ---------- Search bar ---------- */
 #viewer .search-bar {
     display: none;
     align-items: center;
@@ -807,9 +762,7 @@ body.dark-theme {
     padding: 0.1rem 0.4rem;
     border: 1px solid var(--border);
 }
-#viewer .search-bar.active {
-    display: flex;
-}
+#viewer .search-bar.active { display: flex; }
 #viewer .search-bar input {
     border: none;
     background: transparent;
@@ -825,7 +778,7 @@ body.dark-theme {
     min-width: 40px;
 }
 
-/* ------- Outline drawer ------- */
+/* ---------- Outline drawer ---------- */
 #viewer .outline-drawer {
     position: absolute;
     top: 100%;
@@ -841,9 +794,7 @@ body.dark-theme {
     display: none;
     padding: 0.3rem 0;
 }
-#viewer .outline-drawer.open {
-    display: block;
-}
+#viewer .outline-drawer.open { display: block; }
 #viewer .outline-drawer .outline-item {
     padding: 0.4rem 1rem;
     cursor: pointer;
@@ -851,14 +802,12 @@ body.dark-theme {
     color: var(--text-primary);
     border-bottom: 1px solid var(--border-light);
 }
-#viewer .outline-drawer .outline-item:hover {
-    background: var(--bg-secondary);
-}
+#viewer .outline-drawer .outline-item:hover { background: var(--bg-secondary); }
 #viewer .outline-drawer .outline-item .level-1 { padding-left: 0.5rem; }
 #viewer .outline-drawer .outline-item .level-2 { padding-left: 1.5rem; }
 #viewer .outline-drawer .outline-item .level-3 { padding-left: 2.5rem; }
 
-/* ------- Loading ------- */
+/* ---------- Loading ---------- */
 #viewer .loading-container {
     text-align: center;
     color: var(--text-muted);
@@ -872,9 +821,8 @@ body.dark-theme {
     animation: spin 1s linear infinite;
     margin: 0 auto 1rem;
 }
-@keyframes spin { to { transform: rotate(360deg); } }
 
-/* ------- Error / unsupported ------- */
+/* ---------- Error / unsupported ---------- */
 #viewer .error-container,
 #viewer .unsupported {
     text-align: center;
@@ -887,10 +835,10 @@ body.dark-theme {
     display: inline-block;
 }
 
-/* ------- File input for local files ------- */
-#viewer .file-input {
-    display: none;
-}
+/* ---------- File input ---------- */
+#viewer .file-input { display: none; }
+
+/* ---------- Page counter ---------- */
 #viewer .page-counter {
     display: flex;
     align-items: center;
@@ -898,7 +846,6 @@ body.dark-theme {
     font-size: 0.85rem;
     color: var(--text-muted);
 }
-
 #viewer .page-counter input[type="number"] {
     width: 44px;
     text-align: center;
@@ -909,26 +856,16 @@ body.dark-theme {
     padding: 0.2rem 0;
     font-size: 0.85rem;
     min-height: 28px;
-    -moz-appearance: textfield; /* Firefox */
+    -moz-appearance: textfield;      /* Firefox */
 }
-
-/* Remove default up/down arrows in WebKit browsers */
 #viewer .page-counter input[type="number"]::-webkit-inner-spin-button,
 #viewer .page-counter input[type="number"]::-webkit-outer-spin-button {
     -webkit-appearance: none;
     margin: 0;
 }
-
-/* Optional: style the label to match the text */
 #viewer .page-counter label {
     font-size: 0.85rem;
     color: var(--text-muted);
     margin: 0;
     cursor: default;
-}
-/* ============================================================
-   UTILITY HELPERS
-   ============================================================ */
-.hidden {
-    display: none !important;
 }

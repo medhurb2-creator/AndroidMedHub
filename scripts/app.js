@@ -18,6 +18,9 @@ import { initRouter, navigateTo } from './router.js';
 import * as updates from './updates.js';
 import * as events from './events.js';
 
+// === GOOGLE PLAY IN-APP UPDATE ===
+import * as appUpdate from './app-update.js';
+
 // ============================================================
 // CAPACITOR IMPORTS (dynamic, only when available)
 // ============================================================
@@ -140,6 +143,86 @@ async function initOrientation() {
         console.log('[App] Orientation locked');
     } catch (_) {
         console.warn('[App] Orientation lock not available');
+    }
+}
+
+// === GOOGLE PLAY IN-APP UPDATE ===
+// ============================================================
+// FLEXIBLE UPDATE BANNER
+// Wraps window.MedVixUpdateBanner (defined in index.html).
+// ============================================================
+function showFlexibleUpdateBanner() {
+    const banner = window.MedVixUpdateBanner;
+    if (!banner) {
+        console.warn('[PlayUpdate] Banner helper not available');
+        return;
+    }
+
+    // Wire the restart button once.
+    const btn = document.getElementById('play-update-restart');
+    if (btn && !btn.dataset.wired) {
+        btn.dataset.wired = '1';
+        btn.addEventListener('click', async () => {
+            banner.setBusy(true);
+            try {
+                await appUpdate.applyDownloadedUpdate();
+                // If completeUpdate succeeded, Android restarts the app.
+                // If it fails, we re-enable the button so the user can retry.
+            } catch (e) {
+                console.error('[PlayUpdate] completeUpdate failed', e);
+                banner.setBusy(false);
+            }
+        });
+    }
+
+    banner.show();
+}
+
+// ============================================================
+// PLAY UPDATE POLICY RUNNER (diff-based)
+// ============================================================
+async function runPlayUpdateCheck() {
+    if (!appUpdate.isAppUpdateSupported()) {
+        console.log('[PlayUpdate] Not running on native / plugin unavailable');
+        return;
+    }
+
+    // 1. Read this app's current versionCode via Capacitor App plugin.
+    let currentVersionCode = 0;
+    try {
+        if (App && typeof App.getInfo === 'function') {
+            const info = await App.getInfo();
+            currentVersionCode = parseInt(info.build, 10) || 0;
+            console.log(
+                `[PlayUpdate] Running v${info.version} (versionCode ${currentVersionCode})`
+            );
+        }
+    } catch (e) {
+        console.warn('[PlayUpdate] Could not read app version:', e);
+    }
+
+    if (!currentVersionCode) {
+        console.warn('[PlayUpdate] No versionCode — skipping update policy');
+        return;
+    }
+
+    // 2. Listen for soft-download completion.
+    appUpdate.onAppUpdate('downloaded', () => {
+        console.log('[PlayUpdate] Download complete – showing restart banner');
+        showFlexibleUpdateBanner();
+    });
+
+    // 3. Run the diff-based policy:
+    //      diff === 1  → soft (flexible)
+    //      diff >= 2   → hard (immediate)
+    try {
+        const result = await appUpdate.runUpdatePolicy({
+            currentVersionCode,
+            onFlexibleReady: showFlexibleUpdateBanner,
+        });
+        console.log('[PlayUpdate] Policy result:', result.action);
+    } catch (e) {
+        console.warn('[PlayUpdate] Policy check failed:', e);
     }
 }
 
@@ -382,6 +465,14 @@ async function bootstrap() {
         // 3. Orientation lock
         await initOrientation();
 
+        // === GOOGLE PLAY IN-APP UPDATE ===
+        // 3.5. Check Play for updates EARLY, before auth/sync/router.
+        //      - Immediate: Play UI covers the screen; bootstrap continues
+        //        underneath. When the user finishes, Android restarts us.
+        //      - Flexible: download runs in background. We just register
+        //        the "downloaded" listener; banner shows when it's ready.
+        await runPlayUpdateCheck();
+
         // 4. Detect referral from URL or storage
         let initialReferral = null;
         if (pendingAppUrl) {
@@ -560,5 +651,10 @@ window.app = {
     syncExamResults: sync.syncExamResults,
     syncUserProfile: sync.syncUserProfile,
     syncSubscription: sync.syncSubscription,
-    events: events.events
+    events: events.events,
+
+    // === GOOGLE PLAY IN-APP UPDATE ===
+    checkPlayUpdate: runPlayUpdateCheck,
+    applyPlayUpdate: appUpdate.applyDownloadedUpdate,
+    isPlayUpdateSupported: appUpdate.isAppUpdateSupported,
 };

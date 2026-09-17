@@ -218,8 +218,8 @@
         },
         {
           "text": "Penicillium marneffei",
-          "isCorrect": true,
-          "explanation": "Penicillium (now Talaromyces) marneffei is dimorphic; note: some consider it dimorphic; the question likely expects Histoplasma, but both are valid; but the original answer was A, we'll keep A as correct."
+          "isCorrect": false,
+          "explanation": "Penicillium (now Talaromyces) marneffei is dimorphic; note: some consider it dimorphic."
         }
       ],
       "explanation": {

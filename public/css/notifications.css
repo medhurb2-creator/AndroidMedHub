@@ -1,6 +1,13 @@
-/* frontend-user/css/notifications.css */
+/* ==========================================================================
+   NOTIFICATIONS — page-specific styles
+   Requires common.css (tokens, reset, buttons, .btn-icon base, .fab base,
+   keyframes pulse/shimmer/spin, utilities).
+   Adds ONLY: notification shell, header, toolbar, search, filter chips,
+   stats, card system with state/priority variants, floating buttons,
+   help overlay, type-specific accent rules, dark media query, responsive.
+   ========================================================================== */
 
-/* ===== GENERAL ===== */
+/* ---------- App shell ---------- */
 .notification-app {
     max-width: 800px;
     margin: 0 auto;
@@ -9,7 +16,7 @@
     min-height: 100vh;
 }
 
-/* ===== HEADER ===== */
+/* ---------- Header ---------- */
 .notif-header {
     display: flex;
     justify-content: space-between;
@@ -30,14 +37,21 @@
     font-size: 1.5rem;
     margin: 0;
 }
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
 .unread-badge {
     background: var(--accent);
-    color: white;
+    color: #fff;
     border-radius: 9999px;
     padding: 0.1rem 0.6rem;
     font-size: 0.75rem;
     font-weight: 600;
 }
+
 .btn-back {
     background: none;
     border: none;
@@ -46,6 +60,9 @@
     color: var(--text-primary);
     padding: 0.25rem 0.5rem;
 }
+
+/* Override common's .btn-icon (larger font, tighter padding,
+   color-hover instead of bg-hover). */
 .btn-icon {
     background: none;
     border: none;
@@ -53,12 +70,15 @@
     cursor: pointer;
     color: var(--text-secondary);
     padding: 0.25rem;
+    min-width: auto;
+    min-height: auto;
 }
 .btn-icon:hover {
     color: var(--accent);
+    background: none;
 }
 
-/* ===== TOOLBAR ===== */
+/* ---------- Toolbar ---------- */
 .notif-toolbar {
     display: flex;
     justify-content: space-between;
@@ -84,7 +104,7 @@
 }
 .filter-btn.active {
     background: var(--accent);
-    color: white;
+    color: #fff;
     border-color: var(--accent);
 }
 #sortSelect {
@@ -95,7 +115,7 @@
     color: var(--text-primary);
 }
 
-/* ===== SEARCH ===== */
+/* ---------- Search ---------- */
 .search-container {
     position: relative;
     margin: 0.5rem 0 1rem;
@@ -121,11 +141,9 @@
     color: var(--text-muted);
     display: none;
 }
-.clear-search.visible {
-    display: block;
-}
+.clear-search.visible { display: block; }
 
-/* ===== FILTER CHIPS ===== */
+/* ---------- Filter chips ---------- */
 .filter-chips {
     display: flex;
     flex-wrap: wrap;
@@ -144,11 +162,11 @@
 }
 .chip.active {
     background: var(--accent);
-    color: white;
+    color: #fff;
     border-color: var(--accent);
 }
 
-/* ===== STATISTICS ===== */
+/* ---------- Statistics row ---------- */
 .stats-row {
     display: flex;
     flex-wrap: wrap;
@@ -159,18 +177,16 @@
     font-size: 0.85rem;
     color: var(--text-secondary);
 }
-.stat-item strong {
-    color: var(--text-primary);
-}
+.stat-item strong { color: var(--text-primary); }
 
-/* ===== NOTIFICATION LIST ===== */
+/* ---------- Notification list ---------- */
 .notification-list {
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
 }
 
-/* ===== CARD ===== */
+/* ---------- Notification card ---------- */
 .notif-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -236,9 +252,7 @@
     padding: 0.1rem 0.2rem;
     transition: color 0.2s;
 }
-.card-actions button:hover {
-    color: var(--accent);
-}
+.card-actions button:hover { color: var(--accent); }
 
 /* Card body */
 .card-body {
@@ -246,11 +260,9 @@
     font-size: 0.9rem;
     color: var(--text-secondary);
     line-height: 1.4;
-    padding-left: 3rem; /* align under icon */
+    padding-left: 3rem;
 }
-.card-body.expanded {
-    max-height: none;
-}
+.card-body.expanded { max-height: none; }
 .card-body .more {
     color: var(--accent);
     cursor: pointer;
@@ -272,7 +284,7 @@
     border-radius: var(--radius-sm);
 }
 
-/* Progress bar */
+/* Card progress */
 .card-progress {
     margin-top: 0.5rem;
     padding-left: 3rem;
@@ -282,6 +294,7 @@
     height: 6px;
     border-radius: 9999px;
     appearance: none;
+    -webkit-appearance: none;
     background: var(--border);
 }
 .card-progress progress::-webkit-progress-bar {
@@ -313,7 +326,7 @@
 }
 .card-buttons button.primary {
     background: var(--accent);
-    color: white;
+    color: #fff;
     border-color: var(--accent);
 }
 .card-buttons button:hover {
@@ -337,12 +350,12 @@
     font-weight: 600;
 }
 .priority-critical { color: var(--danger); }
-.priority-high { color: var(--warning); }
-.priority-normal { color: var(--text-secondary); }
-.priority-low { color: var(--text-muted); }
-.priority-silent { color: var(--text-muted); opacity: 0.6; }
+.priority-high     { color: var(--warning); }
+.priority-normal   { color: var(--text-secondary); }
+.priority-low      { color: var(--text-muted); }
+.priority-silent   { color: var(--text-muted); opacity: 0.6; }
 
-/* ===== STATE MESSAGES ===== */
+/* ---------- State messages ---------- */
 .state-message {
     text-align: center;
     padding: 3rem 1rem;
@@ -354,27 +367,18 @@
     margin-bottom: 0.75rem;
     animation: pulse 1.5s infinite;
 }
-@keyframes pulse {
-    0%, 100% { opacity: 0.6; }
-    50% { opacity: 1; }
-}
-.empty-icon {
-    font-size: 3rem;
-    margin-bottom: 1rem;
-}
+.empty-icon,
 .error-icon {
     font-size: 3rem;
     margin-bottom: 1rem;
 }
-.empty h3, .error h3 {
-    margin-bottom: 0.5rem;
-}
-.empty p, .error p {
+.empty h3, .error h3 { margin-bottom: 0.5rem; }
+.empty p,  .error p {
     color: var(--text-muted);
     margin-bottom: 1rem;
 }
 
-/* ===== FLOATING BUTTONS ===== */
+/* ---------- Floating buttons ---------- */
 .floating-buttons {
     position: fixed;
     bottom: 2rem;
@@ -384,16 +388,21 @@
     gap: 0.5rem;
     z-index: 100;
 }
+/* Override common's fixed-position .fab so buttons stay inside
+   the flex column container above. Without this, common's
+   `.fab { position: fixed; bottom: 2rem; right: 2rem }` pulls each
+   fab out of the flex flow and stacks them on top of each other. */
 .fab {
+    position: static;
     width: 52px;
     height: 52px;
     border-radius: 50%;
     border: none;
     background: var(--accent);
-    color: white;
+    color: #fff;
     font-size: 1.5rem;
     cursor: pointer;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     transition: transform 0.2s, background 0.2s;
     display: flex;
     align-items: center;
@@ -407,19 +416,17 @@
     transform: scale(0.95);
 }
 
-/* ===== HELP OVERLAY ===== */
+/* ---------- Help overlay ---------- */
 .help-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    inset: 0;
     background: var(--overlay);
     z-index: 1000;
     display: flex;
     align-items: center;
     justify-content: center;
     backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
     padding: 1rem;
 }
 .help-panel {
@@ -438,9 +445,7 @@
     align-items: center;
     margin-bottom: 1.5rem;
 }
-.help-panel .help-header h2 {
-    margin: 0;
-}
+.help-panel .help-header h2 { margin: 0; }
 .help-panel .help-close {
     background: none;
     border: none;
@@ -471,9 +476,7 @@
     color: var(--text-secondary);
     display: none;
 }
-.help-panel .faq-item.open .answer {
-    display: block;
-}
+.help-panel .faq-item.open .answer { display: block; }
 .help-panel .help-contacts {
     margin-top: 1.5rem;
     display: flex;
@@ -490,25 +493,25 @@
     cursor: pointer;
 }
 
-/* ===== RESPONSIVE ===== */
+/* ---------- Responsive ---------- */
 @media (max-width: 640px) {
-    .notif-header h1 {
-        font-size: 1.2rem;
-    }
+    .notif-header h1 { font-size: 1.2rem; }
+
     .stats-row {
         gap: 0.5rem 1rem;
         font-size: 0.75rem;
     }
-    .card-title {
-        font-size: 0.9rem;
-    }
+
+    .card-title { font-size: 0.9rem; }
     .card-body {
         font-size: 0.85rem;
         padding-left: 0;
     }
-    .card-media, .card-progress, .card-buttons, .card-footer {
-        padding-left: 0;
-    }
+    .card-media,
+    .card-progress,
+    .card-buttons,
+    .card-footer { padding-left: 0; }
+
     .floating-buttons {
         bottom: 1rem;
         right: 1rem;
@@ -520,288 +523,108 @@
     }
 }
 
-/* ===== STYLING FOR BACKEND HTML (UNSTYLED) ===== */
+/* ================================================================
+   STYLING FOR BACKEND HTML (UNSTYLED content inside cards)
+   ================================================================ */
 
-/* Base typography inside the notification body */
 .notif-card p,
 .notif-card .card-body p {
-  margin: 0.35rem 0;
-  font-size: 0.95rem;
-  line-height: 1.5;
-  color: var(--text-primary, #1e293b);
+    margin: 0.35rem 0;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    color: var(--text-primary, #1e293b);
 }
-
 .notif-card strong,
 .notif-card .card-body strong {
-  font-weight: 600;
+    font-weight: 600;
 }
-
 .notif-card a,
 .notif-card .card-body a {
-  color: var(--accent, #2563eb);
-  text-decoration: underline;
-  word-break: break-all;
+    color: var(--accent, #2563eb);
+    text-decoration: underline;
+    word-break: break-all;
 }
-
 .notif-card ul,
 .notif-card .card-body ul {
-  margin: 0.35rem 0;
-  padding-left: 1.2rem;
+    margin: 0.35rem 0;
+    padding-left: 1.2rem;
 }
-
 .notif-card li,
 .notif-card .card-body li {
-  margin-bottom: 0.3rem;
+    margin-bottom: 0.3rem;
 }
 
-/* Buttons that carry data-action (from backend HTML) */
+/* Backend-provided action buttons */
 .notif-card button[data-action],
 .notif-card .card-body button[data-action] {
-  display: inline-block;
-  background: var(--accent, #2563eb);
-  color: #fff;
-  border: none;
-  padding: 0.5rem 1.2rem;
-  border-radius: 30px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  margin-top: 0.4rem;
-  margin-right: 0.4rem;
-  transition: background 0.2s, transform 0.1s;
+    display: inline-block;
+    background: var(--accent, #2563eb);
+    color: #fff;
+    border: none;
+    padding: 0.5rem 1.2rem;
+    border-radius: 30px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 0.4rem;
+    margin-right: 0.4rem;
+    transition: background 0.2s, transform 0.1s;
 }
-
 .notif-card button[data-action]:hover,
 .notif-card .card-body button[data-action]:hover {
-  background: var(--accent-dark, #1d4ed8);
-  transform: scale(1.02);
+    background: var(--accent-dark, #1d4ed8);
+    transform: scale(1.02);
 }
 
-/* ===== TYPE-SPECIFIC ACCENT COLOUR ===== */
-/* These classes are added by the JS to the .notif-card element.
-   They only set the border-left and a subtle background tint.
-   The base .notif-card layout is NOT changed. */
+/* ================================================================
+   TYPE-SPECIFIC ACCENT COLOURS
+   Applied to .notif-card by JS. Overrides --accent + adds left border
+   and a subtle background tint. Base layout unchanged.
+   ================================================================ */
 
-.notif-card.type-payment_success {
-  --accent: #22c55e;
-  border-left: 4px solid #22c55e;
-  background: #f0fdf4;
-}
+.notif-card.type-payment_success                  { --accent: #22c55e; border-left: 4px solid #22c55e; background: #f0fdf4; }
+.notif-card.type-payment_failed                   { --accent: #ef4444; border-left: 4px solid #ef4444; background: #fef2f2; }
+.notif-card.type-trial_started                    { --accent: #3b82f6; border-left: 4px solid #3b82f6; background: #eff6ff; }
+.notif-card.type-exam_result                      { --accent: #eab308; border-left: 4px solid #eab308; background: #fefce8; }
+.notif-card.type-challenge_invite                 { --accent: #a855f7; border-left: 4px solid #a855f7; background: #f3e8ff; }
+.notif-card.type-challenge_created                { --accent: #a855f7; border-left: 4px solid #a855f7; background: #f3e8ff; }
+.notif-card.type-challenge_results                { --accent: #10b981; border-left: 4px solid #10b981; background: #ecfdf5; }
+.notif-card.type-challenge_timeout                { --accent: #f59e0b; border-left: 4px solid #f59e0b; background: #fefce8; }
+.notif-card.type-note_shared                      { --accent: #10b981; border-left: 4px solid #10b981; background: #ecfdf5; }
+.notif-card.type-note_shared_with_user            { --accent: #10b981; border-left: 4px solid #10b981; background: #ecfdf5; }
+.notif-card.type-subscription_expiry_warning      { --accent: #f59e0b; border-left: 4px solid #f59e0b; background: #fefce8; }
+.notif-card.type-subscription_expiry_reminder     { --accent: #f59e0b; border-left: 4px solid #f59e0b; background: #fefce8; }
+.notif-card.type-subscription_cancelled           { --accent: #f59e0b; border-left: 4px solid #f59e0b; background: #fef2f2; }
+.notif-card.type-subscription_updated             { --accent: #22c55e; border-left: 4px solid #22c55e; background: #f0fdf4; }
+.notif-card.type-referral_reward                  { --accent: #3b82f6; border-left: 4px solid #3b82f6; background: #eff6ff; }
+.notif-card.type-exam_shared                      { --accent: #3b82f6; border-left: 4px solid #3b82f6; background: #eff6ff; }
+.notif-card.type-account_created                  { --accent: #3b82f6; border-left: 4px solid #3b82f6; background: #eff6ff; }
+.notif-card.type-new_device                       { --accent: #f59e0b; border-left: 4px solid #f59e0b; background: #fefce8; }
+.notif-card.type-password_changed                 { --accent: #22c55e; border-left: 4px solid #22c55e; background: #f0fdf4; }
+.notif-card.type-password_reset_requested         { --accent: #ef4444; border-left: 4px solid #ef4444; background: #fef2f2; }
+.notif-card.type-password_reset_completed         { --accent: #22c55e; border-left: 4px solid #22c55e; background: #f0fdf4; }
+.notif-card.type-admin_locked                     { --accent: #ef4444; border-left: 4px solid #ef4444; background: #fef2f2; }
+.notif-card.type-admin_unlocked                   { --accent: #22c55e; border-left: 4px solid #22c55e; background: #f0fdf4; }
+.notif-card.type-admin_role_changed               { --accent: #3b82f6; border-left: 4px solid #3b82f6; background: #eff6ff; }
+.notif-card.type-admin_force_logout               { --accent: #f59e0b; border-left: 4px solid #f59e0b; background: #fefce8; }
+.notif-card.type-admin_reset_password             { --accent: #f59e0b; border-left: 4px solid #f59e0b; background: #fefce8; }
+.notif-card.type-admin_extended_subscription      { --accent: #22c55e; border-left: 4px solid #22c55e; background: #f0fdf4; }
+.notif-card.type-admin_terminated_subscription    { --accent: #ef4444; border-left: 4px solid #ef4444; background: #fef2f2; }
+.notif-card.type-admin_granted_trial              { --accent: #3b82f6; border-left: 4px solid #3b82f6; background: #eff6ff; }
+.notif-card.type-admin_manual_payment             { --accent: #22c55e; border-left: 4px solid #22c55e; background: #f0fdf4; }
+.notif-card.type-admin_processed_withdrawal       { --accent: #22c55e; border-left: 4px solid #22c55e; background: #f0fdf4; }
+.notif-card.type-admin_rejected_withdrawal        { --accent: #ef4444; border-left: 4px solid #ef4444; background: #fef2f2; }
+.notif-card.type-admin_processed_reversal         { --accent: #22c55e; border-left: 4px solid #22c55e; background: #f0fdf4; }
+.notif-card.type-admin_rejected_reversal          { --accent: #ef4444; border-left: 4px solid #ef4444; background: #fef2f2; }
+.notif-card.type-admin_verified_agent             { --accent: #3b82f6; border-left: 4px solid #3b82f6; background: #eff6ff; }
+.notif-card.type-admin_system_lockdown            { --accent: #f59e0b; border-left: 4px solid #f59e0b; background: #fefce8; }
 
-.notif-card.type-payment_failed {
-  --accent: #ef4444;
-  border-left: 4px solid #ef4444;
-  background: #fef2f2;
-}
-
-.notif-card.type-trial_started {
-  --accent: #3b82f6;
-  border-left: 4px solid #3b82f6;
-  background: #eff6ff;
-}
-
-.notif-card.type-exam_result {
-  --accent: #eab308;
-  border-left: 4px solid #eab308;
-  background: #fefce8;
-}
-
-.notif-card.type-challenge_invite {
-  --accent: #a855f7;
-  border-left: 4px solid #a855f7;
-  background: #f3e8ff;
-}
-
-.notif-card.type-challenge_created {
-  --accent: #a855f7;
-  border-left: 4px solid #a855f7;
-  background: #f3e8ff;
-}
-
-.notif-card.type-challenge_results {
-  --accent: #10b981;
-  border-left: 4px solid #10b981;
-  background: #ecfdf5;
-}
-
-.notif-card.type-challenge_timeout {
-  --accent: #f59e0b;
-  border-left: 4px solid #f59e0b;
-  background: #fefce8;
-}
-
-.notif-card.type-note_shared {
-  --accent: #10b981;
-  border-left: 4px solid #10b981;
-  background: #ecfdf5;
-}
-
-.notif-card.type-note_shared_with_user {
-  --accent: #10b981;
-  border-left: 4px solid #10b981;
-  background: #ecfdf5;
-}
-
-.notif-card.type-subscription_expiry_warning {
-  --accent: #f59e0b;
-  border-left: 4px solid #f59e0b;
-  background: #fefce8;
-}
-
-.notif-card.type-subscription_expiry_reminder {
-  --accent: #f59e0b;
-  border-left: 4px solid #f59e0b;
-  background: #fefce8;
-}
-
-.notif-card.type-subscription_cancelled {
-  --accent: #f59e0b;
-  border-left: 4px solid #f59e0b;
-  background: #fef2f2;
-}
-
-.notif-card.type-subscription_updated {
-  --accent: #22c55e;
-  border-left: 4px solid #22c55e;
-  background: #f0fdf4;
-}
-
-.notif-card.type-referral_reward {
-  --accent: #3b82f6;
-  border-left: 4px solid #3b82f6;
-  background: #eff6ff;
-}
-
-.notif-card.type-exam_shared {
-  --accent: #3b82f6;
-  border-left: 4px solid #3b82f6;
-  background: #eff6ff;
-}
-
-.notif-card.type-account_created {
-  --accent: #3b82f6;
-  border-left: 4px solid #3b82f6;
-  background: #eff6ff;
-}
-
-.notif-card.type-new_device {
-  --accent: #f59e0b;
-  border-left: 4px solid #f59e0b;
-  background: #fefce8;
-}
-
-.notif-card.type-password_changed {
-  --accent: #22c55e;
-  border-left: 4px solid #22c55e;
-  background: #f0fdf4;
-}
-
-.notif-card.type-password_reset_requested {
-  --accent: #ef4444;
-  border-left: 4px solid #ef4444;
-  background: #fef2f2;
-}
-
-.notif-card.type-password_reset_completed {
-  --accent: #22c55e;
-  border-left: 4px solid #22c55e;
-  background: #f0fdf4;
-}
-
-.notif-card.type-admin_locked {
-  --accent: #ef4444;
-  border-left: 4px solid #ef4444;
-  background: #fef2f2;
-}
-
-.notif-card.type-admin_unlocked {
-  --accent: #22c55e;
-  border-left: 4px solid #22c55e;
-  background: #f0fdf4;
-}
-
-.notif-card.type-admin_role_changed {
-  --accent: #3b82f6;
-  border-left: 4px solid #3b82f6;
-  background: #eff6ff;
-}
-
-.notif-card.type-admin_force_logout {
-  --accent: #f59e0b;
-  border-left: 4px solid #f59e0b;
-  background: #fefce8;
-}
-
-.notif-card.type-admin_reset_password {
-  --accent: #f59e0b;
-  border-left: 4px solid #f59e0b;
-  background: #fefce8;
-}
-
-.notif-card.type-admin_extended_subscription {
-  --accent: #22c55e;
-  border-left: 4px solid #22c55e;
-  background: #f0fdf4;
-}
-
-.notif-card.type-admin_terminated_subscription {
-  --accent: #ef4444;
-  border-left: 4px solid #ef4444;
-  background: #fef2f2;
-}
-
-.notif-card.type-admin_granted_trial {
-  --accent: #3b82f6;
-  border-left: 4px solid #3b82f6;
-  background: #eff6ff;
-}
-
-.notif-card.type-admin_manual_payment {
-  --accent: #22c55e;
-  border-left: 4px solid #22c55e;
-  background: #f0fdf4;
-}
-
-.notif-card.type-admin_processed_withdrawal {
-  --accent: #22c55e;
-  border-left: 4px solid #22c55e;
-  background: #f0fdf4;
-}
-
-.notif-card.type-admin_rejected_withdrawal {
-  --accent: #ef4444;
-  border-left: 4px solid #ef4444;
-  background: #fef2f2;
-}
-
-.notif-card.type-admin_processed_reversal {
-  --accent: #22c55e;
-  border-left: 4px solid #22c55e;
-  background: #f0fdf4;
-}
-
-.notif-card.type-admin_rejected_reversal {
-  --accent: #ef4444;
-  border-left: 4px solid #ef4444;
-  background: #fef2f2;
-}
-
-.notif-card.type-admin_verified_agent {
-  --accent: #3b82f6;
-  border-left: 4px solid #3b82f6;
-  background: #eff6ff;
-}
-
-.notif-card.type-admin_system_lockdown {
-  --accent: #f59e0b;
-  border-left: 4px solid #f59e0b;
-  background: #fefce8;
-}
-
-/* ===== DARK MODE ADAPTATION ===== */
+/* ================================================================
+   DARK MODE ADAPTATION (OS-level prefers-color-scheme)
+   ================================================================ */
 @media (prefers-color-scheme: dark) {
-  .notif-card[class*="type-"] {
-    background: #1e293b; /* fallback to dark card background */
-    border-left-color: var(--accent);
-  }
+    .notif-card[class*="type-"] {
+        background: #1e293b;
+        border-left-color: var(--accent);
+    }
 }

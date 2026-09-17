@@ -110,16 +110,31 @@
       <div id="subject-grid" class="subject-grid"></div>
     </main>
 
-    <!-- Fixed footer -->
-    <div class="app-footer">
-      <button class="footer-btn" data-route="profile" title="Profile">👤</button>
-      <button class="footer-btn" data-route="performance" title="Performance">📊</button>
-      <button class="footer-btn" data-route="ai" title="AI Tutor">🤖</button>
-      <button class="footer-btn" data-route="notes" title="Notes">📝</button>
-      <button class="footer-btn footer-btn-referral" data-route="referral" title="Refer & Earn">
-        <span class="referral-icon">💰</span>
-        <span class="referral-text">Refer&Earn</span>
-      </button>
-    </div>
+<!-- Fixed footer -->
+<div class="app-footer">
+  <button class="footer-btn" data-route="profile" title="Profile" aria-label="Profile">
+    <i class="fa-solid fa-user" aria-hidden="true"></i>
+    <span>Profile</span>
+  </button>
+
+  <button class="footer-btn" data-route="performance" title="Performance" aria-label="Performance">
+    <i class="fa-solid fa-chart-bar" aria-hidden="true"></i>
+    <span>Performance</span>
+  </button>
+
+  <button class="footer-btn" data-route="ai" title="AI Tutor" aria-label="AI Tutor">
+    <i class="fa-solid fa-robot" aria-hidden="true"></i>
+    <span>AI</span>
+  </button>
+
+  <button class="footer-btn" data-route="notes" title="Notes" aria-label="Notes">
+    <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
+    <span>Notes</span>
+  </button>
+
+  <button class="footer-btn footer-btn-referral" data-route="referral" title="Refer &amp; Earn" aria-label="Refer and Earn">
+    <span class="referral-text">Refer&amp;Earn</span>
+  </button>
+</div>
   </div>
 </section>

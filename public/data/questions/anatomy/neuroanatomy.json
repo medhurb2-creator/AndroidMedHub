@@ -919,22 +919,22 @@
     "options": [
       {
         "text": "Superior sagittal sinus",
-        "isCorrect": true,
+        "isCorrect": false,
         "explanation": "The superior sagittal sinus is a midline dural venous sinus."
       },
       {
         "text": "Cavernous sinus",
-        "isCorrect": true,
+        "isCorrect": false,
         "explanation": "The cavernous sinus is a paired dural venous sinus on each side of the sella."
       },
       {
         "text": "Transverse sinus",
-        "isCorrect": true,
+        "isCorrect": false,
         "explanation": "The transverse sinuses are paired sinuses running along the tentorium."
       },
       {
         "text": "Sigmoid sinus",
-        "isCorrect": true,
+        "isCorrect": false,
         "explanation": "The sigmoid sinuses continue from the transverse sinuses to the internal jugular veins."
       },
       {
@@ -1565,22 +1565,22 @@
     "options": [
       {
         "text": "Coordination of movement",
-        "isCorrect": true,
+        "isCorrect": false,
         "explanation": "The cerebellum coordinates voluntary movements, ensuring smooth, accurate actions."
       },
       {
         "text": "Fine motor control",
-        "isCorrect": true,
+        "isCorrect": false,
         "explanation": "It is essential for fine, precise movements."
       },
       {
         "text": "Balance",
-        "isCorrect": true,
+        "isCorrect": false,
         "explanation": "The vestibulocerebellum regulates balance and eye movements."
       },
       {
         "text": "Motor learning",
-        "isCorrect": true,
+        "isCorrect": false,
         "explanation": "The cerebellum is involved in learning and adapting motor skills."
       },
       {
@@ -2173,22 +2173,22 @@
     "options": [
       {
         "text": "Raphe nuclei",
-        "isCorrect": true,
+        "isCorrect": false,
         "explanation": "The raphe nuclei are serotoninergic and located in the midline of the brainstem."
       },
       {
         "text": "Locus coeruleus",
-        "isCorrect": true,
+        "isCorrect": false,
         "explanation": "The locus coeruleus is a noradrenergic nucleus in the pons."
       },
       {
         "text": "Pedunculopontine nucleus",
-        "isCorrect": true,
+        "isCorrect": false,
         "explanation": "Part of the reticular activating system."
       },
       {
         "text": "Gigantocellular nucleus",
-        "isCorrect": true,
+        "isCorrect": false,
         "explanation": "A large nucleus in the medullary reticular formation."
       },
       {
@@ -2553,7 +2553,7 @@
     "options": [
       {
         "text": "Hypothalamus",
-        "isCorrect": true,
+        "isCorrect": false,
         "explanation": "The mammillary bodies are part of the posterior hypothalamus."
       },
       {
@@ -2568,7 +2568,7 @@
       },
       {
         "text": "Limbic system",
-        "isCorrect": true,
+        "isCorrect": false,
         "explanation": "They are also a component of the limbic system (Papez circuit)."
       },
       {
