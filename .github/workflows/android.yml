@@ -35,7 +35,9 @@ jobs:
         run: npx cap sync android
 
       - name: Decode Keystore
-        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/medvix-keystore.jks
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | tr -d '\n\r\t ' | base64 --decode > android/medvix-keystore.jks
+          ls -la android/medvix-keystore.jks
 
       - name: Create keystore.properties
         run: |
