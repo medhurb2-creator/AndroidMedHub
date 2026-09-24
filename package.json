@@ -18,6 +18,7 @@
     "@capacitor/screen-orientation": "^8.0.1",
     "@capacitor/share": "^8.0.1",
     "@capgo/capacitor-printer": "^8.1.1",
+    "@capgo/capacitor-social-login": "^8.5.11",
     "convex": "^1.32.0",
     "css-tree": "^3.2.1",
     "parse5": "^8.0.1",

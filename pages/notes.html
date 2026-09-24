@@ -12,18 +12,31 @@
   <img id="medvix-logo-img" src="/assets/images/logo.jpeg" style="display:none;">
 
   <!-- Header -->
-  <header class="notes-header">
-    <div class="header-left">
-      <span id="hamburgerBtn" class="hamburger">☰</span>
-      <span class="page-title">My Notes</span>
-    </div>
-    <div class="header-right">
-      <a id="performanceLink" class="nav-link">📊 Performance</a>
-      <a id="aiLink" class="nav-link">🤖 AI Tutor</a>
-      <a id="subjectsLink" class="nav-link">📚 Subjects</a>
-      <button id="themeToggle">🌓</button>
-    </div>
-  </header>
+<header class="notes-header">
+  <div class="header-left">
+    <button id="hamburgerBtn" class="hamburger icon-btn" aria-label="Open menu" title="Open menu">
+      <i class="fa-solid fa-bars" aria-hidden="true"></i>
+    </button>
+    <span class="page-title">My Notes</span>
+  </div>
+  <div class="header-right">
+    <a id="performanceLink" class="nav-link icon-btn" title="Performance" aria-label="Performance">
+      <i class="fa-solid fa-chart-bar icon-primary" aria-hidden="true"></i>
+      <span>Performance</span>
+    </a>
+    <a id="aiLink" class="nav-link icon-btn" title="AI Tutor" aria-label="AI Tutor">
+      <i class="fa-solid fa-robot icon-purple" aria-hidden="true"></i>
+      <span>AI</span>
+    </a>
+    <a id="subjectsLink" class="nav-link icon-btn" title="Subjects" aria-label="Subjects">
+      <i class="fa-solid fa-book icon-primary" aria-hidden="true"></i>
+      <span>Subjects</span>
+    </a>
+    <button id="themeToggle" class="icon-btn" aria-label="Toggle theme" title="Toggle theme">
+      <i class="fa-solid fa-circle-half-stroke" aria-hidden="true"></i>
+    </button>
+  </div>
+</header>
 
   <!-- History Panel -->
   <div class="history-panel" id="historyPanel">

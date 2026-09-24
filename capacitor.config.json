@@ -1,5 +1,16 @@
 {
   "appId": "com.medhurb.app",
   "appName": "MedVix",
-  "webDir": "dist"
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "SocialLogin": {
+      "providers": {
+        "google": true
+      },
+      "logLevel": 1
+    }
+  }
 }

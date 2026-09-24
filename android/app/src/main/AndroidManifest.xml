@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- ============================================================
+         PERMISSIONS
+         ============================================================ -->
+
     <!-- Network -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -10,18 +15,27 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Android 14+ requires an explicit foreground service type.
+         'dataSync' covers background sync, downloads, and notifications. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
-    <!-- Runtime (Dangerous) permissions – declared but requested at runtime -->
+    <!-- Runtime (Dangerous) permissions – requested at runtime -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Storage permissions (Android 12 and below) -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
 
-    <!-- Optional: For downloading files directly (uses DownloadManager) -->
+    <!-- DownloadManager support -->
     <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
+
+    <!-- ============================================================
+         APPLICATION
+         ============================================================ -->
 
     <application
         android:allowBackup="true"
@@ -29,7 +43,10 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
+        android:usesCleartextTraffic="false"
         android:theme="@style/AppTheme">
+
+        <!-- ===== Main Activity ===== -->
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
@@ -37,27 +54,102 @@
             android:label="@string/title_activity_main"
             android:launchMode="singleTask"
             android:theme="@style/AppTheme.NoActionBarLaunch">
+
             <!-- Launcher (app icon) -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- ✅ DEEP LINKS for medvix.edgeone.app -->
+            <!-- ===== App Links for medvix.co.ke ===== -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="medvix.edgeone.app" />
+                <data android:scheme="https" android:host="medvix.co.ke" />
+                <data android:scheme="https" android:host="www.medvix.co.ke" />
             </intent-filter>
+
+            <!-- ===== Custom scheme for OAuth redirects =====
+                 Used by @capgo/capacitor-social-login as a fallback
+                 if App Links verification fails on the device. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="medvix" android:host="oauth" />
+            </intent-filter>
+
         </activity>
 
+        <!-- ===== File provider for sharing/printing PDFs ===== -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
-            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
         </provider>
+
     </application>
+
+    <!-- ============================================================
+         QUERIES (required on Android 11+ for package visibility)
+         ============================================================ -->
+
+    <queries>
+
+        <!-- Google Sign-In — required for @capgo/capacitor-social-login.
+             Without this, SocialLogin.login({ provider: 'google' }) silently
+             fails with ActivityNotFoundException on Android 11+. -->
+        <intent>
+            <action android:name="com.google.android.gms.auth.api.signin.ACTION_GOOGLE_SIGN_IN" />
+        </intent>
+
+        <!-- Google Play Services (for in-app updates, auth) -->
+        <package android:name="com.google.android.gms" />
+
+        <!-- Browser intents (used by @capacitor/browser, deep links, external URLs) -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+
+        <!-- Share intents (@capacitor/share) -->
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="*/*" />
+        </intent>
+
+        <!-- Camera intents (@capacitor/camera) -->
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+
+        <!-- File picker intents (@capacitor/filesystem, file selection) -->
+        <intent>
+            <action android:name="android.intent.action.GET_CONTENT" />
+            <data android:mimeType="*/*" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.OPEN_DOCUMENT" />
+            <data android:mimeType="*/*" />
+        </intent>
+
+        <!-- Dialer intents (tel: links) -->
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
+
+        <!-- Email intents (mailto: links) -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
+
+    </queries>
+
 </manifest>
