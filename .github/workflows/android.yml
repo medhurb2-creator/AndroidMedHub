@@ -61,9 +61,23 @@ jobs:
         with:
           name: app-release.apk
           path: android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 2
 
       - name: Upload AAB
         uses: actions/upload-artifact@v5
         with:
           name: app-release.aab
           path: android/app/build/outputs/bundle/release/app-release.aab
+          retention-days: 2
+
+  cleanup:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Remove old artifacts (keep newest 2)
+        uses: c-hive/gha-remove-artifacts@v1
+        with:
+          age: '1 day'
+          skip-recent: 2
