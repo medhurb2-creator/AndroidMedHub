@@ -5,6 +5,7 @@
  * Uses Convex backend for authentication when online.
  * Supports session management (single-device enforcement) and device tracking.
  * Includes referral code support during registration.
+ * Includes Google Sign-In (web) with account-linking flow.
  */
 
 import * as ui from './ui.js';
@@ -134,6 +135,69 @@ function getErrorMessage(error) {
     return 'An unknown error occurred';
 }
 
+// ==================== DEVICE HELPERS ====================
+
+/**
+ * Build a device fingerprint + device info object.
+ * Prefers the stored fingerprint (so password login, Google login, and
+ * account linking all share the same device identity).
+ *
+ * @returns {{ deviceFingerprint: string, deviceInfo: object }}
+ */
+function buildDeviceIdentity() {
+    const deviceFingerprint =
+        (typeof security.getDeviceFingerprint === 'function' && security.getDeviceFingerprint()) ||
+        (typeof security.generateDeviceFingerprint === 'function' && security.generateDeviceFingerprint()) ||
+        'unknown';
+
+    const deviceInfo = {
+        platform: navigator.platform || 'web',
+        userAgent: navigator.userAgent || '',
+        screen: `${screen.width}x${screen.height}`,
+        timezone: new Date().getTimezoneOffset()
+    };
+
+    return { deviceFingerprint, deviceInfo };
+}
+
+// ==================== USER SHAPE NORMALIZER ====================
+
+/**
+ * Normalize the flat user shape returned by every auth action into the
+ * { _id, name, email, ... } object the rest of the app expects.
+ *
+ * The backend returns user fields FLAT inside `result.data`, e.g.:
+ *   { token, userId, name, email, username, displayName, sessionId }
+ *
+ * Some legacy paths may nest them under `data.user`. This helper handles both.
+ *
+ * @param {Object} data - the `result.data` from any auth action
+ * @returns {Object|null} normalized user or null if neither shape matched
+ */
+function normalizeUser(data) {
+    if (!data) return null;
+
+    // Nested shape (some actions may still return { user: {...} })
+    if (data.user && data.user._id) {
+        return data.user;
+    }
+
+    // Flat shape — the current backend's contract
+    if (data.userId) {
+        return {
+            _id: data.userId,
+            name: data.name,
+            email: data.email,
+            username: data.username,
+            displayName: data.displayName,
+            isAgent: data.isAgent,
+            referralCode: data.referralCode
+        };
+    }
+
+    return null;
+}
+
 // ==================== TOKEN ERROR HANDLER ====================
 
 async function handleTokenError(error) {
@@ -225,7 +289,7 @@ export async function refreshSession() {
     }
 }
 
-// ==================== LOGIN ====================
+// ==================== LOGIN (Email / Phone + Password) ====================
 
 export async function login(identifier, password, deviceInfo) {
     console.log('[Auth] Login attempt:', identifier);
@@ -281,7 +345,7 @@ export async function login(identifier, password, deviceInfo) {
     }
 }
 
-// ==================== REGISTER ====================
+// ==================== REGISTER (Email / Phone + Password) ====================
 
 export async function register(userData) {
     console.log('[Auth] Register attempt:', userData.email);
@@ -532,14 +596,9 @@ export async function exportData() {
 
 // ==================== CLEAR ALL LOCAL DATA ====================
 
-/**
- * Clear all local data (IndexedDB + localStorage + sessionStorage).
- * Used after account deletion to ensure no residual data remains.
- */
 async function clearAllLocalData() {
     console.log('[Auth] Clearing all local data...');
 
-    // 1. Clear all IndexedDB stores
     try {
         if (typeof db.clearDatabase === 'function') {
             await db.clearDatabase();
@@ -551,7 +610,6 @@ async function clearAllLocalData() {
         console.warn('[Auth] Failed to clear IndexedDB:', e);
     }
 
-    // 2. Clear all known localStorage keys used by the app
     const localStorageKeys = [
         'accessToken',
         'sessionId',
@@ -594,7 +652,6 @@ async function clearAllLocalData() {
     }
     console.log('[Auth] localStorage cleared.');
 
-    // 3. Clear sessionStorage keys
     try {
         sessionStorage.clear();
         console.log('[Auth] sessionStorage cleared.');
@@ -605,17 +662,6 @@ async function clearAllLocalData() {
 
 // ==================== ACCOUNT DELETION ====================
 
-/**
- * Permanently delete the user's account.
- * - Requires a valid JWT and the user's password.
- * - Calls the backend action `users/mutations:deleteAccount`.
- * - On success, clears all local data and redirects to the welcome page.
- * - If the password is incorrect, throws an error with a clear message.
- * - Uses handleTokenError to recover from session expiry.
- *
- * @param {string} password - The user's current password (for re‑authentication).
- * @returns {Promise<void>}
- */
 export async function deleteAccount(password) {
     requireOnline();
 
@@ -636,19 +682,15 @@ export async function deleteAccount(password) {
         });
 
         if (!result.success) {
-            // Check if this is a token-related error (e.g., session expired)
             if (result.error === 'invalid_token' || result.message?.includes('token')) {
                 await handleTokenError(new Error(result.message));
-                return; // handleTokenError will have cleared the token and shown a toast
+                return;
             }
-            // Otherwise, propagate the error (e.g., invalid password)
             throw new Error(result.message);
         }
 
-        // ✅ Clear all local data first
         await clearAllLocalData();
 
-        // Then reset in-memory state and remaining local keys
         currentUser = null;
         clearToken();
         utils.removeLocalStorage('sessionId');
@@ -661,10 +703,8 @@ export async function deleteAccount(password) {
 
     } catch (error) {
         console.error('[Auth] Delete account failed', error);
-        // If it's a token error, let handleTokenError attempt to recover
         if (await handleTokenError(error)) return;
 
-        // Otherwise, rethrow with a user-friendly message
         const msg = getErrorMessage(error);
         if (msg.includes('Invalid password') || msg.toLowerCase().includes('password')) {
             throw new Error('The password you entered is incorrect. Please try again.');
@@ -743,9 +783,237 @@ export async function logoutAllDevices() {
     }
 }
 
+// ==================== GOOGLE SIGN-IN ====================
+
+/**
+ * Send the Google ID token to the backend for verification and identity resolution.
+ *
+ * Backend response shapes (verified field-by-field):
+ *
+ *   1. SUCCESS (existing Google identity) — flat user fields:
+ *      { success: true, status: "SUCCESS",
+ *        data: { token, userId, name, email, username, displayName,
+ *                sessionId, isNewDevice } }
+ *
+ *   2. NEW_ACCOUNT — flat user fields:
+ *      { success: true, status: "NEW_ACCOUNT",
+ *        data: { token, userId, name, email, username, displayName,
+ *                sessionId, isNewDevice: true } }
+ *
+ *   3. EXISTING_ACCOUNT_REQUIRES_LINK:
+ *      { success: false, status: "EXISTING_ACCOUNT_REQUIRES_LINK",
+ *        data: { linkToken, email } }
+ *
+ *   4. Any other failure:
+ *      { success: false, message: "..." }
+ *
+ * @param {string} idToken - The Google ID token (JWT) returned by Google Identity Services.
+ * @returns {Promise<Object>} Result with `ok: true` (success) or `requiresLink: true`.
+ */
+export async function loginWithGoogle(idToken) {
+    if (!idToken) throw new Error('Missing Google ID token');
+    requireOnline();
+
+    // Build device identity (same source used by password login)
+    const { deviceFingerprint, deviceInfo } = buildDeviceIdentity();
+
+    const result = await convexHttpClient.action(
+        'auth/actions:googleSignIn',
+        {
+            idToken,
+            deviceFingerprint,
+            deviceInfo
+        }
+    );
+
+    if (!result) {
+        throw new Error('Google sign-in failed: empty response');
+    }
+
+    // ------------------------------------------------------------
+    // 1. LINKING REQUIRED — check BEFORE throwing on `!success`
+    //    because the backend uses success:false for this case.
+    // ------------------------------------------------------------
+    const linkStatus =
+        result.status ||
+        result.data?.status;
+
+    if (linkStatus === 'EXISTING_ACCOUNT_REQUIRES_LINK') {
+        return {
+            ok: false,
+            requiresLink: true,
+            email: result.data?.email || '',
+            linkToken: result.data?.linkToken || null,
+            idToken,
+            deviceFingerprint,
+            deviceInfo
+        };
+    }
+
+    // ------------------------------------------------------------
+    // 2. OTHER FAILURES
+    // ------------------------------------------------------------
+    if (!result.success) {
+        throw new Error(result.reason || result.message || 'Google sign-in failed');
+    }
+
+    // ------------------------------------------------------------
+    // 3. SUCCESS — normalize the flat response
+    // ------------------------------------------------------------
+    const data = result.data || {};
+    const status = data.status || 'SUCCESS';
+
+    if (status === 'SUCCESS' || status === 'NEW_ACCOUNT') {
+        const user = normalizeUser(data);
+
+        setToken(data.token);
+        if (data.sessionId) {
+            utils.setLocalStorage('sessionId', data.sessionId);
+        }
+
+        if (user) {
+            await setUser(user);
+        } else {
+            console.error('[Auth] Google login succeeded but no user data found.', data);
+        }
+
+        // Persist the fingerprint so future requests share the same device identity
+        if (deviceFingerprint) {
+            security.setDeviceFingerprint(deviceFingerprint);
+        }
+
+        // Sync profile + subscription exactly like password login
+        await sync.syncUserData();
+
+        try {
+            await subscription.refreshSubscription();
+            console.log('[Auth] Subscription refreshed after Google login.');
+        } catch (subErr) {
+            console.warn('[Auth] Could not refresh subscription after Google login:', subErr);
+        }
+
+        return {
+            ok: true,
+            isNewUser: status === 'NEW_ACCOUNT',
+            user
+        };
+    }
+
+    throw new Error(data.reason || 'Google sign-in failed');
+}
+
+/**
+ * Complete the account-linking flow.
+ *
+ * Strict backend validator:
+ *   v.object({
+ *     linkToken:         v.string(),
+ *     password:          v.string(),
+ *     deviceFingerprint: v.string(),
+ *     deviceInfo:        v.optional(v.any()),
+ *   })
+ *
+ * Extra params passed by page callers (identifier, idToken, googleSub) are
+ * intentionally ignored and never forwarded to the backend.
+ *
+ * Success response (flat user fields):
+ *   { success: true, status: "ACCOUNT_LINKED",
+ *     data: { token, userId, name, email, username, displayName, sessionId } }
+ *
+ * @param {Object} params
+ * @param {string}  params.linkToken          - Opaque token from googleSignIn.
+ * @param {string}  params.password           - Password for the existing account.
+ * @param {string} [params.deviceFingerprint] - Reused from loginWithGoogle.
+ * @param {Object} [params.deviceInfo]        - Reused from loginWithGoogle.
+ * @returns {Promise<Object>} Result with `ok: true` and `user`.
+ */
+export async function linkGoogleAccount({
+    linkToken,
+    password,
+    deviceFingerprint,
+    deviceInfo
+    // Extra params passed by callers (identifier, idToken, googleSub, …)
+    // are intentionally ignored and never forwarded to the backend.
+}) {
+    requireOnline();
+
+    if (!password) {
+        throw new Error('Password is required to link your account.');
+    }
+    if (!linkToken) {
+        console.error('[Auth] linkGoogleAccount called without linkToken');
+        throw new Error('Missing link token. Please sign in with Google again.');
+    }
+
+    // Resolve device identity — prefers the caller-supplied fingerprint,
+    // falls back to the stored one, then to a freshly generated one.
+    const fallback = buildDeviceIdentity();
+    const fingerprint = (deviceFingerprint && String(deviceFingerprint).trim().length > 0)
+        ? deviceFingerprint
+        : fallback.deviceFingerprint;
+
+    const info = (deviceInfo && typeof deviceInfo === 'object')
+        ? { platform: deviceInfo.platform || 'web' }
+        : { platform: 'web' };
+
+    // ------------------------------------------------------------
+    // STRICT PAYLOAD — only the four fields the backend accepts.
+    // ------------------------------------------------------------
+    const payload = {
+        linkToken,
+        password,
+        deviceFingerprint: fingerprint,
+        deviceInfo: info
+    };
+
+    console.log('[Auth] linkGoogleAccount → sending payload keys:', Object.keys(payload));
+
+    const result = await convexHttpClient.action(
+        'auth/actions:linkGoogleAccount',
+        payload
+    );
+
+    if (!result || !result.success) {
+        throw new Error(result?.reason || result?.message || 'Account linking failed');
+    }
+
+    const data = result.data || {};
+
+    // Normalize the flat response
+    const user = normalizeUser(data);
+
+    setToken(data.token);
+    if (data.sessionId) {
+        utils.setLocalStorage('sessionId', data.sessionId);
+    }
+
+    if (user) {
+        await setUser(user);
+    } else {
+        console.error('[Auth] Account linking succeeded but no user data found.', data);
+    }
+
+    // Persist the fingerprint so future requests share the same device identity
+    if (fingerprint) {
+        security.setDeviceFingerprint(fingerprint);
+    }
+
+    await sync.syncUserData();
+
+    try {
+        await subscription.refreshSubscription();
+        console.log('[Auth] Subscription refreshed after Google account linking.');
+    } catch (subErr) {
+        console.warn('[Auth] Could not refresh subscription after Google account linking:', subErr);
+    }
+
+    return { ok: true, user };
+}
+
 // ==================== EXPOSE GLOBALLY ====================
 
 window.auth = {
+    // ---- Email / Phone ----
     login,
     register,
     logout,
@@ -765,7 +1033,12 @@ window.auth = {
     getDevices,
     logoutDevice,
     logoutAllDevices,
-    // Additional exports used by app.js and other modules
+
+    // ---- Google Sign-In ----
+    loginWithGoogle,
+    linkGoogleAccount,
+
+    // ---- Token / User (used by app.js and other modules) ----
     setToken,
     clearToken,
     getUser,

@@ -7,11 +7,12 @@ import * as security from '../security.js';
 import * as utils from '../utils.js';
 import * as referral from '../referral.js';
 import { convexHttpClient } from '../convex-client.js';
+import { initGoogleSignIn, disableGoogleAutoSelect } from '../auth/google.js';
 
 // ==================== STATE ====================
 let currentUser = null;
 let isLoggedIn = false;
-let registrationData = {
+const registrationData = {
   name: '',
   email: '',
   phone: '',
@@ -36,7 +37,6 @@ export async function init(context) {
 
   ui.applyTheme();
 
-  // Hide shimmer after page is ready
   const shimmer = $('#shimmer-overlay');
 
   // 1. Check auth
@@ -59,10 +59,12 @@ export async function init(context) {
   }
 
   // 3. Hide shimmer
-  shimmer.classList.add('hidden');
-  setTimeout(() => {
-    shimmer.style.display = 'none';
-  }, 700);
+  if (shimmer) {
+    shimmer.classList.add('hidden');
+    setTimeout(() => {
+      shimmer.style.display = 'none';
+    }, 700);
+  }
 
   // 4. Attach event listeners
   attachEventListeners(context);
@@ -74,39 +76,27 @@ export async function init(context) {
 function attachEventListeners(context) {
   // Theme toggle
   const themeToggle = $('#theme-toggle');
-  if (themeToggle) {
-    themeToggle.addEventListener('click', ui.toggleTheme);
-  }
+  if (themeToggle) themeToggle.addEventListener('click', ui.toggleTheme);
 
   // Home button
   const homeBtn = $('#home-btn');
   if (homeBtn) {
     homeBtn.addEventListener('click', () => {
-      if (auth.getUser()) {
-        router.navigateTo('subjects');
-      } else {
-        router.navigateTo('welcome');
-      }
+      if (auth.getUser()) router.navigateTo('subjects');
+      else router.navigateTo('welcome');
     });
   }
 
-  // Agent terms links
-  const agentTermsLink = $('#agent-terms-link');
-  if (agentTermsLink) {
-    agentTermsLink.addEventListener('click', (e) => {
-      e.preventDefault();
-      ui.showToast('Loading Agent Terms...', 'info');
-      router.navigateTo('agent-terms');
-    });
-  }
-  const regAgentTermsLink = $('#reg-agent-terms-link');
-  if (regAgentTermsLink) {
-    regAgentTermsLink.addEventListener('click', (e) => {
-      e.preventDefault();
-      ui.showToast('Loading Agent Terms...', 'info');
-      router.navigateTo('agent-terms');
-    });
-  }
+  // Agent Terms links
+  ['#agent-terms-link', '#reg-agent-terms-link', '#google-agent-terms-link'].forEach(sel => {
+    const link = $(sel);
+    if (link) {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        router.navigateTo('agent-terms');
+      });
+    }
+  });
 
   // Terms checkbox → enable upgrade button
   const termsCheck = $('#agent-terms-check');
@@ -116,18 +106,12 @@ function attachEventListeners(context) {
       upgradeBtn.disabled = !termsCheck.checked;
     });
   }
-
-  // Upgrade button
-  if (upgradeBtn) {
-    upgradeBtn.addEventListener('click', upgradeToAgent);
-  }
+  if (upgradeBtn) upgradeBtn.addEventListener('click', upgradeToAgent);
 
   // Start earning button
   const startEarningBtn = $('#start-earning-btn');
   if (startEarningBtn) {
-    startEarningBtn.addEventListener('click', () => {
-      router.navigateTo('referral');
-    });
+    startEarningBtn.addEventListener('click', () => router.navigateTo('referral'));
   }
 
   // Register agent button (not logged in)
@@ -143,9 +127,7 @@ function attachEventListeners(context) {
   // Modal events
   const modalOverlay = $('#auth-modal-overlay');
   const closeModalBtn = $('#close-modal-btn');
-  if (closeModalBtn) {
-    closeModalBtn.addEventListener('click', hideModal);
-  }
+  if (closeModalBtn) closeModalBtn.addEventListener('click', hideModal);
   if (modalOverlay) {
     modalOverlay.addEventListener('click', (e) => {
       if (e.target === modalOverlay) hideModal();
@@ -171,33 +153,26 @@ function attachEventListeners(context) {
   // Login sheet navigation
   const modalGoRegister = $('#modal-go-register');
   const modalGoChoice = $('#modal-go-choice');
-  if (modalGoRegister) {
-    modalGoRegister.addEventListener('click', showRegistrationFlow);
-  }
-  if (modalGoChoice) {
-    modalGoChoice.addEventListener('click', showChoice);
-  }
+  if (modalGoRegister) modalGoRegister.addEventListener('click', showRegistrationFlow);
+  if (modalGoChoice) modalGoChoice.addEventListener('click', showChoice);
 
-  // Login submit
-  const modalLoginSubmit = $('#modal-login-submit');
-  if (modalLoginSubmit) {
-    modalLoginSubmit.addEventListener('click', handleLogin);
-  }
+  // Login form submission
+  const loginForm = $('#modal-login-form');
+  if (loginForm) loginForm.addEventListener('submit', handleLogin);
 
   // Forgot password
   const modalForgotPw = $('#modal-forgot-pw');
   if (modalForgotPw) {
     modalForgotPw.addEventListener('click', () => {
-      router.navigateTo('forgot-password');
       hideModal();
+      router.navigateTo('forgot-password');
     });
   }
 
   // Registration step navigation
   const regGoStep2 = $('#reg-go-step2');
-  if (regGoStep2) {
-    regGoStep2.addEventListener('click', goToStep2);
-  }
+  if (regGoStep2) regGoStep2.addEventListener('click', goToStep2);
+
   const regBackStep1 = $('#reg-back-step1');
   if (regBackStep1) {
     regBackStep1.addEventListener('click', () => {
@@ -207,14 +182,13 @@ function attachEventListeners(context) {
       clearRegStatus();
     });
   }
+
   const regBackChoice = $('#reg-back-choice');
-  if (regBackChoice) {
-    regBackChoice.addEventListener('click', showChoice);
-  }
+  if (regBackChoice) regBackChoice.addEventListener('click', showChoice);
+
   const regSubmit = $('#reg-submit');
-  if (regSubmit) {
-    regSubmit.addEventListener('click', handleRegistration);
-  }
+  if (regSubmit) regSubmit.addEventListener('click', handleRegistration);
+
   const regStartJourney = $('#reg-start-journey');
   if (regStartJourney) {
     regStartJourney.addEventListener('click', () => {
@@ -228,11 +202,8 @@ function attachEventListeners(context) {
   if (regReferral) {
     regReferral.addEventListener('input', () => {
       const code = regReferral.value.trim().toUpperCase();
-      if (code.length >= 4) {
-        validateReferralCode(code);
-      } else {
-        $('#reg-referral-status').textContent = '';
-      }
+      if (code.length >= 4) validateReferralCode(code);
+      else $('#reg-referral-status').textContent = '';
     });
   }
 
@@ -242,34 +213,259 @@ function attachEventListeners(context) {
     regPassword.addEventListener('input', () => {
       const val = regPassword.value;
       const strengthEl = $('#reg-pw-strength');
-      if (val.length === 0) {
-        strengthEl.textContent = '';
-        return;
-      }
+      if (val.length === 0) { strengthEl.textContent = ''; return; }
       const strength = validation.checkPasswordStrength(val);
       let label = 'Weak';
       let color = '#ef4444';
-      if (strength.score >= 4) {
-        label = 'Strong';
-        color = '#10b981';
-      } else if (strength.score >= 2) {
-        label = 'Medium';
-        color = '#f59e0b';
-      }
+      if (strength.score >= 4) { label = 'Strong'; color = '#10b981'; }
+      else if (strength.score >= 2) { label = 'Medium'; color = '#f59e0b'; }
       strengthEl.textContent = `Password strength: ${label}`;
       strengthEl.style.color = color;
     });
   }
 
-  // Close modal on Escape
+  // ============================================================
+  // GOOGLE SETUP
+  // ============================================================
+  setupGoogleChoice();
+  setupGoogleTermsGuard();
+
+  // Escape key closes modal
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       const overlay = $('#auth-modal-overlay');
-      if (overlay && overlay.classList.contains('active')) {
-        hideModal();
-      }
+      if (overlay && overlay.classList.contains('active')) hideModal();
     }
   });
+}
+
+// ============================================================
+// GOOGLE SIGN-IN / SIGN-UP
+// ============================================================
+
+async function setupGoogleChoice() {
+  const container = $('#google-agent-container-choice');
+  if (!container) return;
+  await initGoogleSignIn({
+    container,
+    text: 'continue_with',
+    onCredential: async (response) => {
+      // Terms gate (in case the click-guard is bypassed somehow)
+      const termsCheck = $('#google-agent-terms-check');
+      if (termsCheck && !termsCheck.checked) {
+        ui.showToast('Please accept the Agent Terms to continue.', 'warning');
+        return;
+      }
+      captureReferralForGoogle();
+      await handleGoogleCredential(response.credential);
+    },
+  });
+}
+
+async function setupGoogleLogin() {
+  const container = $('#google-agent-container-login');
+  if (!container) return;
+  await initGoogleSignIn({
+    container,
+    text: 'signin_with',
+    onCredential: async (response) => {
+      captureReferralForGoogle();
+      await handleGoogleCredential(response.credential);
+    },
+  });
+}
+
+function setupGoogleTermsGuard() {
+  const termsCheck = $('#google-agent-terms-check');
+  const guard = $('#google-agent-click-guard');
+  const container = $('#google-agent-container-choice');
+  if (!termsCheck || !guard) return;
+
+  const update = () => {
+    guard.style.pointerEvents = termsCheck.checked ? 'none' : 'auto';
+    if (container) container.style.opacity = termsCheck.checked ? '1' : '0.6';
+  };
+  termsCheck.addEventListener('change', update);
+  update();
+
+  guard.addEventListener('click', () => {
+    ui.showToast('Please accept the Agent Terms to continue with Google.', 'warning');
+    termsCheck.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+}
+
+function captureReferralForGoogle() {
+  // Persist any referral so the backend can pick it up during Google signup
+  const code =
+    ($('#reg-referral')?.value || '').trim().toUpperCase() ||
+    referral.detectReferralFromURL?.() ||
+    referral.getStoredReferralCode?.();
+  if (code) {
+    try { utils.setLocalStorage('referral_code', code); } catch (_) {}
+  }
+}
+
+async function handleGoogleCredential(idToken) {
+  ui.showLoading('Signing in with Google…');
+  try {
+    const result = await auth.loginWithGoogle(idToken);
+
+    // Existing password account with the same email → linking flow
+    if (result.requiresLink) {
+      ui.hideLoading();
+      openGoogleLinkModal({
+        email: result.email,
+        linkToken: result.linkToken,                     // ← NEW: forward linkToken
+        idToken,
+        googleSub: result.googleSub,                     // ← kept for legacy
+        deviceFingerprint: result.deviceFingerprint,
+        deviceInfo: result.deviceInfo
+      });
+      return;
+    }
+
+    // Success — check if user is already an agent
+    const user = result.user || auth.getUser();
+
+    if (user && user.isAgent === true) {
+      ui.hideLoading();
+      ui.showToast('Welcome back, Agent!', 'success');
+      finishAgentFlow(user);
+      return;
+    }
+
+    // Not an agent yet — upgrade
+    ui.showLoading('Upgrading to agent…');
+    await upgradeAuthenticatedUserToAgent();
+    ui.hideLoading();
+    finishAgentFlow(user);
+
+  } catch (err) {
+    ui.hideLoading();
+    ui.showToast(err.message || 'Google sign-in failed', 'error');
+  }
+}
+
+async function upgradeAuthenticatedUserToAgent() {
+  try {
+    const token = auth.getToken();
+    const result = await convexHttpClient.action('users/mutations:upgradeToAgent', { token });
+    if (!result || !result.success) {
+      throw new Error(result?.message || 'Upgrade failed');
+    }
+    // Reflect locally
+    const user = auth.getUser();
+    if (user) {
+      user.isAgent = true;
+      await auth.setUser(user);
+    }
+    return result.data || {};
+  } catch (err) {
+    // Non-fatal — user is authenticated, but not an agent
+    console.warn('[Agent] Upgrade after Google failed:', err);
+    ui.showToast(err.message || 'Could not upgrade to agent', 'warning');
+    return null;
+  }
+}
+
+function finishAgentFlow(user) {
+  hideModal();
+
+  const loggedInView = $('#logged-in-view');
+  const notLoggedInView = $('#not-logged-in-view');
+  loggedInView.classList.remove('hidden');
+  notLoggedInView.classList.add('hidden');
+
+  const displayName = user?.name || user?.displayName || 'Agent';
+  $('#agent-user-name').textContent = displayName;
+  $('#agent-name-after').textContent = displayName;
+
+  $('#upgrade-section')?.classList.add('hidden');
+  $('#after-upgrade-view')?.classList.remove('hidden');
+
+  ui.showToast('🎉 You are now a MedVix Agent!', 'success');
+}
+
+// ============================================================
+// ACCOUNT LINKING MODAL
+// ============================================================
+function openGoogleLinkModal({
+  email,
+  linkToken,                                         // ← NEW
+  idToken,
+  googleSub,
+  deviceFingerprint,
+  deviceInfo
+}) {
+  const modal = $('#google-link-modal');
+  const emailEl = $('#google-link-email');
+  const identifierInput = $('#google-link-identifier');
+  const pwdInput = $('#google-link-password');
+  const submitBtn = $('#google-link-submit');
+  const cancelBtn = $('#google-link-cancel');
+  const closeBtn = $('#google-link-close');
+
+  emailEl.textContent = email;
+  identifierInput.value = email;
+  pwdInput.value = '';
+  modal.style.display = 'flex';
+  setTimeout(() => pwdInput.focus(), 100);
+
+  const close = () => {
+    modal.style.display = 'none';
+    disableGoogleAutoSelect?.();
+  };
+
+  const submit = async () => {
+    const identifier = identifierInput.value.trim() || email;
+    const pwd = pwdInput.value;
+    if (!pwd) {
+      ui.showFormError('google-link-password', 'Password required');
+      return;
+    }
+    ui.clearFormError('google-link-password');
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Connecting…';
+
+    try {
+      await auth.linkGoogleAccount({
+        linkToken,                                   // ← NEW: the important one
+        identifier,
+        password: pwd,
+        idToken,
+        googleSub,
+        deviceFingerprint,
+        deviceInfo
+      });
+
+      modal.style.display = 'none';
+      ui.showToast('Google connected to your account', 'success');
+
+      // Now upgrade to agent (if not already)
+      const user = auth.getUser();
+      if (user && user.isAgent !== true) {
+        ui.showLoading('Upgrading to agent…');
+        await upgradeAuthenticatedUserToAgent();
+        ui.hideLoading();
+      }
+      finishAgentFlow(user);
+
+    } catch (err) {
+      ui.showToast(err.message || 'Could not connect Google', 'error');
+      ui.showFormError('google-link-password', err.message || 'Invalid credentials');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Connect Google';
+    }
+  };
+
+  submitBtn.onclick = submit;
+  cancelBtn.onclick = close;
+  closeBtn.onclick = close;
+  pwdInput.onkeydown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); submit(); }
+  };
 }
 
 // ==================== MODAL HELPERS ====================
@@ -283,13 +479,13 @@ function hideModal() {
   const overlay = $('#auth-modal-overlay');
   overlay.classList.remove('active');
   document.body.style.overflow = '';
-  // Reset views
+
   $('#modal-choice').style.display = 'block';
   $('#login-sheet').classList.remove('active');
   $('#registration-flow').classList.remove('active');
   clearLoginStatus();
   clearRegStatus();
-  // Reset registration steps
+
   $('#reg-step1').classList.add('active');
   $('#reg-step2').classList.remove('active');
   $('#reg-step3').classList.remove('active');
@@ -302,6 +498,8 @@ function showChoice() {
   $('#registration-flow').classList.remove('active');
   clearLoginStatus();
   clearRegStatus();
+  // Re-render Google (container was hidden, GIS needs a fresh render)
+  setupGoogleChoice();
 }
 
 function showLoginSheet() {
@@ -309,6 +507,8 @@ function showLoginSheet() {
   $('#login-sheet').classList.add('active');
   $('#registration-flow').classList.remove('active');
   clearLoginStatus();
+  // Render Google AFTER the sheet becomes visible
+  setupGoogleLogin();
 }
 
 function showRegistrationFlow() {
@@ -332,45 +532,39 @@ function resetRegistrationForm() {
   $('#reg-terms-doc').checked = false;
   $('#reg-privacy-doc').checked = false;
   $('#reg-agent-terms-doc').checked = false;
+
   $('#reg-step1').classList.add('active');
   $('#reg-step2').classList.remove('active');
   $('#reg-step3').classList.remove('active');
   $('#reg-step-indicator').textContent = 'Step 1 of 2: Personal Info';
+
   clearRegStatus();
   $('#reg-pw-strength').textContent = '';
   $('#reg-referral-status').textContent = '';
-  // Try to detect referral from URL
-  const urlRef = referral.detectReferralFromURL();
-  if (urlRef) {
-    $('#reg-referral').value = urlRef;
+
+  const urlRef = referral.detectReferralFromURL?.();
+  const storedRef = referral.getStoredReferralCode?.();
+  const refCode = urlRef || storedRef;
+
+  if (refCode) {
+    $('#reg-referral').value = refCode;
     $('#reg-referral').readOnly = true;
     $('#reg-referral-status').textContent = '⏳ Validating...';
-    validateReferralCode(urlRef);
-  } else {
-    const storedRef = referral.getStoredReferralCode();
-    if (storedRef) {
-      $('#reg-referral').value = storedRef;
-      $('#reg-referral').readOnly = true;
-      $('#reg-referral-status').textContent = '⏳ Validating...';
-      validateReferralCode(storedRef);
-    }
+    validateReferralCode(refCode);
   }
 }
 
-// ==================== LOGIN HANDLER ====================
+// ==================== LOGIN HANDLER (Email/Phone) ====================
 async function handleLogin(e) {
   e.preventDefault();
+
   const email = $('#modal-login-email').value.trim();
   const password = $('#modal-login-password').value;
   const remember = $('#modal-remember').checked;
 
-  if (!email) {
-    showLoginStatus('Please enter your email or phone.', 'error');
-    return;
-  }
+  if (!email) { showLoginStatus('Please enter your email or phone.', 'error'); return; }
   if (!password || password.length < 8) {
-    showLoginStatus('Password must be at least 8 characters.', 'error');
-    return;
+    showLoginStatus('Password must be at least 8 characters.', 'error'); return;
   }
 
   ui.showLoading('Logging in...');
@@ -385,45 +579,16 @@ async function handleLogin(e) {
 
     const user = await auth.login(email, password, { deviceFingerprint, deviceInfo });
 
-    if (remember) {
-      utils.setLocalStorage('rememberedEmail', email);
-    } else {
-      utils.removeLocalStorage('rememberedEmail');
-    }
+    if (remember) utils.setLocalStorage('rememberedEmail', email);
+    else utils.removeLocalStorage('rememberedEmail');
 
+    // Upgrade to agent if needed
+    if (user && user.isAgent !== true) {
+      ui.showLoading('Upgrading to agent...');
+      await upgradeAuthenticatedUserToAgent();
+    }
     ui.hideLoading();
-
-    // Now upgrade to agent
-    ui.showLoading('Upgrading to agent...');
-    try {
-      const token = auth.getToken();
-      const result = await convexHttpClient.action('users/mutations:upgradeToAgent', { token });
-      ui.hideLoading();
-      if (result.success) {
-        ui.showToast(result.data.message || 'Upgrade successful!', 'success');
-        hideModal();
-        // Show after-upgrade view on main page
-        const loggedInView = $('#logged-in-view');
-        const notLoggedInView = $('#not-logged-in-view');
-        loggedInView.classList.remove('hidden');
-        notLoggedInView.classList.add('hidden');
-        const displayName = user.name || user.displayName || 'User';
-        $('#agent-user-name').textContent = displayName;
-        $('#agent-name-after').textContent = displayName;
-        $('#upgrade-section').classList.add('hidden');
-        $('#after-upgrade-view').classList.remove('hidden');
-        ui.showToast('🎉 Congratulations! You are now a MedVix Agent.', 'success');
-      } else {
-        ui.showToast(result.message || 'Upgrade failed', 'error');
-        hideModal();
-        window.location.reload();
-      }
-    } catch (err) {
-      ui.hideLoading();
-      ui.showToast(err.message || 'Upgrade failed', 'error');
-      hideModal();
-      window.location.reload();
-    }
+    finishAgentFlow(user);
 
   } catch (error) {
     ui.hideLoading();
@@ -438,10 +603,7 @@ function showLoginStatus(msg, type = 'info') {
   const el = $('#modal-login-status');
   el.innerHTML = `<div class="alert alert-${type}" style="font-size:0.85rem;">${msg}</div>`;
 }
-
-function clearLoginStatus() {
-  $('#modal-login-status').innerHTML = '';
-}
+function clearLoginStatus() { $('#modal-login-status').innerHTML = ''; }
 
 // ==================== REGISTRATION HANDLER ====================
 function goToStep2() {
@@ -454,40 +616,21 @@ function goToStep2() {
   const privacy = $('#reg-privacy-doc').checked;
   const agentTerms = $('#reg-agent-terms-doc').checked;
 
-  // Validate
-  if (!name || name.length < 2) {
-    showRegStatus('Please enter your full name (min 2 characters).', 'error');
-    return;
-  }
-  if (!email || !validation.validateEmail(email)) {
-    showRegStatus('Please enter a valid email address.', 'error');
-    return;
-  }
-  if (!phone || !validation.validatePhone(phone)) {
-    showRegStatus('Please enter a valid Kenyan phone number (e.g., 0712345678).', 'error');
-    return;
-  }
-  if (!password || password.length < 8) {
-    showRegStatus('Password must be at least 8 characters.', 'error');
-    return;
-  }
-  if (password !== confirm) {
-    showRegStatus('Passwords do not match.', 'error');
-    return;
-  }
+  if (!name || name.length < 2) { showRegStatus('Please enter your full name (min 2 characters).', 'error'); return; }
+  if (!email || !validation.validateEmail(email)) { showRegStatus('Please enter a valid email address.', 'error'); return; }
+  if (!phone || !validation.validatePhone(phone)) { showRegStatus('Please enter a valid Kenyan phone number.', 'error'); return; }
+  if (!password || password.length < 8) { showRegStatus('Password must be at least 8 characters.', 'error'); return; }
+  if (password !== confirm) { showRegStatus('Passwords do not match.', 'error'); return; }
   if (!terms || !privacy || !agentTerms) {
-    showRegStatus('Please accept all three documents: Terms, Privacy, and Agent Terms.', 'error');
-    return;
+    showRegStatus('Please accept all three documents: Terms, Privacy, and Agent Terms.', 'error'); return;
   }
 
-  // Check password strength
   const strength = validation.checkPasswordStrength(password);
   if (strength.score < 2) {
     showRegStatus('Password is too weak. Use a mix of uppercase, lowercase, numbers, and special characters.', 'error');
     return;
   }
 
-  // Save data
   registrationData.name = name;
   registrationData.email = email;
   registrationData.phone = validation.formatKenyanPhone(phone) || phone;
@@ -498,7 +641,6 @@ function goToStep2() {
   registrationData.privacy = privacy;
   registrationData.agentTerms = agentTerms;
 
-  // Move to step 2
   $('#reg-step1').classList.remove('active');
   $('#reg-step2').classList.add('active');
   $('#reg-step-indicator').textContent = 'Step 2 of 2: Security Questions';
@@ -517,10 +659,7 @@ async function handleRegistration() {
     showRegStatus('Please fill in all security questions and answers.', 'error');
     return;
   }
-
-  const questions = [q1, q2, q3];
-  const unique = new Set(questions);
-  if (unique.size !== 3) {
+  if (new Set([q1, q2, q3]).size !== 3) {
     showRegStatus('Please choose three different questions.', 'error');
     return;
   }
@@ -541,7 +680,7 @@ async function handleRegistration() {
       timezone: new Date().getTimezoneOffset()
     };
 
-    const userData = {
+    await auth.register({
       name: registrationData.name,
       email: registrationData.email,
       phone: registrationData.phone,
@@ -549,27 +688,18 @@ async function handleRegistration() {
       securityQuestions: registrationData.securityQuestions,
       deviceFingerprint,
       deviceInfo,
+      referralCode: registrationData.referral || undefined,
       isAgent: true,
       agentVerified: false
-    };
-
-    const user = await auth.register(
-      userData,
-      deviceInfo,
-      registrationData.referral || null,
-      true // isAgent = true
-    );
+    });
 
     ui.hideLoading();
 
-    // Check auth
     if (!auth.checkAuth()) {
-      // Fallback: reload
       window.location.href = '/referral';
       return;
     }
 
-    // Show success (step 3)
     $('#reg-step2').classList.remove('active');
     $('#reg-step3').classList.add('active');
     $('#reg-step-indicator').textContent = '✅ Account Created!';
@@ -588,10 +718,7 @@ function showRegStatus(msg, type = 'info') {
   const el = $('#reg-status');
   el.innerHTML = `<div class="alert alert-${type}" style="font-size:0.85rem;">${msg}</div>`;
 }
-
-function clearRegStatus() {
-  $('#reg-status').innerHTML = '';
-}
+function clearRegStatus() { $('#reg-status').innerHTML = ''; }
 
 // ==================== REFERRAL VALIDATION ====================
 async function validateReferralCode(code) {
@@ -615,7 +742,7 @@ async function validateReferralCode(code) {
   }
 }
 
-// ==================== UPGRADE TO AGENT ====================
+// ==================== UPGRADE TO AGENT (logged-in user path) ====================
 async function upgradeToAgent() {
   const termsCheck = $('#agent-terms-check');
   if (!termsCheck.checked) {
@@ -635,11 +762,12 @@ async function upgradeToAgent() {
     const token = auth.getToken();
     const result = await convexHttpClient.action('users/mutations:upgradeToAgent', { token });
     ui.hideLoading();
+
     if (result.success) {
-      ui.showToast(result.data.message || 'Upgrade successful!', 'success');
-      document.getElementById('upgrade-section').classList.add('hidden');
-      document.getElementById('after-upgrade-view').classList.remove('hidden');
-      const displayName = currentUser.name || currentUser.displayName || 'User';
+      ui.showToast(result.data?.message || 'Upgrade successful!', 'success');
+      $('#upgrade-section').classList.add('hidden');
+      $('#after-upgrade-view').classList.remove('hidden');
+      const displayName = currentUser?.name || currentUser?.displayName || 'User';
       $('#agent-name-after').textContent = displayName;
       clearStatus();
     } else {
@@ -656,12 +784,9 @@ function showStatus(msg, type = 'info') {
   const el = $('#status-message');
   el.innerHTML = `<div class="alert alert-${type}">${msg}</div>`;
 }
-
-function clearStatus() {
-  $('#status-message').innerHTML = '';
-}
+function clearStatus() { $('#status-message').innerHTML = ''; }
 
 // ==================== DESTROY ====================
 export function destroy() {
-  // Cleanup if needed
+  // Nothing extra — the page-manager removes the DOM.
 }

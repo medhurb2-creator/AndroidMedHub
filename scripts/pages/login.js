@@ -5,35 +5,32 @@ import * as router from '../router.js';
 import * as validation from '../validation.js';
 import * as security from '../security.js';
 import * as utils from '../utils.js';
+import { initGoogleSignIn, disableGoogleAutoSelect } from '../auth/google.js';
 
 export async function init(context) {
   // Apply theme
   ui.applyTheme();
 
-  // Deep‑link redirect
+  // Deep-link redirect
   const redirectParam = new URLSearchParams(window.location.search).get('redirect');
   let redirectTarget = null;
   if (redirectParam) {
     try {
-      redirectTarget = decodeURIComponent(redirectParam);
-      if (!redirectTarget.startsWith('/')) redirectTarget = null;
-    } catch {
-      redirectTarget = null;
-    }
+      const decoded = decodeURIComponent(redirectParam);
+      if (decoded.startsWith('/')) redirectTarget = decoded;
+    } catch { /* ignore */ }
   }
 
-  // If already authenticated, redirect
-  if (app.checkAuth()) {
-    if (redirectTarget) {
-      window.location.href = redirectTarget;
-    } else {
-      router.navigateTo('subjects');
-    }
+  // If already authenticated → redirect
+  if (auth.checkAuth()) {
+    if (redirectTarget) window.location.href = redirectTarget;
+    else router.navigateTo('subjects');
     return;
   }
 
-  // DOM refs – scoped to the page root
+  // ---- DOM refs (scoped to the page root) ----
   const $ = (sel) => context.root.querySelector(sel);
+
   const loginForm = $('#login-form');
   const emailInput = $('#email');
   const passwordInput = $('#password');
@@ -43,73 +40,79 @@ export async function init(context) {
   const signupBtn = $('#signupBtn');
   const backBtn = $('#backBtn');
   const themeToggle = $('#themeToggle');
+  const googleContainer = $('#google-login-container');
 
-  // Setup live validation
+  // ---- Live validation ----
   validation.setupLiveValidation('login-form', {
     email: { required: true, email: true },
     password: { required: true, min: 8 }
   });
 
-  // Remembered email
+  // ---- Remembered email ----
   const rememberedEmail = utils.getLocalStorage('rememberedEmail');
-  if (rememberedEmail) {
+  if (rememberedEmail && emailInput) {
     emailInput.value = rememberedEmail;
-    rememberCheck.checked = true;
+    if (rememberCheck) rememberCheck.checked = true;
   }
 
-  // --- Event listeners ---
-
-  // Theme toggle
+  // ---- Theme toggle ----
   if (themeToggle) {
-    themeToggle.addEventListener('click', () => {
-      ui.toggleTheme();
-    });
+    themeToggle.addEventListener('click', () => ui.toggleTheme());
   }
 
-  // Toggle password visibility
+  // ---- Toggle password visibility ----
   if (toggleBtn) {
     toggleBtn.addEventListener('click', () => {
       ui.togglePasswordVisibility('password');
     });
   }
 
-  // Forgot password
+  // ---- Forgot password ----
   if (forgotBtn) {
     forgotBtn.addEventListener('click', () => {
       let url = 'forgot-password';
-      if (redirectTarget) {
-        url += `?redirect=${encodeURIComponent(redirectTarget)}`;
-      }
+      if (redirectTarget) url += `?redirect=${encodeURIComponent(redirectTarget)}`;
       router.navigateTo(url);
     });
   }
 
-  // Signup
+  // ---- Signup ----
   if (signupBtn) {
     signupBtn.addEventListener('click', () => {
       let url = 'signup';
-      if (redirectTarget) {
-        url += `?redirect=${encodeURIComponent(redirectTarget)}`;
-      }
+      if (redirectTarget) url += `?redirect=${encodeURIComponent(redirectTarget)}`;
       router.navigateTo(url);
     });
   }
 
-  // Back button
+  // ---- Back ----
   if (backBtn) {
-    backBtn.addEventListener('click', () => {
-      router.navigateTo('welcome');
+    backBtn.addEventListener('click', () => router.navigateTo('welcome'));
+  }
+
+  // ============================================================
+  // GOOGLE SIGN-IN
+  // ============================================================
+  if (googleContainer) {
+    await initGoogleSignIn({
+      container: googleContainer,
+      text: 'continue_with',           // renders "Continue with Google"
+      onCredential: async (response) => {
+        await handleGoogleCredential(response.credential);
+      },
     });
   }
 
-  // Login form submission
+  // ============================================================
+  // PASSWORD LOGIN
+  // ============================================================
   if (loginForm) {
     loginForm.addEventListener('submit', async (event) => {
       event.preventDefault();
 
       const email = emailInput.value.trim();
       const password = passwordInput.value;
-      const remember = rememberCheck.checked;
+      const remember = rememberCheck ? rememberCheck.checked : false;
 
       // Validate
       if (!validation.validateEmail(email) && !validation.validatePhone(email)) {
@@ -131,7 +134,7 @@ export async function init(context) {
           timezone: new Date().getTimezoneOffset()
         };
 
-        const user = await auth.login(email, password, { deviceFingerprint, deviceInfo });
+        await auth.login(email, password, { deviceFingerprint, deviceInfo });
 
         if (remember) utils.setLocalStorage('rememberedEmail', email);
         else utils.removeLocalStorage('rememberedEmail');
@@ -153,8 +156,128 @@ export async function init(context) {
       }
     });
   }
+
+  // ============================================================
+  // GOOGLE CREDENTIAL HANDLER
+  // ============================================================
+  async function handleGoogleCredential(idToken) {
+    ui.showLoading('Signing in with Google…');
+
+    try {
+      const result = await auth.loginWithGoogle(idToken);
+
+      // Existing account with this email → link flow
+      if (result.requiresLink) {
+        ui.hideLoading();
+        openGoogleLinkModal({
+          email: result.email,
+          linkToken: result.linkToken,                     // ← NEW: forward linkToken
+          idToken,
+          googleSub: result.googleSub,                     // ← kept for legacy
+          deviceFingerprint: result.deviceFingerprint,
+          deviceInfo: result.deviceInfo
+        });
+        return;
+      }
+
+      // Success (new or existing Google identity)
+      ui.hideLoading();
+      ui.showToast(
+        result.isNewUser ? 'Account created — welcome!' : 'Signed in with Google',
+        'success'
+      );
+
+      if (redirectTarget) {
+        window.location.href = redirectTarget;
+      } else {
+        router.navigateTo('subjects');
+      }
+
+    } catch (err) {
+      ui.hideLoading();
+      ui.showToast(err.message || 'Google sign-in failed', 'error');
+    }
+  }
+
+  // ============================================================
+  // ACCOUNT LINKING MODAL
+  // ============================================================
+  function openGoogleLinkModal({
+    email: linkedEmail,
+    linkToken,                                           // ← NEW
+    idToken,
+    googleSub,
+    deviceFingerprint,
+    deviceInfo
+  }) {
+    const modal = $('#google-link-modal');
+    const emailEl = $('#google-link-email');
+    const pwdInput = $('#google-link-password');
+    const submitBtn = $('#google-link-submit');
+    const cancelBtn = $('#google-link-cancel');
+    const closeBtn = $('#google-link-close');
+
+    emailEl.textContent = linkedEmail;
+    pwdInput.value = '';
+    modal.style.display = 'flex';
+    setTimeout(() => pwdInput.focus(), 100);
+
+    const close = () => {
+      modal.style.display = 'none';
+      disableGoogleAutoSelect?.();
+    };
+
+    const submit = async () => {
+      const pwd = pwdInput.value;
+      if (!pwd) {
+        ui.showFormError('google-link-password', 'Password required');
+        return;
+      }
+      ui.clearFormError('google-link-password');
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Connecting…';
+
+      try {
+        await auth.linkGoogleAccount({
+          linkToken,                                     // ← NEW: the important one
+          identifier: linkedEmail,
+          password: pwd,
+          idToken,
+          googleSub,
+          deviceFingerprint,
+          deviceInfo
+        });
+
+        modal.style.display = 'none';
+        ui.showToast('Google connected to your account', 'success');
+
+        if (redirectTarget) {
+          window.location.href = redirectTarget;
+        } else {
+          router.navigateTo('subjects');
+        }
+
+      } catch (err) {
+        ui.showToast(err.message || 'Could not connect Google', 'error');
+        ui.showFormError('google-link-password', err.message || 'Invalid password');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Connect Google';
+      }
+    };
+
+    submitBtn.onclick = submit;
+    cancelBtn.onclick = close;
+    closeBtn.onclick = close;
+    pwdInput.onkeydown = (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); submit(); }
+    };
+  }
+
+  console.log('[Login] Initialized.');
 }
 
 export function destroy() {
-  // Cleanup – called when user leaves the page
+  // Nothing to clean up beyond what the page-manager handles.
 }

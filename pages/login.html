@@ -22,6 +22,11 @@
     <div class="form-container">
       <h2>Login to your account</h2>
 
+      <!-- ===== Google Sign-In ===== -->
+      <div id="google-login-container" class="google-signin-container"></div>
+
+      <div class="auth-divider"><span>or</span></div>
+
       <form id="login-form">
         <div class="form-group">
           <label for="email">Email or Phone (254...)</label>
@@ -52,7 +57,7 @@
 
         <div class="action-buttons">
           <button type="submit" class="btn-primary">Login</button>
-          <button id="signupBtn" class="btn-secondary">Create account</button>
+          <button id="signupBtn" class="btn-secondary" type="button">Create account</button>
         </div>
       </form>
 
@@ -66,4 +71,35 @@
   <footer>
     <button id="backBtn" class="btn-text">← Back</button>
   </footer>
+
+  <!-- ============================================================
+       Google account-linking modal
+       (shown when the Google email already belongs to an existing account)
+       ============================================================ -->
+  <div id="google-link-modal" class="modal-overlay" style="display:none;">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>You already have an account</h3>
+        <button class="modal-close" id="google-link-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>
+          A MedVix account already exists with
+          <strong id="google-link-email">—</strong>.
+        </p>
+        <p>Enter your MedVix password to connect Google Sign-In to that account.</p>
+
+        <div class="form-group">
+          <label for="google-link-password">MedVix password</label>
+          <input type="password" id="google-link-password"
+                 placeholder="••••••••" autocomplete="current-password" />
+          <div class="error-message" data-for="google-link-password"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="google-link-cancel">Cancel</button>
+        <button class="btn-primary" id="google-link-submit">Connect Google</button>
+      </div>
+    </div>
+  </div>
 </section>

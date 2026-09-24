@@ -25,11 +25,51 @@
 
   <main class="form-container">
     <h1>Create your account</h1>
-    <p class="step-indicator" id="step-indicator">Step 1 of 3: Personal Information</p>
+    <p class="step-indicator" id="step-indicator">Step 1 of 4: Choose your sign-up method</p>
 
-    <!-- Step 1: Personal Information -->
+    <!-- ============================================================
+         STEP 1 – Choose Google OR Email/Phone (with Referral + Terms)
+         ============================================================ -->
     <div id="step1" class="step active">
-      <form id="step1-form">
+      <!-- Google button (rendered by GIS) with click guard -->
+      <div id="google-signup-container" class="google-signin-container">
+        <div id="google-click-guard" class="google-click-guard"></div>
+      </div>
+
+      <div class="auth-divider"><span>or</span></div>
+
+      <button type="button" id="emailSignupBtn" class="btn-primary btn-block">
+        Continue with Email / Phone
+      </button>
+
+      <!-- Referral (applies to BOTH Google and Email paths) -->
+      <div class="form-group" style="margin-top: 1.5rem;">
+        <label for="referralCode">
+          Referral Code
+          <span style="color: var(--text-muted); font-weight: normal;">(optional)</span>
+        </label>
+        <input type="text" id="referralCode" name="referralCode" placeholder="e.g., FHX7P4M2" />
+        <div id="referral-status" style="font-size: 0.8rem; margin-top: 0.25rem;"></div>
+        <small>If you were referred by a friend, enter their code here.</small>
+      </div>
+
+      <!-- Terms (applies to BOTH paths) -->
+      <div class="form-group checkbox">
+        <label>
+          <input type="checkbox" id="terms" name="terms" />
+          By continuing, you agree to the
+          <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and
+          <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>
+        </label>
+        <div class="error-message" data-for="terms"></div>
+      </div>
+    </div>
+
+    <!-- ============================================================
+         STEP 2 – Personal Information (email/phone path only)
+         ============================================================ -->
+    <div id="step2" class="step" style="display: none;">
+      <form id="step2-form">
         <div class="form-group">
           <label for="fullName">Full name</label>
           <input type="text" id="fullName" name="fullName" placeholder="e.g., John Mwangi" required />
@@ -65,32 +105,18 @@
         </div>
         <div id="password-strength" class="strength-meter"></div>
 
-        <div class="form-group checkbox">
-          <label>
-            <input type="checkbox" id="terms" name="terms" required />
-            I agree to the <a href="/terms">Terms of Service</a> and <a href="/privacy">Privacy Policy</a>
-          </label>
-          <div class="error-message" data-for="terms"></div>
-        </div>
-
-        <!-- Referral Code Field -->
-        <div class="form-group">
-          <label for="referralCode">Referral Code <span style="color: var(--text-muted); font-weight: normal;">(optional)</span></label>
-          <input type="text" id="referralCode" name="referralCode" placeholder="e.g., FHX7P4M2" />
-          <div id="referral-status" style="font-size: 0.8rem; margin-top: 0.25rem;"></div>
-          <small>If you were referred by a friend, enter their code here.</small>
-        </div>
-
         <div class="button-group">
-          <button type="button" id="cancelBtn" class="btn-secondary">Cancel</button>
-          <button type="button" id="nextStep1Btn" class="btn-primary">Next →</button>
+          <button type="button" id="backStep2Btn" class="btn-secondary">← Back</button>
+          <button type="button" id="nextStep2Btn" class="btn-primary">Next →</button>
         </div>
       </form>
     </div>
 
-    <!-- Step 2: Security Questions -->
-    <div id="step2" class="step" style="display: none;">
-      <form id="step2-form">
+    <!-- ============================================================
+         STEP 3 – Security Questions (email/phone path only)
+         ============================================================ -->
+    <div id="step3" class="step" style="display: none;">
+      <form id="step3-form">
         <p class="instruction">Set up security questions for account recovery. Choose three different questions and provide answers.</p>
 
         <div class="form-group">
@@ -157,21 +183,53 @@
         </div>
 
         <div class="button-group">
-          <button type="button" id="backStep2Btn" class="btn-secondary">← Back</button>
-          <button type="button" id="nextStep2Btn" class="btn-primary">Next →</button>
+          <button type="button" id="backStep3Btn" class="btn-secondary">← Back</button>
+          <button type="button" id="createAccountBtn" class="btn-primary">Create Account →</button>
         </div>
       </form>
     </div>
 
-    <!-- Step 3: Success & Redirect -->
-    <div id="step3" class="step" style="display: none; text-align: center;">
+    <!-- ============================================================
+         STEP 4 – Success & Redirect (both paths land here)
+         ============================================================ -->
+    <div id="step4" class="step" style="display: none; text-align: center;">
       <div class="success-icon">✅</div>
-      <h2>Account created successfully!</h2>
+      <h2 id="successTitle">Account created successfully!</h2>
       <p id="successMessage">
-        Your account has been created. You will be redirected to start your free trial in
-        <span id="countdown">3</span> seconds.
+        Redirecting in <span id="countdown">3</span> seconds…
       </p>
       <button id="redirectNowBtn" class="btn-primary">Go to Free Trial now</button>
     </div>
   </main>
+
+  <!-- ============================================================
+       Google account-linking modal
+       (shown when the Google email already belongs to an existing account)
+       ============================================================ -->
+  <div id="google-link-modal" class="modal-overlay" style="display:none;">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>You already have an account</h3>
+        <button class="modal-close" id="google-link-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>
+          A MedVix account already exists with
+          <strong id="google-link-email">—</strong>.
+        </p>
+        <p>Enter your MedVix password to connect Google Sign-In to that account.</p>
+
+        <div class="form-group">
+          <label for="google-link-password">MedVix password</label>
+          <input type="password" id="google-link-password"
+                 placeholder="••••••••" autocomplete="current-password" />
+          <div class="error-message" data-for="google-link-password"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="google-link-cancel">Cancel</button>
+        <button class="btn-primary" id="google-link-submit">Connect Google</button>
+      </div>
+    </div>
+  </div>
 </section>

@@ -39,8 +39,10 @@
       <div class="upgrade-section" id="upgrade-section">
         <span class="agent-badge">🤝 Agent Program</span>
         <h2>Welcome, <span id="agent-user-name">Agent</span>!</h2>
-        <p style="margin-bottom:0.8rem;">You are currently a <strong>normal user</strong>. Upgrade to become a MedVix
-          Agent and start earning commissions.</p>
+        <p style="margin-bottom:0.8rem;">
+          You are currently a <strong>normal user</strong>. Upgrade to become a MedVix
+          Agent and start earning commissions.
+        </p>
 
         <ul class="benefits-list" style="text-align:left;display:inline-block;">
           <li>✅ Refer new students – earn KSh 40 per first subscription</li>
@@ -49,7 +51,6 @@
           <li>✅ Track your referrals and earnings in your dashboard</li>
         </ul>
 
-        <!-- Agent Terms Checkbox -->
         <div class="agent-terms-wrap">
           <input type="checkbox" id="agent-terms-check">
           <label for="agent-terms-check">
@@ -59,21 +60,20 @@
           </label>
         </div>
 
-        <!-- Neon Upgrade Button -->
         <button id="upgrade-btn" class="btn-neon" disabled>⬆ Upgrade to Agent</button>
-
-        <!-- Status message area -->
         <div id="status-message"></div>
       </div>
 
-      <!-- After upgrade: Start Earning button -->
       <div id="after-upgrade-view" class="hidden" style="text-align:center;padding:1.5rem 0;">
         <div style="font-size:2.8rem;margin-bottom:0.5rem;">🎉</div>
         <h2>Congratulations, <span id="agent-name-after">Agent</span>!</h2>
-        <p style="color:var(--text-muted);margin-bottom:1.5rem;">You are now a MedVix Agent. Start your earning journey
-          today.</p>
-        <button id="start-earning-btn" class="btn-primary" style="font-size:1.15rem;padding:0.8rem 2.8rem;">🚀 Start
-          Your Earning</button>
+        <p style="color:var(--text-muted);margin-bottom:1.5rem;">
+          You are now a MedVix Agent. Start your earning journey today.
+        </p>
+        <button id="start-earning-btn" class="btn-primary"
+                style="font-size:1.15rem;padding:0.8rem 2.8rem;">
+          🚀 Start Your Earning
+        </button>
       </div>
     </div>
 
@@ -82,8 +82,9 @@
       <div class="upgrade-section" style="text-align:center;padding:2rem 1.5rem;">
         <span class="agent-badge">🤝 Agent Program</span>
         <h2 style="margin-bottom:0.2rem;">Upcoming Ambassador</h2>
-        <p style="color:var(--text-muted);margin-bottom:1.5rem;">Join the MedVix Agent program and help others while you
-          earn.</p>
+        <p style="color:var(--text-muted);margin-bottom:1.5rem;">
+          Join the MedVix Agent program and help others while you earn.
+        </p>
 
         <ul class="benefits-list" style="text-align:left;display:inline-block;">
           <li>✅ Earn KSh 40 per referral</li>
@@ -92,16 +93,21 @@
           <li>✅ Full dashboard &amp; tracking</li>
         </ul>
 
-        <button id="register-agent-btn" class="btn-primary" style="font-size:1.2rem;padding:0.8rem 2.8rem;">
+        <button id="register-agent-btn" class="btn-primary"
+                style="font-size:1.2rem;padding:0.8rem 2.8rem;">
           📋 Register as MedVix Agent
         </button>
-        <p style="margin-top:0.8rem;font-size:0.85rem;color:var(--text-muted);">Help others as you earn.</p>
+        <p style="margin-top:0.8rem;font-size:0.85rem;color:var(--text-muted);">
+          Help others as you earn.
+        </p>
       </div>
     </div>
 
   </div>
 
-  <!-- ===== AUTH MODAL ===== -->
+  <!-- ============================================================
+       AUTH MODAL
+       ============================================================ -->
   <div id="auth-modal-overlay">
     <div class="auth-modal-card" id="auth-modal-card">
       <button class="close-modal" id="close-modal-btn">✕</button>
@@ -110,6 +116,25 @@
       <div id="modal-choice">
         <h2>🔑 Account Required</h2>
         <p class="modal-sub">Do you already have an active account with MedVix?</p>
+
+        <!-- Google button (primary path) -->
+        <div id="google-agent-container-choice" class="google-signin-container">
+          <div id="google-agent-click-guard" class="google-click-guard"></div>
+        </div>
+
+        <!-- Agent terms (required before Google) -->
+        <div class="agent-terms-google-wrap">
+          <input type="checkbox" id="google-agent-terms-check">
+          <label for="google-agent-terms-check">
+            I agree to the
+            <a href="/agent-terms" id="google-agent-terms-link">Agent Terms</a>,
+            <a href="/terms" target="_blank" rel="noopener">Terms of Service</a>, and
+            <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.
+          </label>
+        </div>
+
+        <div class="auth-divider"><span>or</span></div>
+
         <div class="choice-buttons">
           <button id="choice-yes" class="btn-primary-choice">✅ Yes, I have an account</button>
           <button id="choice-no">❌ No, I need to register</button>
@@ -119,29 +144,44 @@
       <!-- === LOGIN SHEET === -->
       <div id="login-sheet">
         <h2 style="font-size:1.2rem;">Login to your account</h2>
-        <p class="modal-sub" style="font-size:0.85rem;">Enter your email/phone and password.</p>
+        <p class="modal-sub" style="font-size:0.85rem;">
+          Enter your email/phone and password.
+        </p>
 
-        <form id="modal-login-form" onsubmit="return false;">
+        <form id="modal-login-form">
           <div class="form-group">
             <label for="modal-login-email">Email or Phone (254...)</label>
-            <input type="text" id="modal-login-email" placeholder="e.g., 254712345678 or student@example.com"
-              autocomplete="username" required>
+            <input type="text" id="modal-login-email"
+                   placeholder="e.g., 254712345678 or student@example.com"
+                   autocomplete="username" required>
           </div>
           <div class="form-group">
             <label for="modal-login-password">Password</label>
-            <input type="password" id="modal-login-password" placeholder="••••••••" autocomplete="current-password"
-              required>
+            <input type="password" id="modal-login-password"
+                   placeholder="••••••••" autocomplete="current-password" required>
           </div>
           <div class="form-row">
             <label>
               <input type="checkbox" id="modal-remember"> Remember me
             </label>
-            <button type="button" id="modal-forgot-pw" class="btn-link">Forgot password?</button>
+            <button type="button" id="modal-forgot-pw" class="btn-link">
+              Forgot password?
+            </button>
           </div>
           <button type="submit" id="modal-login-submit" class="btn-primary">Login</button>
+
+          <div class="auth-divider"><span>or</span></div>
+
+          <!-- Google login (secondary path) -->
+          <div id="google-agent-container-login" class="google-signin-container"></div>
+
           <div class="alt-actions">
-            <button type="button" id="modal-go-register" class="btn-text">I don't have an account →</button>
-            <button type="button" id="modal-go-choice" class="btn-text" style="font-size:0.8rem;">← Back</button>
+            <button type="button" id="modal-go-register" class="btn-text">
+              I don't have an account →
+            </button>
+            <button type="button" id="modal-go-choice" class="btn-text" style="font-size:0.8rem;">
+              ← Back
+            </button>
           </div>
           <div id="modal-login-status" style="margin-top:0.8rem;font-size:0.88rem;"></div>
         </form>
@@ -154,7 +194,7 @@
 
         <!-- STEP 1: Personal Information -->
         <div id="reg-step1" class="step active">
-          <form id="reg-step1-form" onsubmit="return false;">
+          <form id="reg-step1-form">
             <div class="form-group">
               <label for="reg-name">Full Name</label>
               <input type="text" id="reg-name" placeholder="e.g., John Mwangi" required>
@@ -166,8 +206,9 @@
             <div class="form-group">
               <label for="reg-phone">Phone Number</label>
               <input type="tel" id="reg-phone" placeholder="e.g., 0712345678" required>
-              <small style="display:block;font-size:0.78rem;color:var(--text-muted);">Format: 07XXXXXXXX or
-                2547XXXXXXXX</small>
+              <small style="display:block;font-size:0.78rem;color:var(--text-muted);">
+                Format: 07XXXXXXXX or 2547XXXXXXXX
+              </small>
             </div>
             <div class="form-row">
               <div class="form-group half">
@@ -181,29 +222,37 @@
             </div>
             <div id="reg-pw-strength" style="font-size:0.78rem;margin-bottom:0.8rem;"></div>
 
-            <!-- Referral Code (optional) -->
             <div class="form-group">
-              <label for="reg-referral">Referral Code <span
-                  style="color:var(--text-muted);font-weight:normal;">(optional)</span></label>
+              <label for="reg-referral">
+                Referral Code
+                <span style="color:var(--text-muted);font-weight:normal;">(optional)</span>
+              </label>
               <input type="text" id="reg-referral" placeholder="e.g., FHX7P4M2">
               <div id="reg-referral-status" style="font-size:0.78rem;margin-top:0.2rem;"></div>
             </div>
 
-            <!-- Three documents: Terms, Privacy, Agent Terms -->
-            <div
-              style="margin:1rem 0 0.8rem;padding:0.8rem;background:var(--bg-secondary);border-radius:var(--radius-sm);border:1px solid var(--border);">
-              <p style="font-weight:600;margin-bottom:0.4rem;font-size:0.9rem;">📄 Please review and accept:</p>
+            <div style="margin:1rem 0 0.8rem;padding:0.8rem;background:var(--bg-secondary);border-radius:var(--radius-sm);border:1px solid var(--border);">
+              <p style="font-weight:600;margin-bottom:0.4rem;font-size:0.9rem;">
+                📄 Please review and accept:
+              </p>
               <div class="checkbox-group">
                 <input type="checkbox" id="reg-terms-doc">
-                <label for="reg-terms-doc">I agree to the <a href="/terms" target="_blank">Terms of Service</a></label>
+                <label for="reg-terms-doc">
+                  I agree to the <a href="/terms" target="_blank">Terms of Service</a>
+                </label>
               </div>
               <div class="checkbox-group">
                 <input type="checkbox" id="reg-privacy-doc">
-                <label for="reg-privacy-doc">I agree to the <a href="/privacy" target="_blank">Privacy Policy</a></label>
+                <label for="reg-privacy-doc">
+                  I agree to the <a href="/privacy" target="_blank">Privacy Policy</a>
+                </label>
               </div>
               <div class="checkbox-group">
                 <input type="checkbox" id="reg-agent-terms-doc">
-                <label for="reg-agent-terms-doc">I agree to the <a href="/agent-terms" id="reg-agent-terms-link">Agent Terms &amp; Conditions</a></label>
+                <label for="reg-agent-terms-doc">
+                  I agree to the
+                  <a href="/agent-terms" id="reg-agent-terms-link">Agent Terms &amp; Conditions</a>
+                </label>
               </div>
             </div>
 
@@ -216,17 +265,17 @@
 
         <!-- STEP 2: Security Questions -->
         <div id="reg-step2" class="step">
-          <form id="reg-step2-form" onsubmit="return false;">
-            <p style="font-size:0.88rem;color:var(--text-muted);margin-bottom:1rem;">Choose three different questions
-              and provide answers.</p>
+          <form id="reg-step2-form">
+            <p style="font-size:0.88rem;color:var(--text-muted);margin-bottom:1rem;">
+              Choose three different questions and provide answers.
+            </p>
 
             <div class="form-group">
               <label for="reg-sq1">Question 1</label>
               <select id="reg-sq1">
                 <option value="">-- Select --</option>
                 <option value="What is your place of birth?">What is your place of birth?</option>
-                <option value="What was the name of your primary school?">What was the name of your primary school?
-                </option>
+                <option value="What was the name of your primary school?">What was the name of your primary school?</option>
                 <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
                 <option value="What was the name of your first pet?">What was the name of your first pet?</option>
                 <option value="What is your favorite book?">What is your favorite book?</option>
@@ -244,8 +293,7 @@
               <select id="reg-sq2">
                 <option value="">-- Select --</option>
                 <option value="What is your place of birth?">What is your place of birth?</option>
-                <option value="What was the name of your primary school?">What was the name of your primary school?
-                </option>
+                <option value="What was the name of your primary school?">What was the name of your primary school?</option>
                 <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
                 <option value="What was the name of your first pet?">What was the name of your first pet?</option>
                 <option value="What is your favorite book?">What is your favorite book?</option>
@@ -263,8 +311,7 @@
               <select id="reg-sq3">
                 <option value="">-- Select --</option>
                 <option value="What is your place of birth?">What is your place of birth?</option>
-                <option value="What was the name of your primary school?">What was the name of your primary school?
-                </option>
+                <option value="What was the name of your primary school?">What was the name of your primary school?</option>
                 <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
                 <option value="What was the name of your first pet?">What was the name of your first pet?</option>
                 <option value="What is your favorite book?">What is your favorite book?</option>
@@ -291,10 +338,50 @@
             <div class="success-icon">🎉</div>
             <h3>Congratulations, <span id="reg-success-name">Agent</span>!</h3>
             <p>Your agent account has been created successfully. Start your earning journey now.</p>
-            <button id="reg-start-journey" class="btn-primary" style="font-size:1.05rem;padding:0.7rem 2.4rem;">🚀 Start
-              Your Journey</button>
+            <button id="reg-start-journey" class="btn-primary"
+                    style="font-size:1.05rem;padding:0.7rem 2.4rem;">
+              🚀 Start Your Journey
+            </button>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       Google account-linking modal
+       (shown when the Google email already belongs to an existing account)
+       ============================================================ -->
+  <div id="google-link-modal" class="modal-overlay" style="display:none;">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>You already have an account</h3>
+        <button class="modal-close" id="google-link-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>
+          A MedVix account already exists with
+          <strong id="google-link-email">—</strong>.
+        </p>
+        <p>Sign in to your existing account to connect Google Sign-In.</p>
+
+        <div class="form-group">
+          <label for="google-link-identifier">Email or Phone</label>
+          <input type="text" id="google-link-identifier"
+                 placeholder="student@example.com or 0712345678"
+                 autocomplete="username" />
+        </div>
+
+        <div class="form-group">
+          <label for="google-link-password">Password</label>
+          <input type="password" id="google-link-password"
+                 placeholder="••••••••" autocomplete="current-password" />
+          <div class="error-message" data-for="google-link-password"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="google-link-cancel">Cancel</button>
+        <button class="btn-primary" id="google-link-submit">Connect Google</button>
       </div>
     </div>
   </div>

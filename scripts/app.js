@@ -128,7 +128,6 @@ function processDestination(destination) {
     } else {
         console.log('[DeepLink] Auth required – storing for later.');
         sessionStorage.setItem('redirectAfterLogin', destination);
-        // The bootstrap will redirect to welcome (or login) after router init
     }
 }
 
@@ -146,11 +145,10 @@ async function initOrientation() {
     }
 }
 
-// === GOOGLE PLAY IN-APP UPDATE ===
 // ============================================================
-// FLEXIBLE UPDATE BANNER
-// Wraps window.MedVixUpdateBanner (defined in index.html).
+// GOOGLE PLAY IN-APP UPDATE
 // ============================================================
+
 function showFlexibleUpdateBanner() {
     const banner = window.MedVixUpdateBanner;
     if (!banner) {
@@ -158,7 +156,6 @@ function showFlexibleUpdateBanner() {
         return;
     }
 
-    // Wire the restart button once.
     const btn = document.getElementById('play-update-restart');
     if (btn && !btn.dataset.wired) {
         btn.dataset.wired = '1';
@@ -166,8 +163,6 @@ function showFlexibleUpdateBanner() {
             banner.setBusy(true);
             try {
                 await appUpdate.applyDownloadedUpdate();
-                // If completeUpdate succeeded, Android restarts the app.
-                // If it fails, we re-enable the button so the user can retry.
             } catch (e) {
                 console.error('[PlayUpdate] completeUpdate failed', e);
                 banner.setBusy(false);
@@ -178,16 +173,12 @@ function showFlexibleUpdateBanner() {
     banner.show();
 }
 
-// ============================================================
-// PLAY UPDATE POLICY RUNNER (diff-based)
-// ============================================================
 async function runPlayUpdateCheck() {
     if (!appUpdate.isAppUpdateSupported()) {
         console.log('[PlayUpdate] Not running on native / plugin unavailable');
         return;
     }
 
-    // 1. Read this app's current versionCode via Capacitor App plugin.
     let currentVersionCode = 0;
     try {
         if (App && typeof App.getInfo === 'function') {
@@ -206,15 +197,11 @@ async function runPlayUpdateCheck() {
         return;
     }
 
-    // 2. Listen for soft-download completion.
     appUpdate.onAppUpdate('downloaded', () => {
         console.log('[PlayUpdate] Download complete – showing restart banner');
         showFlexibleUpdateBanner();
     });
 
-    // 3. Run the diff-based policy:
-    //      diff === 1  → soft (flexible)
-    //      diff >= 2   → hard (immediate)
     try {
         const result = await appUpdate.runUpdatePolicy({
             currentVersionCode,
@@ -234,20 +221,17 @@ function safeRedirect(targetPath) {
         screenOrientation.unlock().catch(() => {});
     }
     let target = targetPath;
-    // Clean URL for SPA router
     if (target.startsWith('/pages/')) {
         target = target.replace('/pages/', '');
     }
     if (target.endsWith('.html')) {
         target = target.replace('.html', '');
     }
-    // Append referral code if present
     if (referralCode && !target.includes('ref=')) {
         const sep = target.includes('?') ? '&' : '?';
         target += sep + 'ref=' + encodeURIComponent(referralCode);
     }
     console.log('[App] Redirecting (safe) to:', target);
-    // Use router if available, otherwise set window.location (should rarely happen)
     if (typeof navigateTo === 'function') {
         navigateTo(target);
     } else {
@@ -287,38 +271,28 @@ async function destroySplash() {
 
     const splash = document.getElementById('app-bootstrap');
 
-    // 1. Fade out the splash
     if (splash) {
         splash.style.opacity = '0';
-
-        // Allow the CSS opacity transition to complete.
         await new Promise(resolve => setTimeout(resolve, 500));
-
-        // 2. Remove splash DOM completely
         splash.remove();
     }
 
-    // 3. Remove splash CSS completely
     const splashCss = document.getElementById('medvex-splash-css');
-
     if (splashCss) {
         splashCss.remove();
         console.log('[Splash] Splash CSS removed.');
     }
 
-    // 4. Remove splash-related document classes
     document.documentElement.classList.remove(
         'app-ready',
         'medvex-app-ready'
     );
 
-    // 5. Remove any splash-related body classes
     document.body.classList.remove(
         'splash-active',
         'medvex-splash-active'
     );
 
-    // 6. Clear splash-specific JS references
     progressFill = null;
     progressResolve = null;
 
@@ -347,8 +321,8 @@ export async function initializeApp() {
     try {
         // 1. Check for referral code in URL
         if (!utils.getLocalStorage('accessToken')) {
-            const urlToCheck = pendingAppUrl 
-                ? 'https://medvex.edgeone.app' + pendingAppUrl 
+            const urlToCheck = pendingAppUrl
+                ? 'https://medvex.edgeone.app' + pendingAppUrl
                 : undefined;
             const refCode = referral.detectReferralFromURL(urlToCheck);
             if (refCode) {
@@ -465,12 +439,7 @@ async function bootstrap() {
         // 3. Orientation lock
         await initOrientation();
 
-        // === GOOGLE PLAY IN-APP UPDATE ===
-        // 3.5. Check Play for updates EARLY, before auth/sync/router.
-        //      - Immediate: Play UI covers the screen; bootstrap continues
-        //        underneath. When the user finishes, Android restarts us.
-        //      - Flexible: download runs in background. We just register
-        //        the "downloaded" listener; banner shows when it's ready.
+        // 3.5. Google Play in-app update check
         await runPlayUpdateCheck();
 
         // 4. Detect referral from URL or storage
@@ -491,7 +460,7 @@ async function bootstrap() {
             }
         }
 
-        // 5. Initialize the core application (this updates progress)
+        // 5. Initialize the core application
         await initializeApp();
 
         // 6. Set authentication state
@@ -506,7 +475,6 @@ async function bootstrap() {
             console.log('[App] Incoming deep-link:', destination);
 
             if (isRootDestination(destination)) {
-                // Root: go to subjects or welcome, but preserve query/hash
                 const parsed = new URL(destination, 'https://medvex.edgeone.app');
                 target = appAuthenticated ? 'subjects' : 'welcome';
                 if (parsed.search) {
@@ -533,15 +501,14 @@ async function bootstrap() {
         // 8. Apply theme
         if (ui.applyTheme) ui.applyTheme();
 
-        // 9. Set the URL via history API (so the router loads the intended page)
+        // 9. Set the URL via history API
         const currentFull = window.location.pathname + window.location.search + window.location.hash;
         if (target && target !== currentFull) {
-            // Ensure target is a full path (starts with /)
             const fullTarget = target.startsWith('/') ? target : '/' + target;
             window.history.replaceState({}, '', fullTarget);
         }
 
-        // 10. Start the router – this loads the page based on the current URL
+        // 10. Start the router
         initRouter();
 
         // 11. Wait for the first page to be rendered
@@ -558,7 +525,7 @@ async function bootstrap() {
             });
         }
 
-        // 12. Application is ready – completely destroy splash
+        // 12. Application is ready – destroy splash
         await destroySplash();
 
         // 13. Register service worker
@@ -568,18 +535,11 @@ async function bootstrap() {
     } catch (error) {
         console.error('[App] Bootstrap failed:', error);
 
-        // Completely destroy splash even when bootstrap fails.
         const splash = document.getElementById('app-bootstrap');
-
-        if (splash) {
-            splash.remove();
-        }
+        if (splash) splash.remove();
 
         const splashCss = document.getElementById('medvex-splash-css');
-
-        if (splashCss) {
-            splashCss.remove();
-        }
+        if (splashCss) splashCss.remove();
 
         document.documentElement.classList.remove(
             'app-ready',
@@ -613,47 +573,72 @@ async function bootstrap() {
 bootstrap();
 
 // ============================================================
-// EXPOSE GLOBALLY
+// EXPOSE GLOBALLY (for legacy inline scripts and other modules)
 // ============================================================
 import * as examEngine from './exam-engine.js';
 import * as payment from './payment.js';
 
 window.app = {
+    // ---- Bootstrap ----
     initializeApp,
-    setAuthToken: auth.setAuthToken,
+
+    // ---- Auth: token / user management ----
+    setToken: auth.setToken,               // ← renamed from setAuthToken
+    clearToken: auth.clearToken,           // ← new
     checkAuth: auth.checkAuth,
     setUser: auth.setUser,
     getUser: auth.getUser,
     clearUser: auth.clearUser,
+    initUser: auth.initUser,
+    fallbackLoadUser: auth.fallbackLoadUser,
+    refreshSession: auth.refreshSession,
+
+    // ---- Google Sign-In ----
+    loginWithGoogle: auth.loginWithGoogle,
+    linkGoogleAccount: auth.linkGoogleAccount,
+
+    // ---- Subscription ----
     setSubscription: subscription.setSubscription,
     getSubscription: subscription.getSubscription,
     hasActiveSubscription: subscription.hasActiveSubscription,
     clearSubscription: subscription.clearSubscription,
+    refreshSubscription: subscription.refreshSubscription,
+
+    // ---- Exam engine ----
     setExamState: examEngine.setExamState,
     getExamState: examEngine.getExamState,
     clearExamState: examEngine.clearExamState,
     setExamConfig: examEngine.setExamConfig,
     getExamConfig: examEngine.getExamConfig,
     clearExamConfig: examEngine.clearExamConfig,
+
+    // ---- UI / App settings ----
     setAppSetting: ui.setAppSetting,
     getAppSetting: ui.getAppSetting,
     toggleTheme: ui.toggleTheme,
+
+    // ---- Plan / Payment ----
     setSelectedPlan: payment.setSelectedPlan,
     getSelectedPlan: payment.getSelectedPlan,
     setCurrentTransaction: payment.setCurrentTransaction,
     getCurrentTransaction: payment.getCurrentTransaction,
+
+    // ---- Service worker updates ----
     checkForUpdates: updates.checkForUpdates,
     skipWaitingAndReload: updates.skipWaitingAndReload,
+
+    // ---- Sync ----
     syncUserData: sync.syncUserData,
-    refreshSubscription: subscription.refreshSubscription,
     triggerFullSync: sync.triggerFullSync,
     syncData: sync.syncData,
     syncExamResults: sync.syncExamResults,
     syncUserProfile: sync.syncUserProfile,
     syncSubscription: sync.syncSubscription,
+
+    // ---- Event bus ----
     events: events.events,
 
-    // === GOOGLE PLAY IN-APP UPDATE ===
+    // ---- Google Play In-App Update ----
     checkPlayUpdate: runPlayUpdateCheck,
     applyPlayUpdate: appUpdate.applyDownloadedUpdate,
     isPlayUpdateSupported: appUpdate.isAppUpdateSupported,
