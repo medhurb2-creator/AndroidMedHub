@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          xmlns:tools="http://schemas.android.com/tools">
 
     <!-- ============================================================
          PERMISSIONS
@@ -15,9 +16,14 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <!-- Android 14+ requires an explicit foreground service type.
-         'dataSync' covers background sync, downloads, and notifications. -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- 🚫 Removed: FOREGROUND_SERVICE_DATA_SYNC is injected by a plugin
+         but MedVix does not use a background data sync service.
+         This directive strips it from the merged manifest so Google Play
+         does not require a Foreground Service declaration. -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+        tools:node="remove" />
 
     <!-- Runtime (Dangerous) permissions – requested at runtime -->
     <uses-permission android:name="android.permission.CAMERA" />
