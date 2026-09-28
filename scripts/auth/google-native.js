@@ -210,7 +210,7 @@ export async function initGoogleSignInNative() {
             google: {
                 webClientId: '811569563531-s9dhe1v0jvgdo0ii48ce7h933l07pq9k.apps.googleusercontent.com',
                 // iOSClientId: '...'  ← add this when you build iOS
-                mode: 'offline',      // replaces the old grantOfflineAccess: true
+                mode: 'online',      // replaces the old grantOfflineAccess: true
             },
         });
         initialized = true;
