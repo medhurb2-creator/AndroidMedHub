@@ -11,24 +11,30 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
-    <!-- Notifications & System -->
+    <!-- Notifications -->
     <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- 🚫 Removed: FOREGROUND_SERVICE_DATA_SYNC is injected by a plugin
-         but MedVix does not use a background data sync service.
-         This directive strips it from the merged manifest so Google Play
-         does not require a Foreground Service declaration. -->
+    <!-- 🚫 Unused system permissions — removed from the merged manifest.
+         These were injected by an older template or plugin, but MedVix
+         does not start any foreground service, does not restart on boot,
+         and does not hold partial wake locks. -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE"
+        tools:node="remove" />
     <uses-permission
         android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.RECEIVE_BOOT_COMPLETED"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.WAKE_LOCK"
         tools:node="remove" />
 
     <!-- Runtime (Dangerous) permissions – requested at runtime -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Storage permissions (Android 12 and below) -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
