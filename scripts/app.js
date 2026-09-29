@@ -58,7 +58,7 @@ let screenOrientation = null;
 function normalizeMedVixUrl(url) {
     try {
         const parsed = new URL(url);
-        if (parsed.protocol !== 'https:' || parsed.hostname !== 'medvex.edgeone.app') {
+        if (parsed.protocol !== 'https:' || parsed.hostname !== 'app.medvex.co.ke') {
             console.warn('[DeepLink] Rejected external URL:', url);
             return null;
         }
@@ -71,7 +71,7 @@ function normalizeMedVixUrl(url) {
 
 function isRootDestination(destination) {
     try {
-        const parsed = new URL(destination, 'https://medvex.edgeone.app');
+        const parsed = new URL(destination, 'https://app.medvex.co.ke');
         return parsed.pathname === '/' || parsed.pathname === '/index.html';
     } catch {
         return false;
@@ -322,7 +322,7 @@ export async function initializeApp() {
         // 1. Check for referral code in URL
         if (!utils.getLocalStorage('accessToken')) {
             const urlToCheck = pendingAppUrl
-                ? 'https://medvex.edgeone.app' + pendingAppUrl
+                ? 'https://app.medvex.co.ke' + pendingAppUrl
                 : undefined;
             const refCode = referral.detectReferralFromURL(urlToCheck);
             if (refCode) {
@@ -445,7 +445,7 @@ async function bootstrap() {
         // 4. Detect referral from URL or storage
         let initialReferral = null;
         if (pendingAppUrl) {
-            const fullUrl = 'https://medvex.edgeone.app' + pendingAppUrl;
+            const fullUrl = 'https://app.medvex.co.ke' + pendingAppUrl;
             initialReferral = referral.detectReferralFromURL(fullUrl);
         } else {
             initialReferral = referral.detectReferralFromURL();
@@ -475,7 +475,7 @@ async function bootstrap() {
             console.log('[App] Incoming deep-link:', destination);
 
             if (isRootDestination(destination)) {
-                const parsed = new URL(destination, 'https://medvex.edgeone.app');
+                const parsed = new URL(destination, 'https://app.medvex.co.ke');
                 target = appAuthenticated ? 'subjects' : 'welcome';
                 if (parsed.search) {
                     target += parsed.search;

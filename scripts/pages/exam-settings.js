@@ -148,7 +148,7 @@ export async function init(context) {
 // ==================== HELPER FUNCTIONS ====================
 
 function getShareableLink(code) {
-  const BASE_URL = 'https://medvix.edgeone.app';
+  const BASE_URL = 'https://medvix.co.ke';
   const PAGE_PATH = '/exam-settings/';
   return `${BASE_URL}${PAGE_PATH}?exam=${encodeURIComponent(code)}`;
 }

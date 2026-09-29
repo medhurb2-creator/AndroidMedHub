@@ -361,7 +361,7 @@ function divider() {
   return '<div class="divider"></div>';
 }
 
-function globalFooter(pageNum, totalPages, left = 'MedVix • Medical Learning Platform', center = 'Medical Document', right = 'medvix.edgeone.app') {
+function globalFooter(pageNum, totalPages, left = 'MedVix • Medical Learning Platform', center = 'Medical Document', right = 'medvix.co.ke') {
   return `
     <div class="global-footer">
       <span>${esc(left)}</span>
@@ -400,7 +400,7 @@ function endPageFooter() {
     <div class="end-footer">
       <span>MedVix</span>
       <span>Document Export</span>
-      <span><a href="https://medvix.edgeone.app">medvix.edgeone.app</a></span>
+      <span><a href="https://medvix.co.ke">medvix.co.ke</a></span>
     </div>`;
 }
 
@@ -1459,7 +1459,7 @@ export function buildExamHTML(data) {
     globalFooter(pageNum, totalPages,
       'MedVix • Medical Learning Platform',
       'Exam Assessment • Generated Document',
-      'medvix.edgeone.app');
+      'medvix.co.ke');
 
   const pages = paginateContentV2(
     questionsHTML,
@@ -1533,7 +1533,7 @@ export function buildMcqSheetHTML(data) {
     globalFooter(pageNum, totalPages,
       'MedVix • Medical Learning Platform',
       'MCQ Answer Sheet • Student Response',
-      'medvix.edgeone.app');
+      'medvix.co.ke');
 
   // Use the engine to paginate – the mcq‑grid block is split by _layMcqGrid
   const pages = paginateContentV2(
@@ -1587,7 +1587,7 @@ export function buildNotesHTML(data) {
     globalFooter(pageNum, totalPages,
       'MedVix • Medical Learning Platform',
       'Medical Notes Export • Learning Material',
-      'medvix.edgeone.app');
+      'medvix.co.ke');
 
   // Paginate the content
   // Inside buildNotesHTML (around line 650 in original) replace the call:
@@ -1601,7 +1601,7 @@ export function buildNotesHTML(data) {
 
   const endPage = createEndPage({
     ...data,
-    ctaUrl: 'https://medvix.edgeone.app',   // ← Forces the correct URL
+    ctaUrl: 'https://medvix.co.ke',   // ← Forces the correct URL
     endTitle: 'Continue Your Medical Journey',
     endSubtitle: 'Thank you for creating your notes with MedVix.',
     endMessage: 'Your notes remain your intellectual property. MedVix provides tools to organise, improve, and export your medical knowledge securely.',
@@ -1651,7 +1651,7 @@ export function buildAnswerKeyHTML(data) {
     globalFooter(pageNum, totalPages,
       'MedVix • Medical Learning Platform',
       'Answers & Explanations • Study Resource',
-      'medvix.edgeone.app');
+      'medvix.co.ke');
 
   const pages = paginateContentV2(
     answersHTML,

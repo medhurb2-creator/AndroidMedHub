@@ -82,8 +82,8 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="medvix.co.ke" />
-                <data android:scheme="https" android:host="www.medvix.co.ke" />
+                <data android:scheme="https" android:host="app.medvix.co.ke" />
+                <data android:scheme="https" android:host="www.app.medvix.co.ke" />
             </intent-filter>
 
             <!-- ===== Custom scheme for OAuth redirects ===== -->
