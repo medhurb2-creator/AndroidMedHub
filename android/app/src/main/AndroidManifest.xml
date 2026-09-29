@@ -15,10 +15,8 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- 🚫 Unused system permissions — removed from the merged manifest.
-         These were injected by an older template or plugin, but MedVix
-         does not start any foreground service, does not restart on boot,
-         and does not hold partial wake locks. -->
+    <!-- 🚫 Unused system permissions — removed from merged manifest.
+         These are auto-injected by plugins but MedVix does not use them. -->
     <uses-permission
         android:name="android.permission.FOREGROUND_SERVICE"
         tools:node="remove" />
@@ -30,6 +28,12 @@
         tools:node="remove" />
     <uses-permission
         android:name="android.permission.WAKE_LOCK"
+        tools:node="remove" />
+
+    <!-- 🚫 Advertising ID — injected by Google Play Services via
+         @capgo/capacitor-social-login. MedVix does NOT show ads. -->
+    <uses-permission
+        android:name="com.google.android.gms.permission.AD_ID"
         tools:node="remove" />
 
     <!-- Runtime (Dangerous) permissions – requested at runtime -->
@@ -82,9 +86,7 @@
                 <data android:scheme="https" android:host="www.medvix.co.ke" />
             </intent-filter>
 
-            <!-- ===== Custom scheme for OAuth redirects =====
-                 Used by @capgo/capacitor-social-login as a fallback
-                 if App Links verification fails on the device. -->
+            <!-- ===== Custom scheme for OAuth redirects ===== -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -113,34 +115,26 @@
 
     <queries>
 
-        <!-- Google Sign-In — required for @capgo/capacitor-social-login.
-             Without this, SocialLogin.login({ provider: 'google' }) silently
-             fails with ActivityNotFoundException on Android 11+. -->
         <intent>
             <action android:name="com.google.android.gms.auth.api.signin.ACTION_GOOGLE_SIGN_IN" />
         </intent>
 
-        <!-- Google Play Services (for in-app updates, auth) -->
         <package android:name="com.google.android.gms" />
 
-        <!-- Browser intents (used by @capacitor/browser, deep links, external URLs) -->
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
         </intent>
 
-        <!-- Share intents (@capacitor/share) -->
         <intent>
             <action android:name="android.intent.action.SEND" />
             <data android:mimeType="*/*" />
         </intent>
 
-        <!-- Camera intents (@capacitor/camera) -->
         <intent>
             <action android:name="android.media.action.IMAGE_CAPTURE" />
         </intent>
 
-        <!-- File picker intents (@capacitor/filesystem, file selection) -->
         <intent>
             <action android:name="android.intent.action.GET_CONTENT" />
             <data android:mimeType="*/*" />
@@ -150,13 +144,11 @@
             <data android:mimeType="*/*" />
         </intent>
 
-        <!-- Dialer intents (tel: links) -->
         <intent>
             <action android:name="android.intent.action.DIAL" />
             <data android:scheme="tel" />
         </intent>
 
-        <!-- Email intents (mailto: links) -->
         <intent>
             <action android:name="android.intent.action.SENDTO" />
             <data android:scheme="mailto" />
