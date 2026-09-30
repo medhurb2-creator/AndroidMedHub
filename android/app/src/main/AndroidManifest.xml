@@ -30,11 +30,10 @@
         android:name="android.permission.WAKE_LOCK"
         tools:node="remove" />
 
-    <!-- 🚫 Advertising ID — injected by Google Play Services via
-         @capgo/capacitor-social-login. MedVix does NOT show ads. -->
-    <uses-permission
-        android:name="com.google.android.gms.permission.AD_ID"
-        tools:node="remove" />
+    <!-- ✅ AD_ID is kept — it is injected by Google Play Services
+         (via @capgo/capacitor-social-login for Google Sign-In).
+         Removing it breaks Google Sign-In silently.
+         We declare "No" in Play Console instead — see Play Console → App content → Advertising ID. -->
 
     <!-- Runtime (Dangerous) permissions – requested at runtime -->
     <uses-permission android:name="android.permission.CAMERA" />
@@ -77,7 +76,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- ===== App Links for medvix.co.ke ===== -->
+            <!-- ===== App Links for app.medvix.co.ke ===== -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
