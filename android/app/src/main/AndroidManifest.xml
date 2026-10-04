@@ -30,11 +30,6 @@
         android:name="android.permission.WAKE_LOCK"
         tools:node="remove" />
 
-    <!-- 🚫 Advertising ID — injected by Google Play Services via
-         @capgo/capacitor-social-login. MedVix does NOT show ads. -->
-    <uses-permission
-        android:name="com.google.android.gms.permission.AD_ID"
-        tools:node="remove" />
 
     <!-- Runtime (Dangerous) permissions – requested at runtime -->
     <uses-permission android:name="android.permission.CAMERA" />
@@ -92,6 +87,61 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="medvix" android:host="oauth" />
+            </intent-filter>
+
+            <!-- ================================================================
+                 "Open with" file handlers
+                 ================================================================
+                 Each MIME type gets its own <intent-filter> block. Android
+                 merges them into a single chooser entry, so the user sees the
+                 app listed once with the union of all supported types.
+
+                 These filters make MedVix appear in the OS "Open with" chooser
+                 when the user taps a matching file in Files, Gmail, Chrome,
+                 Drive, or any other app that raises ACTION_VIEW.
+
+                 The incoming file arrives via a content:// URI. MainActivity
+                 forwards it to FileOpenPlugin, which copies the stream into
+                 the app cache and delivers an absolute path to viewer.js.
+                 viewer.js → _openNativeFilePayload loads it through the same
+                 core.loadDocument pipeline every other entry point uses.
+
+                 External files are NEVER subject to the preview-mode policy.
+                 That is by design: the user chose the file themselves, and
+                 there is no catalogue resource to upsell.
+
+                 To narrow or widen the surface, add or remove whole
+                 <intent-filter> blocks. Do not merge multiple <data> elements
+                 into one filter unless you want the chooser to require ALL of
+                 them to match — that is almost never what you want.
+                 ================================================================ -->
+
+            <!-- ── Open with: PDF ─────────────────────────────────────────── -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+
+            <!-- ── Open with: Images ──────────────────────────────────────── -->
+            <!-- Remove this block if you do not want the app offered for
+                 every image the user taps in Files or Chrome. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+
+            <!-- ── Open with: Plain text ──────────────────────────────────── -->
+            <!-- Remove this block if you do not want the app offered for
+                 .txt files. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:mimeType="text/plain" />
             </intent-filter>
 
         </activity>

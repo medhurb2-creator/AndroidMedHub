@@ -2,6 +2,7 @@
 import * as ui from '../ui.js';
 import * as router from '../router.js';
 import * as auth from '../auth.js';
+import * as subscription from '../subscription.js';
 import * as resourceBrowser from '../resource-browser.js';
 
 let $;
@@ -24,6 +25,31 @@ export async function init(context) {
     ui.showToast('Invalid resource request', 'error');
     router.navigateTo('subjects');
     return;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Initialize the subscription manager BEFORE the resource browser.
+  //
+  // The Open handler in resource-browser.js calls
+  // subscription.hasActiveSubscription() to decide whether a premium
+  // catalogue resource should open in preview mode (unsubscribed) or in full
+  // (subscribed). hasActiveSubscription() reads from the subscription
+  // manager's in-memory state, IndexedDB, and localStorage.
+  //
+  // Without an explicit init, the manager's in-memory state is empty on a
+  // fresh session, and the fallback chain can return stale local data. On
+  // page load we want the freshest truth from the backend (when online and
+  // authenticated), which is exactly what initSubscription() obtains.
+  //
+  // This is idempotent — the subscription manager handles repeated calls —
+  // and cannot fail the page: any network error falls back to cached state.
+  // ---------------------------------------------------------------------------
+  try {
+    await subscription.initSubscription();
+  } catch (err) {
+    // Never block the resource browser on a subscription hiccup. The Open
+    // handler will still work with whatever cached state is available.
+    console.warn('[ResourceBrowser] subscription init failed; continuing with cached state', err);
   }
 
   // Attach event listeners
