@@ -123,7 +123,6 @@
 
 /* ================================================================
    STICKY HEADER — canonical single definition
-   (original file had this block 3× with incremental additions)
    ================================================================ */
 .sub-header {
     position: sticky;
@@ -193,10 +192,7 @@
 }
 .trial-btn:hover { background: var(--accent-dark); }
 
-/* ---------- Button overrides ----------
-   Page uses neutral-pill styling for .btn-text and .btn-outline,
-   which differs from common's flat-link / accent-outline defaults.
-   Hover rules use :not(:disabled) to beat common's (0,3,0) specificity. */
+/* ---------- Button overrides ---------- */
 .btn-text {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
@@ -383,6 +379,7 @@
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
     gap: 1.5rem;
     margin: 2rem 0;
+    align-items: stretch;   /* ensure custom card stretches to match */
 }
 .plan-card {
     background: var(--bg-card);
@@ -423,6 +420,7 @@
     cursor: not-allowed;
 }
 
+/* Legacy / custom-card typography still in use */
 .plan-card h3 {
     margin-bottom: 0.5rem;
     font-size: 1.25rem;
@@ -462,7 +460,9 @@
     margin-bottom: 1.5rem;
 }
 
-.plan-card button {
+/* IMPORTANT: only direct-child <button> gets the plan CTA styling.
+   This prevents the rule from also styling .device-option buttons. */
+.plan-card > button {
     width: 100%;
     margin-top: auto;
     background: var(--accent);
@@ -475,8 +475,8 @@
     transition: var(--transition);
     pointer-events: auto;
 }
-.plan-card button:hover { background: var(--accent-dark); }
-.plan-card button.btn-secondary {
+.plan-card > button:hover { background: var(--accent-dark); }
+.plan-card > button.btn-secondary {
     background: transparent;
     color: var(--accent);
 }
@@ -495,7 +495,7 @@
 .custom-card .price input:focus {
     outline: none;
     border-color: var(--accent);
-    box-shadow: none;               /* block common's input:focus ring */
+    box-shadow: none;
 }
 .custom-duration-preview {
     font-size: 0.85rem;
@@ -503,6 +503,177 @@
     margin-top: 0.2rem;
 }
 .custom-duration-preview strong { color: var(--text-primary); }
+
+/* ================================================================
+   NEW DEVICE-AWARE PLAN CARD
+   (Monthly / Quarterly / Yearly)
+   ================================================================ */
+
+/* --- Header (period label + price + tagline) --- */
+.plan-header {
+    text-align: center;
+    margin-bottom: 1rem;
+}
+
+.plan-period {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    color: var(--text-muted);
+    margin: 0 0 0.5rem;
+    text-transform: uppercase;
+}
+
+.plan-price-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+}
+
+.plan-price {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    line-height: 1.1;
+}
+
+.plan-price-suffix {
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.plan-tagline {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin: 0.75rem 0 0;
+}
+
+/* --- Feature checklist (new list styling) --- */
+.plan-features {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    flex: 1;
+}
+
+.plan-features li {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4rem;
+    line-height: 1.35;
+}
+
+.plan-features li::before {
+    content: "✓";
+    color: #16a34a;   /* green tick like the mock */
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+/* --- USE ON selector --- */
+.device-selector {
+    margin-top: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.device-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    color: var(--text-muted);
+    margin: 0 0 0.5rem;
+    text-transform: uppercase;
+}
+
+.device-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem;
+}
+
+.device-option {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.3rem;
+    padding: 0.75rem;
+    background: var(--bg-secondary);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+    font-family: inherit;
+    color: inherit;
+    width: 100%;
+    /* Reset any inherited button styles */
+    box-shadow: none;
+    margin: 0;
+    line-height: 1.2;
+}
+
+.device-option:hover {
+    border-color: var(--accent);
+    background: var(--bg-card);
+    transform: none;   /* override .plan-card:hover on children */
+}
+
+.device-option.active {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    box-shadow: 0 0 0 1px var(--accent);
+}
+
+.device-icon {
+    font-size: 1.1rem;
+    line-height: 1;
+}
+
+.device-name {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--text-primary);
+    text-transform: uppercase;
+}
+
+.device-price {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.device-option.active .device-price {
+    color: var(--text-primary);
+}
+
+/* --- Subscribe button (new plan cards only) --- */
+.plan-subscribe-btn {
+    width: 100%;
+    margin-top: auto;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 0.85rem;
+    border-radius: var(--radius-sm);
+    font-weight: 700;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.plan-subscribe-btn:hover {
+    background: var(--accent-dark);
+}
 
 /* ================================================================
    C2B (M-PESA Buy Goods) INSTRUCTIONS + CLAIM FORM
@@ -570,7 +741,6 @@
 
 /* ================================================================
    VERIFICATION STATUS
-   NOTE: hardcoded Bootstrap-style colors — pre-existing, kept as-is.
    ================================================================ */
 .verification-status {
     margin-top: 1rem;
@@ -669,4 +839,14 @@
         flex-direction: column;
         align-items: flex-start;
     }
+}
+
+/* Extra-small screens: tighten the device chips so 2 fit comfortably */
+@media (max-width: 400px) {
+    .device-option { padding: 0.6rem; gap: 0.25rem; }
+    .device-icon   { font-size: 1rem; }
+    .device-name   { font-size: 0.65rem; }
+    .device-price  { font-size: 0.7rem; }
+    .plan-price    { font-size: 1.75rem; }
+    .plan-price-suffix { font-size: 0.85rem; }
 }

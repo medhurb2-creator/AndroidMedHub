@@ -129,8 +129,39 @@ export async function init(context) {
   // STEP 1 – Referral + Terms handling
   // ============================================================
 
+  /**
+   * Read the referral code out of the input at the exact moment the
+   * user commits to a signup path (Google or Email/Phone).
+   * This is the ONLY place we should trust for the source of truth.
+   */
+  function captureManualReferral() {
+    const raw = (referralCode?.value || '').trim();
+    if (!raw) {
+      // Don't clobber a previously-validated code (e.g. from URL/storage)
+      return formData.referralCode || '';
+    }
+
+    // Preserve original casing on the wire; some backends are case-sensitive.
+    // The input is displayed uppercase via CSS/placeholder, but we send
+    // exactly what the user typed.
+    formData.referralCode = raw;
+
+    try {
+      // Kept for prefill convenience on reload — NOT used as transport to backend.
+      utils.setLocalStorage('referral_code', raw);
+    } catch (_) { /* ignore */ }
+
+    console.log('[Signup] captureManualReferral →', formData.referralCode);
+    return formData.referralCode;
+  }
+
+  /**
+   * Prefill from URL or storage and validate against the backend.
+   * Does NOT set formData.referralCode unless validation passes.
+   */
   async function prefillReferral() {
     if (!referralCode) return;
+
     const urlRef = referral.detectReferralFromURL?.();
     const storedRef = referral.getStoredReferralCode?.();
     const refCode = urlRef || storedRef;
@@ -138,6 +169,7 @@ export async function init(context) {
 
     referralCode.value = refCode;
     referralCode.readOnly = true;
+
     if (referralStatus) {
       referralStatus.textContent = '⏳ Validating referral code…';
       referralStatus.style.color = 'var(--text-muted)';
@@ -164,20 +196,10 @@ export async function init(context) {
         referralStatus.textContent = '⚠️ Could not validate code. You can still sign up.';
         referralStatus.style.color = 'var(--warning)';
       }
+      referralCode.readOnly = false;
     }
   }
   await prefillReferral();
-
-  function captureManualReferral() {
-    const code = (referralCode?.value || '').trim().toUpperCase();
-    if (code) {
-      formData.referralCode = code;
-      try {
-        // Persist so the backend's Google signup action can read it
-        utils.setLocalStorage('referral_code', code);
-      } catch (_) { /* ignore */ }
-    }
-  }
 
   function validateStep1() {
     let ok = true;
@@ -232,8 +254,10 @@ export async function init(context) {
           showStep(1);
           return;
         }
-        captureManualReferral();
-        await handleGoogleCredential(response.credential);
+        // Capture referral at the exact moment of the Google click —
+        // the Google popup can outlive the input value if we waited.
+        const refCode = captureManualReferral();
+        await handleGoogleCredential(response.credential, refCode);
       },
     });
   }
@@ -333,6 +357,9 @@ export async function init(context) {
         { question: sq3Val, answer: ans3Val },
       ];
 
+      // Re-capture in case the user went back and edited the referral.
+      captureManualReferral();
+
       ui.showLoading('Creating account…');
 
       try {
@@ -408,21 +435,23 @@ export async function init(context) {
   // ============================================================
   // GOOGLE CREDENTIAL HANDLER
   // ============================================================
-  async function handleGoogleCredential(idToken) {
+  async function handleGoogleCredential(idToken, refCode) {
     ui.showLoading('Signing up with Google…');
 
     try {
-      const result = await auth.loginWithGoogle(idToken);
+      // ✅ Referral code is now passed explicitly to the backend action.
+      const result = await auth.loginWithGoogle(idToken, refCode || undefined);
 
       if (result.requiresLink) {
         ui.hideLoading();
         openGoogleLinkModal({
           email: result.email,
-          linkToken: result.linkToken,                     // ← NEW: forward linkToken
+          linkToken: result.linkToken,
           idToken,
-          googleSub: result.googleSub,                     // ← kept for legacy
+          googleSub: result.googleSub,               // legacy field
           deviceFingerprint: result.deviceFingerprint,
           deviceInfo: result.deviceInfo,
+          referralCode: refCode || undefined,        // ✅ carry through
           redirectTarget,
         });
         return;
@@ -446,12 +475,13 @@ export async function init(context) {
   // ============================================================
   function openGoogleLinkModal({
     email: linkedEmail,
-    linkToken,                                           // ← NEW
+    linkToken,
     idToken,
     googleSub,
     deviceFingerprint,
     deviceInfo,
-    redirectTarget: target
+    referralCode: refCode,                          // ✅ carried through
+    redirectTarget: target,
   }) {
     const modal = $('#google-link-modal');
     const emailEl = $('#google-link-email');
@@ -483,13 +513,14 @@ export async function init(context) {
 
       try {
         await auth.linkGoogleAccount({
-          linkToken,                                     // ← NEW: the important one
+          linkToken,
           identifier: linkedEmail,
           password: pwd,
           idToken,
           googleSub,
           deviceFingerprint,
-          deviceInfo
+          deviceInfo,
+          referralCode: refCode || undefined,       // ✅ forward too
         });
 
         modal.style.display = 'none';

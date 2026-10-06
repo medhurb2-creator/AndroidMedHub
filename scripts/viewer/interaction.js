@@ -32,18 +32,51 @@
  *   core.getEffectivePageLimit(). This single file is the enforcement point
  *   because every navigation — page input, arrow keys, outline clicks, search
  *   matches, swipes, prefetch — converges on either `navigateTo` or
- *   `_requestRender`. Guarding both covers all callers without touching any
- *   other subsystem.
+ *   `_requestRender`. Guarding both covers all callers.
+ *
+ * Lazy-render window:
+ *   Two independent windows keep pages warm ahead of the user:
+ *
+ *     1. Scroll-direction prefetch — while the user scrolls, `_prefetchAdjacent`
+ *        enqueues pages in the active direction. Depth is velocity-aware:
+ *        PREFETCH_DEPTH_SLOW (5) at low velocity, PREFETCH_DEPTH_FAST (2) at
+ *        high velocity. A symmetric secondary window at lower priority
+ *        (PRIORITY.MARGIN) keeps the opposite direction from going cold when
+ *        the user reverses.
+ *
+ *     2. Zoom re-raster window — after a scale change settles,
+ *        `ZoomManager._enqueueVisibleRenders` enqueues visible pages at
+ *        PRIORITY.VISIBLE and then walks 5 pages above and below at
+ *        PRIORITY.ADJACENT. This is what makes magnification feel instant:
+ *        the neighbouring pages are already rendered at the new scale before
+ *        the user scrolls to them.
+ *
+ *   Both windows respect the preview-page limit — locked pages are never
+ *   enqueued.
  *
  * Tap sequencing note:
- *   Double-tap and triple-tap detection live in ui-internal.js as a single
+ *   Single-tap and double-tap detection live in ui-internal.js as a
  *   click-based sequence handler on #viewer-main. Click events fire
  *   identically on desktop and mobile — the browser synthesises a click after
  *   each qualifying tap — which lets one handler serve both platforms without
  *   the double-fire that a touch-based detector produced alongside it.
  *
+ *   Android convention (implemented in ui-internal):
+ *     • Single tap → toggle chrome.
+ *     • Double tap → toggle zoom (fit-width ↔ 2×), viewport-centered.
+ *
+ *   Triple tap is deliberately NOT recognised — Android reserves long-press
+ *   for text selection, and a triple-tap detector makes that unreliable.
+ *
  *   This file retains pinch and swipe recognition, which are fundamentally
  *   touch-only gestures and cannot be expressed via click events.
+ *
+ * Wheel-zoom gating:
+ *   Ctrl/Meta + wheel to zoom is a desktop convention. On native Android
+ *   there is rarely a wheel, and even when a Bluetooth mouse is attached the
+ *   gesture is not expected. The wheel listener is therefore attached ONLY
+ *   when `isWeb()` is true. In `npm run dev` (browser) the full wheel-zoom
+ *   path is live. In `npx cap run android` the listener is never attached.
  *
  * Pinch gating note:
  *   The USE_TWO_PHASE_ZOOM flag controls the visual commit STRATEGY, not
@@ -52,10 +85,33 @@
  *   phase) or commit the scale with a short debounce (legacy). Gating the
  *   gesture itself behind the flag was a bug.
  *
+ * Rotation integration:
+ *   Render jobs carry a `rotation` field mirrored from `state.rotation`.
+ *   Every job id includes rotation so a rotation change produces a new job
+ *   rather than being deduplicated against the previous rotation. This
+ *   matches the id format core.js uses in `_enqueuePageRender`, so the
+ *   scheduler treats both enqueue sources as producing the same job for the
+ *   same (page, scale, rotation) triple.
+ *
+ * Performance posture (with core.js's default flags all true):
+ *   • Scroll listener is rAF-throttled — the handler runs at most once per
+ *     frame regardless of how frequently the underlying scroll event fires.
+ *     Some browsers (notably iOS WebKit) can emit scroll events faster than
+ *     frame rate; explicit rAF throttling prevents the handler from
+ *     re-computing velocity and visibility multiple times per frame.
+ *   • Velocity sampling uses an exponential moving average, so per-frame
+ *     jitter is smoothed without needing a longer sample window.
+ *   • Pause/resume thresholds use hysteresis (SUSPEND / 2 to resume) to
+ *     prevent oscillation at the boundary.
+ *   • Two-phase zoom keeps the main thread free during a gesture by writing
+ *     only a CSS transform per frame — no canvas work until settle.
+ *   • Pan writes are coalesced to one per animation frame via rafThrottle.
+ *
  * Import discipline:
  *   • { CONFIG, Events, PRIORITY } from './core.js'
  *   • { clamp, debounce, rafThrottle, rectOverlapArea,
  *       getViewerElements } from './utils.js'
+ *   • { isWeb } from './platform.js'
  *
  * @module viewer/interaction
  */
@@ -70,6 +126,7 @@ import {
   rectOverlapArea,
   getViewerElements,
 } from './utils.js';
+import { isWeb } from './platform.js';
 
 // ============================================================================
 // MODULE-PRIVATE CONSTANTS
@@ -81,14 +138,42 @@ const PAN_DEAD_ZONE_PX = 2;
 /** Swipe: maximum duration of a swipe gesture. @private */
 const SWIPE_MAX_MS = 500;
 
-/** Swipe: minimum horizontal displacement. @private */
-const SWIPE_MIN_DX_PX = 50;
+/**
+ * Swipe: minimum horizontal displacement. Set to 40 (not 50) because Android
+ * thumbs swipe shorter distances than mouse-cursor drags; 40px still rejects
+ * accidental scroll wiggles while accepting a deliberate flick.
+ * @private
+ */
+const SWIPE_MIN_DX_PX = 40;
 
 /** Wheel zoom: exponential scale-per-delta factor. @private */
 const WHEEL_ZOOM_FACTOR = 0.002;
 
 /** Velocity EMA: weight given to the newest sample. @private */
 const VELOCITY_EMA_WEIGHT = 0.3;
+
+/**
+ * Number of pages above and below the visible set that zoom re-raster
+ * pre-renders at the new scale. This is the "5 pages above and below" window:
+ * by the time the user scrolls away from the current page, the text is
+ * already sharp at the new scale.
+ *
+ * Independent of the scroll-direction prefetch depths in CONFIG
+ * (PREFETCH_DEPTH_SLOW / FAST) because zoom is a discrete event, not a
+ * continuous one — deeper symmetric pre-render pays off here and does not
+ * during active scrolling.
+ * @private
+ */
+const ZOOM_PRERENDER_RADIUS = 5;
+
+/**
+ * Fraction of PREFETCH_DEPTH_SLOW used for the opposite-direction window
+ * during scroll. A user who flicks up, stops, and flicks down should not
+ * pay for a full re-fetch in the opposite direction — but should also not
+ * hit a cold page.
+ * @private
+ */
+const PREFETCH_OPPOSITE_FRACTION = 0.5;
 
 // ============================================================================
 // 1. SCROLL MANAGER
@@ -103,6 +188,13 @@ const VELOCITY_EMA_WEIGHT = 0.3;
  *
  * Preview-mode: every navigation is clamped at `_getEffectiveLimit()`, and
  * `_requestRender` refuses to enqueue renders for pages past that limit.
+ *
+ * Scroll-mode note:
+ *   In scroll mode, #viewer-main is the native scroll surface
+ *   (`overflow: auto; touch-action: pan-x pan-y` in CSS). PanManager is
+ *   disabled in this mode — the browser handles 360° scrolling natively,
+ *   and layering a transform-based pan on top would fight it. Page mode
+ *   enables PanManager and disables native scroll.
  */
 export class ScrollManager {
   /**
@@ -128,15 +220,28 @@ export class ScrollManager {
     /** @private */ this._paused = false;
     /** @private */ this._layoutDirty = false;
     /** @private */ this._attached = false;
-    /** @private */ this._rafPending = false;
 
-    /** @private */ this._onScrollFrameBound = this._onScrollFrame.bind(this);
+    /**
+     * The rAF-throttled scroll handler. Created once in the constructor so
+     * the same function reference is used for both addEventListener and
+     * removeEventListener. Coalesces multiple scroll events per frame into a
+     * single `_onScrollFrame` invocation with the last-seen arguments.
+     *
+     * rafThrottle passes (…eventArgs, frameTimestamp) to its callback. We
+     * drop the event args and forward only the frame timestamp to
+     * `_onScrollFrame`, which is what the velocity math needs.
+     *
+     * @private
+     */
+    this._onScrollThrottled = rafThrottle((_event, frameTimestamp) => {
+      this._onScrollFrame(frameTimestamp);
+    });
   }
 
   // ── Public ────────────────────────────────────────────────────────────────
 
   /**
-   * Bind the scroll listener. Idempotent.
+   * Bind the rAF-throttled scroll listener. Idempotent.
    * @returns {void}
    */
   attach() {
@@ -145,20 +250,28 @@ export class ScrollManager {
     if (!els || !els.main) return;
     this._scrollRoot = els.main;
     this._lastScrollTop = this._scrollRoot.scrollTop;
-    this._scrollRoot.addEventListener('scroll', this._onScrollFrameBound, { passive: true });
+    // Passive listener — we never call preventDefault in the scroll path.
+    // The rAF wrapper does the actual coalescing, so the browser's native
+    // scroll performance is not affected by the handler's work.
+    this._scrollRoot.addEventListener('scroll', this._onScrollThrottled, { passive: true });
     this._attached = true;
     this.recomputeLayout();
   }
 
   /**
-   * Remove the scroll listener. Idempotent.
+   * Remove the scroll listener. Idempotent. Also cancels any pending
+   * throttled frame so a stale callback cannot fire after detach.
    * @returns {void}
    */
   detach() {
     if (!this._attached || !this._scrollRoot) return;
-    this._scrollRoot.removeEventListener('scroll', this._onScrollFrameBound);
+    try {
+      this._scrollRoot.removeEventListener('scroll', this._onScrollThrottled);
+    } catch { /* ignore */ }
+    try {
+      this._onScrollThrottled.cancel();
+    } catch { /* ignore */ }
     this._attached = false;
-    this._rafPending = false;
   }
 
   /**
@@ -334,20 +447,21 @@ export class ScrollManager {
   // ── Private ───────────────────────────────────────────────────────────────
 
   /**
-   * Raf-throttled scroll handler. Sampling, velocity, pause/resume,
-   * visibility, prefetch, direction-change cancellation.
+   * Scroll handler. Runs at most once per animation frame via the outer
+   * rafThrottle wrapper. Sampling, velocity, pause/resume, visibility,
+   * prefetch, direction-change cancellation all happen here.
    *
    * @private
-   * @param {number} timestamp  RAF-provided frame timestamp.
+   * @param {number} [frameTimestamp]  RAF-provided frame timestamp.
    */
-  _onScrollFrame(timestamp) {
+  _onScrollFrame(frameTimestamp) {
     if (!this._scrollRoot) return;
 
     // Rebuild wrapper cache if marked dirty.
     if (this._layoutDirty) this.recomputeLayout();
 
     const scrollTop = this._scrollRoot.scrollTop;
-    const now = typeof timestamp === 'number' ? timestamp : performance.now();
+    const now = typeof frameTimestamp === 'number' ? frameTimestamp : performance.now();
 
     // ── Velocity + direction.
     if (this._lastTimestamp === 0) {
@@ -500,6 +614,17 @@ export class ScrollManager {
   }
 
   /**
+   * Velocity-aware directional prefetch.
+   *
+   * The depth of the window in the active direction is chosen from
+   * `PREFETCH_DEPTH_SLOW` (5) at low velocity or `PREFETCH_DEPTH_FAST` (2) at
+   * high velocity. A secondary, shallower window is emitted in the opposite
+   * direction at `PRIORITY.MARGIN` so a quick reversal does not hit cold
+   * pages, but at lower priority so it never competes with the active
+   * direction for render slots.
+   *
+   * Preview mode: every page enqueued respects the effective limit.
+   *
    * @private
    */
   _prefetchAdjacent() {
@@ -513,18 +638,41 @@ export class ScrollManager {
     const current = this._getCurrentPage();
     if (!Number.isFinite(current)) return;
 
-    const depth = CONFIG.PREFETCH_DEPTH_SLOW;
     const dir = this._direction > 0 ? 1 : this._direction < 0 ? -1 : 0;
     if (dir === 0) return;
 
-    for (let offset = 1; offset <= depth; offset++) {
+    // Velocity-aware depth for the active direction.
+    const absV = Math.abs(this._velocity);
+    const activeDepth = absV > CONFIG.VELOCITY_SUSPEND_PX_PER_FRAME / 2
+      ? CONFIG.PREFETCH_DEPTH_FAST
+      : CONFIG.PREFETCH_DEPTH_SLOW;
+
+    // Primary window — active direction, PRIORITY.ADJACENT.
+    for (let offset = 1; offset <= activeDepth; offset++) {
       const pageNum = current + dir * offset;
       if (pageNum < 1 || pageNum > limit) continue;
       this._requestRender(pageNum, PRIORITY.ADJACENT);
     }
+
+    // Secondary window — opposite direction, PRIORITY.MARGIN.
+    // Shallower than the primary so a reversal has a warm start without
+    // stealing slots from the pages the user is actually approaching.
+    const oppositeDepth = Math.max(
+      1,
+      Math.floor(activeDepth * PREFETCH_OPPOSITE_FRACTION),
+    );
+    for (let offset = 1; offset <= oppositeDepth; offset++) {
+      const pageNum = current - dir * offset;
+      if (pageNum < 1 || pageNum > limit) continue;
+      this._requestRender(pageNum, PRIORITY.MARGIN);
+    }
   }
 
   /**
+   * Enqueue a render job for a page. Job id format matches core.js's
+   * `_enqueuePageRender` exactly so the scheduler deduplicates across both
+   * enqueue sources: `page:${pageNum}:${scale}:${rotation}`.
+   *
    * @private
    * @param {number} pageNum
    * @param {number} priority
@@ -542,14 +690,20 @@ export class ScrollManager {
     if (!scheduler || !scheduler.enqueue) return;
 
     let scale = 1;
-    try { scale = this._core.getState().get('scale') || 1; } catch { /* ignore */ }
+    let rotation = 0;
+    try {
+      const state = this._core.getState();
+      scale = state.get('scale') || 1;
+      rotation = state.get('rotation') || 0;
+    } catch { /* ignore */ }
 
     /** @type {import('./render.js').RenderJob} */
     const job = {
-      id: `page:${pageNum}:${scale}`,
+      id: `page:${pageNum}:${scale}:${rotation}`,
       kind: 'page',
       pageNum,
       scale,
+      rotation,
       tileRect: null,
       priority,
     };
@@ -622,13 +776,15 @@ export class ScrollManager {
  *
  * Phase B — gesture end + settle debounce: commit `state.scale`, invalidate
  * tile decisions, emit SCALE_APPLIED, enqueue re-raster at the new scale for
- * visible pages. The CSS transform is left in place; core swaps canvases as
- * RENDER_COMPLETE events fire.
+ * visible pages AND the surrounding 5-page window. The CSS transform is left
+ * in place; core swaps canvases as RENDER_COMPLETE events fire, and
+ * interaction.js's RENDER_COMPLETE subscriber clears the transform once the
+ * committed scale matches the rendered scale.
  *
  * Preview mode: re-raster enqueue filters out locked pages.
  *
- * Non-focal sources (buttons, keyboard, triple-tap magnify) always anchor on
- * the viewport center. Anchoring a magnify action to a tap point is a mobile-
+ * Non-focal sources (buttons, keyboard, double-tap) always anchor on the
+ * viewport center. Anchoring a magnify action to a tap point is a mobile-
  * browser convention (iOS Safari), not a PDF-viewer convention. Adobe
  * Acrobat toggles fit levels; Apple PDFKit centers on the viewport; Nutrient
  * and Apryse "Smart Zoom" center on a paragraph.
@@ -652,7 +808,7 @@ export class ZoomManager {
     /** @private @type {number} */ this._targetScale = 1;
 
     /** @private */ this._gestureActive = false;
-    /** @private @type {'pinch'|'wheel'|'button'|'keyboard'|'fit'|'reset'|'triple-tap'|null} */
+    /** @private @type {'pinch'|'wheel'|'button'|'keyboard'|'fit'|'reset'|'double-tap'|null} */
     this._gestureSource = null;
     /** @private @type {{x:number, y:number}} */ this._origin = { x: 0, y: 0 };
 
@@ -696,7 +852,7 @@ export class ZoomManager {
 
   /**
    * Request a zoom to `scale` from a non-gesture source (button, keyboard,
-   * triple-tap, reset). Behaves as an instantaneous gesture start+end.
+   * double-tap, reset). Behaves as an instantaneous gesture start+end.
    * Always anchored on the viewport center.
    *
    * @param {number} scale
@@ -724,6 +880,44 @@ export class ZoomManager {
       // Immediate commit (rollback path — matches legacy viewer).
       this._commitScale(clamped);
     }
+  }
+
+  /**
+   * Adopt a scale without a gesture, without a transform write, and without
+   * re-rendering. Used by core.js when it needs to install a computed initial
+   * scale (fit-to-width) BEFORE the first render is enqueued.
+   *
+   * Cancels any in-flight gesture state, pending settle timers, and any
+   * lingering CSS transform on the transform node — so the viewer starts
+   * from a clean, settled state at the new scale.
+   *
+   * Does NOT emit SCALE_APPLIED and does NOT enqueue renders. The caller
+   * (core.js::_loadPdf) is responsible for those if needed.
+   *
+   * @param {number} scale
+   * @returns {void}
+   */
+  syncScale(scale) {
+    const clamped = clamp(scale, CONFIG.MIN_ZOOM, CONFIG.MAX_ZOOM);
+
+    this._cancelSettle();
+    if (this._legacyCommitTimer) {
+      try { this._legacyCommitTimer.cancel(); } catch { /* ignore */ }
+      this._legacyCommitTimer = null;
+    }
+    if (this._rafId !== null) {
+      try { cancelAnimationFrame(this._rafId); } catch { /* ignore */ }
+      this._rafId = null;
+    }
+    this._rafScheduled = false;
+    this._gestureActive = false;
+
+    if (this._transformNode) {
+      try { this._transformNode.style.transform = ''; } catch { /* ignore */ }
+    }
+
+    this._currentScale = clamped;
+    this._targetScale = clamped;
   }
 
   /**
@@ -1029,14 +1223,27 @@ export class ZoomManager {
       });
     } catch { /* ignore */ }
 
-    // Enqueue re-raster for visible pages at the new scale.
+    // Enqueue re-raster for visible pages at the new scale AND the
+    // surrounding 5-page window. This is what makes magnification feel
+    // instant: neighbouring pages are already sharp before the user
+    // scrolls to them.
     this._enqueueVisibleRenders(clamped);
   }
 
   /**
-   * Re-raster the currently visible pages at the new scale. In preview mode,
-   * locked pages are filtered out so we never schedule a render for a page
-   * the user is not allowed to see.
+   * Re-raster the currently visible pages at the new scale, plus the
+   * surrounding ZOOM_PRERENDER_RADIUS-page window above and below.
+   *
+   * Priority assignment:
+   *   • Visible pages     → PRIORITY.VISIBLE   (rendered first)
+   *   • Neighbouring pages → PRIORITY.ADJACENT  (rendered next)
+   *
+   * Both bands respect the effective page limit — in preview mode, locked
+   * pages are filtered out so we never schedule a render for a page the user
+   * is not allowed to see.
+   *
+   * Job id includes rotation, matching core.js's `_enqueuePageRender` so the
+   * scheduler deduplicates across both sources.
    *
    * @private
    * @param {number} scale
@@ -1048,37 +1255,83 @@ export class ZoomManager {
 
     // Effective limit: preview limit in preview mode, else numPages.
     let limit = 1;
+    let rotation = 0;
     try {
       if (this._core && typeof this._core.getEffectivePageLimit === 'function') {
         limit = this._core.getEffectivePageLimit();
       } else {
         limit = this._core.getState().get('numPages') || 1;
       }
+      rotation = this._core.getState().get('rotation') || 0;
     } catch {
       limit = this._core.getState().get('numPages') || 1;
     }
 
+    // ── Visible pages at PRIORITY.VISIBLE ────────────────────────────────
     const pages = scroll && scroll.getVisiblePageNumbers
       ? scroll.getVisiblePageNumbers()
       : [];
 
     const fallback = this._getCurrentPage();
-    const list = pages.length > 0 ? pages : [fallback];
+    const visibleList = pages.length > 0 ? pages : [fallback];
 
-    for (const pageNum of list) {
+    // Track what we've already enqueued so the neighbouring window does not
+    // re-enqueue a page that is already in the visible set.
+    const enqueued = new Set();
+
+    for (const pageNum of visibleList) {
       if (pageNum > limit) continue;
+      if (enqueued.has(pageNum)) continue;
+      enqueued.add(pageNum);
 
-      /** @type {import('./render.js').RenderJob} */
-      const job = {
-        id: `page:${pageNum}:${scale}`,
-        kind: 'page',
-        pageNum,
-        scale,
-        tileRect: null,
-        priority: PRIORITY.VISIBLE,
-      };
-      try { scheduler.enqueue(job); } catch { /* ignore */ }
+      this._enqueuePage(scheduler, pageNum, scale, rotation, PRIORITY.VISIBLE);
     }
+
+    // ── Surrounding window at PRIORITY.ADJACENT ──────────────────────────
+    //
+    // ZOOM_PRERENDER_RADIUS pages above and below the current page. This is
+    // the "5 pages above and below" behaviour: after a pinch or zoom-button
+    // press settles, the neighbouring pages start rendering at the new
+    // scale in the background while the user is still looking at the
+    // current one.
+    const current = fallback;
+    for (let offset = 1; offset <= ZOOM_PRERENDER_RADIUS; offset++) {
+      const above = current - offset;
+      if (above >= 1 && above <= limit && !enqueued.has(above)) {
+        enqueued.add(above);
+        this._enqueuePage(scheduler, above, scale, rotation, PRIORITY.ADJACENT);
+      }
+      const below = current + offset;
+      if (below >= 1 && below <= limit && !enqueued.has(below)) {
+        enqueued.add(below);
+        this._enqueuePage(scheduler, below, scale, rotation, PRIORITY.ADJACENT);
+      }
+    }
+  }
+
+  /**
+   * Enqueue a single page-render job. Job id format matches core.js's
+   * `_enqueuePageRender` exactly, so the scheduler deduplicates.
+   *
+   * @private
+   * @param {any} scheduler
+   * @param {number} pageNum
+   * @param {number} scale
+   * @param {number} rotation
+   * @param {number} priority
+   */
+  _enqueuePage(scheduler, pageNum, scale, rotation, priority) {
+    /** @type {import('./render.js').RenderJob} */
+    const job = {
+      id: `page:${pageNum}:${scale}:${rotation}`,
+      kind: 'page',
+      pageNum,
+      scale,
+      rotation,
+      tileRect: null,
+      priority,
+    };
+    try { scheduler.enqueue(job); } catch { /* ignore */ }
   }
 
   /**
@@ -1099,6 +1352,11 @@ export class ZoomManager {
  *
  * When `USE_RAF_PAN` is false (rollback path), the write happens directly
  * inside pointermove — matching the previous monolithic viewer's behaviour.
+ *
+ * Pan is enabled ONLY in page mode and for image documents. In scroll mode,
+ * #viewer-main scrolls natively on both axes (`overflow: auto` in CSS), and
+ * layering a transform-based pan on top would fight the browser's own
+ * scroll handling.
  */
 export class PanManager {
   /**
@@ -1371,15 +1629,19 @@ export class PanManager {
  *
  *  • Pinch (two-finger touch) → ZoomManager.startGesture/updateGesture/endGesture
  *  • Swipe (single-finger, page mode only) → emit SWIPE
- *  • Ctrl/Meta wheel → ZoomManager.startGesture('wheel', focal) + updateGesture
+ *  • Ctrl/Meta wheel (web only) → ZoomManager.startGesture('wheel', focal)
+ *                                 + updateGesture + debounced endGesture
  *
- * Double-tap and triple-tap are NOT handled here. They live in ui-internal.js
+ * Single-tap and double-tap are NOT handled here. They live in ui-internal.js
  * as a click-based sequence handler, because click events fire identically on
  * desktop and mobile and a single handler avoids the double-fire that a
  * touch-based detector produced alongside a click-based one.
  *
  * Every recognised input also emits INTERACTION_ACTIVITY (used by ui-internal
  * for auto-hide timer reset).
+ *
+ * Wheel listener is attached only when `isWeb()` is true — see the module
+ * doc-comment for the rationale.
  */
 export class GestureManager {
   /**
@@ -1414,8 +1676,8 @@ export class GestureManager {
   // ── Public ────────────────────────────────────────────────────────────────
 
   /**
-   * Bind all touch and wheel listeners. Idempotent when re-attached to the
-   * same target with the same manager references.
+   * Bind all touch and (on web) wheel listeners. Idempotent when re-attached
+   * to the same target with the same manager references.
    *
    * @param {HTMLElement|null} target
    * @param {{ zoomManager: ZoomManager, panManager: PanManager, scrollManager: ScrollManager }} deps
@@ -1433,7 +1695,13 @@ export class GestureManager {
     this._target.addEventListener('touchmove', this._onTouchMoveBound, { passive: false });
     this._target.addEventListener('touchend', this._onTouchEndBound, { passive: false });
     this._target.addEventListener('touchcancel', this._onTouchEndBound, { passive: false });
-    this._target.addEventListener('wheel', this._onWheelBound, { passive: false });
+
+    // Wheel-zoom is a desktop convention. On native Android the listener is
+    // never attached — dead code avoided, and the hardware back button is not
+    // shadowed by any wheel handling.
+    if (isWeb()) {
+      this._target.addEventListener('wheel', this._onWheelBound, { passive: false });
+    }
   }
 
   /**
@@ -1561,6 +1829,7 @@ export class GestureManager {
     // vertical:horizontal ratio requirement prevents accidental swipes during
     // diagonal scrolls.
     if (
+      dt > 0 &&
       dt < SWIPE_MAX_MS &&
       Math.abs(dx) > SWIPE_MIN_DX_PX &&
       Math.abs(dx) > 2 * Math.abs(dy) &&
@@ -1573,13 +1842,13 @@ export class GestureManager {
       return;
     }
 
-    // Double-tap and triple-tap are handled by ui-internal.js as a
+    // Single-tap and double-tap are handled by ui-internal.js as a
     // click-based sequence. We deliberately do nothing here so that a mobile
-    // tap emits exactly one DOUBLE_TAP (via the click handler) rather than
-    // two — one from here and one from there.
+    // tap emits exactly one event (via the click handler) rather than two —
+    // one from here and one from there.
   }
 
-  // ── Wheel handler ─────────────────────────────────────────────────────────
+  // ── Wheel handler (web only) ──────────────────────────────────────────────
 
   /**
    * @private
@@ -1618,8 +1887,19 @@ export class GestureManager {
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   /**
-   * Convert client coordinates to transform-node-local coordinates.
+   * Convert client coordinates to viewer-main-local coordinates. viewer-main
+   * is the stable reference frame — it has no transform applied during a
+   * gesture, whereas the transform node (page-container) does, so measuring
+   * against viewer-main gives consistent values frame over frame.
+   *
+   * The residual offset between viewer-main's rect and page-container's
+   * layout position is bounded by the container's horizontal centering
+   * distance and is not compensated — the visual drift is imperceptible
+   * during a pinch.
+   *
    * @private
+   * @param {{x:number, y:number}} clientPoint
+   * @returns {{x:number, y:number}}
    */
   _localFocal(clientPoint) {
     const els = getViewerElements();
@@ -1654,6 +1934,16 @@ export class GestureManager {
 /**
  * Instantiate all four interaction managers, wire their cross-references, and
  * subscribe to the events that drive them.
+ *
+ * Pan enablement contract:
+ *   Pan is enabled ONLY in page mode and for image documents. Scroll mode
+ *   relies on #viewer-main's native `overflow: auto` for 360° scrolling in
+ *   both axes — layering a transform-based pan on top would fight the native
+ *   scroll handler and produce jitter.
+ *
+ *   `syncPanEnabled()` is the single source of truth for this decision. It
+ *   runs once at construction and again on every view-mode change, layout
+ *   change, and document-loaded event.
  *
  * @param {import('./core.js').ViewerCore} core
  * @returns {{ scroll: ScrollManager, zoom: ZoomManager, pan: PanManager, gestures: GestureManager, teardown: () => void }}
@@ -1696,6 +1986,11 @@ export function createInteractionLayer(core) {
   // Enable pan based on view mode / document kind.
   syncPanEnabled();
 
+  /**
+   * Enable pan only in page mode and for image documents. In scroll mode the
+   * browser's native overflow:auto handles both axes — see the factory
+   * doc-comment for the rationale.
+   */
   function syncPanEnabled() {
     let viewMode = 'scroll';
     let documentKind = null;
@@ -1704,6 +1999,7 @@ export function createInteractionLayer(core) {
       viewMode = s.get('viewMode') || 'scroll';
       documentKind = s.get('documentKind');
     } catch { /* ignore */ }
+
     const enabled = viewMode === 'page' || documentKind === 'image';
     pan.setEnabled(enabled);
     if (!enabled) pan.reset();
@@ -1736,7 +2032,7 @@ export function createInteractionLayer(core) {
     scroll.navigateTo(payload.pageNum, { smooth: true });
   }));
 
-  // ── Scale requests (from ui-internal buttons/keyboard/triple-tap) ───────
+  // ── Scale requests (from ui-internal buttons/keyboard/double-tap) ───────
   teardowns.push(bus.on(Events.SCALE_REQUESTED, (payload) => {
     if (!payload || typeof payload.scale !== 'number') return;
     zoom.requestZoom(payload.scale, payload.source || 'external');

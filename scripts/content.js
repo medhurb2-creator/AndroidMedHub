@@ -23,12 +23,18 @@
  *   │     browser.js / content.js only when the user downloads a file.   │
  *   └─────────────────────────────────────────────────────────────────────┘
  *
- * Field-shape contract:
- *   `fetchResources` returns every field the catalogue query produces.
- *   Downstream consumers (card renderer, Open handler, Download handler)
- *   read fields like `isPremium`, `author`, `year`, `subject`, `category`,
- *   and `tags` directly. Do NOT narrow the map — dropping a field here
- *   silently breaks whichever subsystem consumes it.
+ * Cache shape:
+ *   The in-memory cache stores `{version, documents, cursor, hasMore}`.
+ *   Storing cursor/hasMore is REQUIRED for pagination correctness on
+ *   revisit — without them, the cache-served first page lies about being
+ *   the last page, and the "Load more" button never appears.
+ *
+ * Failure semantics:
+ *   `fetchResources` re-throws network errors when it has no cache to
+ *   fall back on. This lets the caller (resource-browser.js) detect the
+ *   failure and switch to its offline-only view (`loadOfflineResources`).
+ *   Silently returning an empty result set was the root cause of the
+ *   "downloads don't show offline" bug.
  */
 
 import * as db from './db.js';
@@ -40,18 +46,27 @@ import * as subscription from './subscription.js';
 
 // ==================== IN-MEMORY CACHE ====================
 //
-// Map<string, { version, documents, filters, lastFetched }>
+// Map<string, {
+//   version: any,
+//   documents: any[],
+//   cursor: string|null,
+//   hasMore: boolean,
+//   filters: any,
+//   lastFetched: number,
+// }>
+//
 // Keyed by `${subject}_${category}`. Lost on page unload by design.
-//
-// The cache exists solely to satisfy the manifest-version fast path: if
-// the caller asks for the first page of a subject/category that this
-// session has already loaded and the backend manifest version matches,
-// return the in-memory copy instead of round-tripping the network.
-//
-// Because the whole Map is discarded on unload, no browsing history
-// survives across sessions.
 
-/** @type {Map<string, { version: any, documents: any[], filters: any, lastFetched: number }>} */
+/**
+ * @type {Map<string, {
+ *   version: any,
+ *   documents: any[],
+ *   cursor: string|null,
+ *   hasMore: boolean,
+ *   filters: any,
+ *   lastFetched: number,
+ * }>}
+ */
 const _catalogueCache = new Map();
 
 function _cacheKey(subject, category) {
@@ -59,36 +74,30 @@ function _cacheKey(subject, category) {
 }
 
 function _getCache(subject, category) {
-  return _catalogueCache.get(_cacheKey(subject, category))
-    || { version: null, documents: [], filters: null, lastFetched: 0 };
+  return _catalogueCache.get(_cacheKey(subject, category)) || {
+    version: null,
+    documents: [],
+    cursor: null,
+    hasMore: false,
+    filters: null,
+    lastFetched: 0,
+  };
 }
 
 function _setCache(subject, category, data) {
+  const prev = _getCache(subject, category);
   _catalogueCache.set(_cacheKey(subject, category), {
-    ...data,
+    // Preserve fields the caller didn't supply.
+    version: data.version !== undefined ? data.version : prev.version,
+    documents: data.documents !== undefined ? data.documents : prev.documents,
+    cursor: data.cursor !== undefined ? data.cursor : prev.cursor,
+    hasMore: data.hasMore !== undefined ? data.hasMore : prev.hasMore,
+    filters: data.filters !== undefined ? data.filters : prev.filters,
     lastFetched: Date.now(),
   });
 }
 
 // ==================== ONE-SHOT CACHE MIGRATION ====================
-//
-// Previous versions of this module persisted the catalogue cache to
-// IndexedDB under `content_metadata_cache_v2` / `_v3`. Those entries
-// contain metadata for undownloaded documents and violate the current
-// persistence contract.
-//
-// This migration runs once per page load, on the first call to any
-// public function. It overwrites those keys with empty objects. The
-// underlying IndexedDB records are not deleted (IndexedDB has no
-// "delete a setting key" primitive in db.js), but their contents are
-// wiped — so no browsing history remains readable on disk.
-//
-// It does NOT touch:
-//   • `download_manifest_v2` (localStorage) — the downloaded file registry.
-//   • `downloaded_resource_meta` (localStorage) — the downloaded metadata.
-//   • The IndexedDB file and thumbnail blobs — those are downloads.
-//
-// Only the catalogue cache is cleared.
 
 let _migrationDone = false;
 
@@ -99,18 +108,11 @@ async function _runCacheMigrationOnce() {
     await db.saveSetting('content_metadata_cache_v2', {});
     await db.saveSetting('content_metadata_cache_v3', {});
   } catch {
-    // Best-effort. If the setting store is unavailable, nothing else
-    // depends on this succeeding — the in-memory cache is authoritative
-    // from this point forward.
+    // Best-effort.
   }
 }
 
 // ==================== DOWNLOAD MANIFEST HELPERS ====================
-//
-// These deal with the DOWNLOADED files, not the catalogue cache.
-// They stay as-is: they read and write `download_manifest_v2` in
-// localStorage, which is the registry of files the user has explicitly
-// downloaded.
 
 const DOWNLOAD_MANIFEST_KEY = 'download_manifest_v2';
 
@@ -122,65 +124,73 @@ function setDownloadManifest(manifest) {
   utils.setLocalStorage(DOWNLOAD_MANIFEST_KEY, manifest);
 }
 
-// ==================== FETCH RESOURCES (with in-memory caching) ====================
+// ==================== FETCH RESOURCES ====================
 
 /**
  * Fetch resources for a subject/category.
  *
- * Uses the in-memory cache if the manifest version has not changed since
- * this session last loaded the subject/category. Falls through to the
- * network otherwise.
- *
- * Persistence: nothing is written to disk. The cache lives for the page
- * session only, matching the resource-browser offline contract.
+ * Behaviour:
+ *   • If first page (no cursor, no filters) and cache version matches,
+ *     return the cached page — including its cursor and hasMore, so
+ *     pagination continues correctly.
+ *   • Otherwise fetch from backend.
+ *   • On network failure:
+ *       - If cache has documents → return cache with source 'cache'.
+ *       - If cache is empty → RE-THROW. This lets the caller switch to
+ *         the offline-only view. Silently returning [] is what broke
+ *         offline downloads.
  *
  * @param {string} subject
  * @param {string} category
- * @param {string|null} cursor  (for pagination)
- * @param {Object} filters      { institution, year } (optional)
- * @returns {Promise<{documents: Array, cursor: string|null, hasMore: boolean}>}
+ * @param {string|null} cursor
+ * @param {Object} filters  { institution, year }
+ * @returns {Promise<{documents: Array, cursor: string|null, hasMore: boolean, source: string}>}
  */
 export async function fetchResources(subject, category, cursor = null, filters = {}) {
   await _runCacheMigrationOnce();
 
-  // If no cursor and no filters, check the in-memory cache
-  if (!cursor && !filters.institution && !filters.year) {
+  const isFirstPage = !cursor && !filters.institution && !filters.year;
+
+  // ── Cache fast-path ────────────────────────────────────────────────
+  if (isFirstPage) {
     const cached = _getCache(subject, category);
-    try {
-      const manifest = await convexHttpClient.query('resources/queries:getManifest', {
-        subject,
-        category,
-      });
-      if (manifest && manifest.version === cached.version && cached.documents.length > 0) {
-        return {
-          documents: cached.documents,
-          cursor: null,
-          hasMore: false,
-        };
+    if (cached.documents.length > 0) {
+      try {
+        const manifest = await convexHttpClient.query('resources/queries:getManifest', {
+          subject,
+          category,
+        });
+        if (manifest && manifest.version === cached.version) {
+          return {
+            documents: cached.documents,
+            cursor: cached.cursor || null,
+            hasMore: cached.hasMore === true,
+            source: 'cache',
+          };
+        }
+      } catch {
+        // Manifest check failed — fall through to full fetch. Do not
+        // return the cache here, because we can't confirm it is current.
       }
-    } catch (err) {
-      console.warn('[Content] Could not fetch manifest, will refetch all.', err);
     }
   }
 
-  // Build query parameters
+  // ── Build query params ─────────────────────────────────────────────
   const queryParams = {
     subject,
     category,
     limit: 20,
   };
-  // ✅ Only include cursor if it's a valid non-empty string (not null/undefined)
   if (cursor && typeof cursor === 'string' && cursor.length > 0) {
     queryParams.cursor = cursor;
   }
 
-  // Fetch from backend
+  // ── Network fetch ──────────────────────────────────────────────────
   try {
     const result = await convexHttpClient.query('resources/queries:getResources', queryParams);
 
     // ────────────────────────────────────────────────────────────────
     // IMPORTANT: This map must preserve EVERY field the caller relies on.
-    //
     // A narrowing map here silently drops fields for every downstream
     // consumer (cards, open handler, download handler). Do not remove
     // fields from this shape without auditing every consumer.
@@ -219,31 +229,40 @@ export async function fetchResources(subject, category, cursor = null, filters =
       updatedAt: doc.updatedAt,
     }));
 
-    // If first page, update the in-memory cache
-    if (!cursor && !filters.institution && !filters.year) {
+    // Write the cache on first-page fetches, including cursor and hasMore
+    // so a subsequent cache hit continues pagination correctly.
+    if (isFirstPage) {
       _setCache(subject, category, {
         version: result.manifestVersion,
         documents,
+        cursor: result.cursor || null,
+        hasMore: result.hasMore === true,
       });
     }
 
     return {
       documents,
-      cursor: result.cursor,
-      hasMore: result.hasMore,
+      cursor: result.cursor || null,
+      hasMore: result.hasMore === true,
+      source: 'network',
     };
   } catch (err) {
     console.error('[Content] Fetch error:', err);
-    ui.showToast('Failed to load resources', 'error');
 
-    // Return in-memory cached data if available. Never reads from disk —
-    // this fallback only helps when the network fails mid-session and the
-    // user has already loaded the same subject/category once.
+    // Fall back to in-memory cache if we have one.
     const cached = _getCache(subject, category);
     if (cached.documents.length > 0) {
-      return { documents: cached.documents, cursor: null, hasMore: false };
+      return {
+        documents: cached.documents,
+        cursor: cached.cursor || null,
+        hasMore: cached.hasMore === true,
+        source: 'cache-fallback',
+      };
     }
-    return { documents: [], cursor: null, hasMore: false };
+
+    // No cache to serve from. Re-throw so the caller can switch to its
+    // offline path. This is the fix for "downloads don't show offline".
+    throw err;
   }
 }
 
@@ -252,8 +271,6 @@ export async function fetchResources(subject, category, cursor = null, filters =
 /**
  * Get available filter values (institutions, years) for a subject/category.
  *
- * Cached in memory for the session only, same policy as the catalogue cache.
- *
  * @param {string} subject
  * @param {string} category
  * @returns {Promise<{institutions: string[], years: number[]}>}
@@ -261,20 +278,17 @@ export async function fetchResources(subject, category, cursor = null, filters =
 export async function getAvailableFilters(subject, category) {
   await _runCacheMigrationOnce();
 
+  const cached = _getCache(subject, category);
+  if (cached.filters) {
+    return cached.filters;
+  }
+
   try {
-    // Check in-memory cache first
-    const cached = _getCache(subject, category);
-    if (cached.filters) {
-      return cached.filters;
-    }
     const result = await convexHttpClient.query('resources/queries:getFilters', {
       subject,
       category,
     });
-    // Cache filters in memory
-    const cacheData = _getCache(subject, category);
-    cacheData.filters = result;
-    _setCache(subject, category, cacheData);
+    _setCache(subject, category, { filters: result });
     return result || { institutions: [], years: [] };
   } catch (err) {
     console.warn('[Content] Failed to fetch filters', err);
@@ -285,21 +299,16 @@ export async function getAvailableFilters(subject, category) {
 // ==================== DOWNLOAD FILE ====================
 
 /**
- * Download a resource file.
- * Checks subscription, gets signed URL, stores in IndexedDB.
- *
- * This is the ONLY path that writes an undownloaded-then-downloaded
- * document to disk. It is invoked explicitly by the user clicking
- * Download. Nothing else in this module writes document bytes.
+ * Download a resource file (standalone API; the resource browser has its
+ * own download flow that also writes persisted metadata).
  *
  * @param {string} resourceId
- * @param {string} title (for display)
- * @returns {Promise<boolean>} success
+ * @param {string} title
+ * @returns {Promise<boolean>}
  */
 export async function downloadResource(resourceId, title = '') {
   await _runCacheMigrationOnce();
 
-  // Check active subscription/trial first (fast local check)
   const hasActive = await subscription.hasActiveSubscription();
   if (!hasActive) {
     ui.showToast('Active subscription or free trial required to download.', 'warning');
@@ -333,10 +342,8 @@ export async function downloadResource(resourceId, title = '') {
     if (!response.ok) throw new Error('Download failed');
 
     const blob = await response.blob();
-    // Store in IndexedDB — this is a user-initiated download.
     await db.saveFileBlob(resourceId, blob);
 
-    // Update download manifest
     const manifest = getDownloadManifest();
     manifest[resourceId] = {
       downloadedAt: Date.now(),
@@ -360,8 +367,6 @@ export async function downloadResource(resourceId, title = '') {
 
 /**
  * Retrieve a downloaded file from IndexedDB.
- * Returns null for anything not in the download manifest.
- *
  * @param {string} resourceId
  * @returns {Promise<Blob|null>}
  */
@@ -391,9 +396,8 @@ export function formatFileSize(bytes) {
 }
 
 // ==================== EXPORTS ====================
-// Export the manifest helpers so the UI can use them
+
 export { getDownloadManifest, setDownloadManifest };
 
-// Compatibility aliases for the resource-browser.html
 export const fetchDocuments = fetchResources;
 export const downloadDocument = downloadResource;

@@ -6,7 +6,14 @@ import * as utils from '../utils.js';
 import * as subscription from '../subscription.js';
 import * as questions from '../questions.js';
 import * as examEngine from '../exam-engine.js';
-import { buildExamHTML, buildMcqSheetHTML, buildAnswerKeyHTML, printDocument } from '../pdf-engine.js';
+
+// --- PDF engine imports (v7.0) ---
+import { exportDocument } from '../pdf-engine.js';
+
+// Fallback – if the module system didn't deliver the function (cache issue),
+// use the global window version attached by File 1.
+const safeExportDocument =
+  typeof exportDocument === 'function' ? exportDocument : window.exportDocument;
 
 let $;
 let config = null;
@@ -349,47 +356,57 @@ async function handleDecode() {
   ui.showToast(`Decoded: ${decoded.subject}, ${decoded.numQuestions} questions`, 'success');
 }
 
-// ==================== GENERATE HANDLER ====================
+// ==================== GENERATE HANDLER (v7.0 WASM Engine) ====================
+//
+// The v7.0 engine produces one PDF per document type. When multiple types
+// are selected (exam + answer sheet + answer key), the handler calls
+// `exportDocument` once per type. The engine serializes compiles internally,
+// so the calls are safely sequential. On Web each export triggers its own
+// silent browser download; on Capacitor each is written to DOCUMENTS.
+
 async function handleGenerate() {
   const btn = $('#generatePdfBtn');
   btn.disabled = true;
   btn.textContent = 'Generating...';
 
   try {
+    if (typeof safeExportDocument !== 'function') {
+      ui.showToast('PDF engine unavailable — please reload the page', 'error');
+      return;
+    }
+
+    // ── Rate limiting ──────────────────────────────────────────────────
     const limitCheck = checkPDFLimits();
     if (!limitCheck.ok) {
       ui.showToast(limitCheck.msg, 'warning');
-      btn.disabled = false;
-      btn.textContent = 'Generate PDF';
       return;
     }
 
-    const numQuestions = parseInt($('#pdf-question-count').value);
+    // ── Input validation ───────────────────────────────────────────────
+    const numQuestions = parseInt($('#pdf-question-count').value, 10);
     if (isNaN(numQuestions) || numQuestions < 1 || numQuestions > MAX_QUESTIONS) {
       ui.showToast(`Please enter a number between 1 and ${MAX_QUESTIONS}.`, 'warning');
-      btn.disabled = false;
-      btn.textContent = 'Generate PDF';
       return;
     }
 
-    const includeQuestions = $('#include-questions').checked;
-    const includeAnswerSheet = $('#include-answer-sheet').checked;
+    const includeQuestions     = $('#include-questions').checked;
+    const includeAnswerSheet   = $('#include-answer-sheet').checked;
     const includeAnswerBooklet = $('#include-answer-booklet').checked;
-    const includeFillout = $('#include-fillout').checked;
+    const includeFillout       = $('#include-fillout').checked;
 
     if (!includeQuestions && !includeAnswerSheet && !includeAnswerBooklet) {
       ui.showToast('Please select at least one document type.', 'warning');
-      btn.disabled = false;
-      btn.textContent = 'Generate PDF';
       return;
     }
 
-    let seed = parseInt(btn.dataset.seed);
+    // ── Seed resolution ────────────────────────────────────────────────
+    let seed = parseInt(btn.dataset.seed, 10);
     if (isNaN(seed) || seed === 0) {
       seed = Math.floor(Math.random() * 2147483647);
     }
     delete btn.dataset.seed;
 
+    // ── Fetch + shuffle questions ──────────────────────────────────────
     const rawQuestions = await questions.getQuestionsForExam({
       subject: config.subject,
       topics: config.topics,
@@ -397,118 +414,139 @@ async function handleGenerate() {
     });
 
     if (!rawQuestions || rawQuestions.length < numQuestions) {
-      ui.showToast(`Not enough questions available. Got ${rawQuestions?.length || 0}, needed ${numQuestions}.`, 'error');
-      btn.disabled = false;
-      btn.textContent = 'Generate PDF';
+      ui.showToast(
+        `Not enough questions available. Got ${rawQuestions?.length || 0}, needed ${numQuestions}.`,
+        'error'
+      );
       return;
     }
 
     const shuffled = seededShuffle(rawQuestions, seed);
     const selectedQuestions = shuffled.slice(0, numQuestions);
 
+    // ── Build the per-question shapes expected by File 2's schemas ─────
+    const LETTERS = ['A', 'B', 'C', 'D', 'E'];
+
     const examQuestions = selectedQuestions.map((q, idx) => {
-      const letters = ['A', 'B', 'C', 'D', 'E'];
-      const optionStrings = q.options.map((opt, i) => {
-        return `${letters[i]}. ${opt.text}`;
-      });
+      const optionStrings = q.options.map((opt, i) => `${LETTERS[i]}. ${opt.text}`);
+
       let correctLetter = 'A';
       q.options.forEach((opt, i) => {
-        if (opt.isCorrect) correctLetter = letters[i];
+        if (opt.isCorrect) correctLetter = LETTERS[i];
       });
-      let explanationStr = '';
-      if (q.explanation) {
-        if (q.explanation.overview) explanationStr += `Overview: ${q.explanation.overview}\n`;
-        if (q.explanation.highYield) explanationStr += `High Yield: ${q.explanation.highYield}\n`;
-        if (q.explanation.clinicalCorrelation) explanationStr += `Clinical Correlation: ${q.explanation.clinicalCorrelation}`;
-      }
-      if (!explanationStr) explanationStr = 'No explanation available.';
+
+      // Structured explanation: File 2's sanitizeExplanation accepts either
+      // a string or an object. An object lets File 6's answerBlock render
+      // each section with its own bold label.
+      const explanationObj = {
+        overview:            q.explanation?.overview            || '',
+        highYield:           q.explanation?.highYield           || '',
+        clinicalCorrelation: q.explanation?.clinicalCorrelation || ''
+      };
+
       return {
         id: `${idx + 1}`,
         text: q.question,
         options: optionStrings,
         correct: correctLetter,
-        explanation: explanationStr
+        explanation: explanationObj
       };
     });
 
-    const dateStr = new Date().toLocaleDateString('en-GB', {
-      day: '2-digit', month: 'short', year: 'numeric'
-    });
-
+    // ── Common metadata ────────────────────────────────────────────────
+    const isoDate = new Date().toISOString().slice(0, 10);
     const topicIds = config.topics.map(t => t.id);
     const examCode = encodeExamCode(config.subject, topicIds, seed, numQuestions);
 
-    const examData = {
-      id: examCode,
-      seed: seed,
-      subject: config.subject,
-      topics: config.topics.map(t => t.name).join(', '),
-      title: `${config.subject} – Practice Exam`,
-      difficulty: 'Moderate',
-      duration: `${Math.ceil(numQuestions * 1.2)} minutes`,
-      date: dateStr,
-      questions: examQuestions,
-      totalQuestions: selectedQuestions.length,
-      totalMarks: selectedQuestions.length,
-      studentInfo: includeFillout
-    };
-
-    const answerData = {
-      id: examCode,
-      subject: config.subject,
-      title: `${config.subject} – Answer Key`,
-      subtitle: 'Detailed explanations for each question',
-      answers: examQuestions.map((q) => ({
-        id: q.id,
-        question: q.text,
-        correctOption: q.correct,
-        explanation: q.explanation || 'No explanation available.'
-      })),
-      date: dateStr,
-      studentInfo: includeFillout
-    };
-
-    let fullHtml = '';
+    // ── Compose payloads for each selected document type ───────────────
+    const payloads = [];
 
     if (includeQuestions) {
-      fullHtml += buildExamHTML(examData);
+      payloads.push({
+        type: 'exam',
+        data: {
+          id: examCode,
+          title: `${config.subject} – Practice Exam`,
+          subject: config.subject,
+          topics: config.topics.map(t => t.name).join(', '),
+          difficulty: 'Moderate',
+          duration: `${Math.ceil(numQuestions * 1.2)} minutes`,
+          totalMarks: selectedQuestions.length,
+          date: isoDate,
+          studentInfo: includeFillout,
+          questions: examQuestions.map(q => ({
+            id: q.id,
+            text: q.text,
+            options: q.options
+          }))
+        }
+      });
     }
 
     if (includeAnswerSheet) {
-      fullHtml += buildMcqSheetHTML({
-        id: examCode,
-        subject: config.subject,
-        totalQuestions: selectedQuestions.length,
-        title: `${config.subject} – Answer Sheet`,
-        date: dateStr,
-        studentInfo: includeFillout
+      payloads.push({
+        type: 'mcq-sheet',
+        data: {
+          id: examCode,
+          title: `${config.subject} – Answer Sheet`,
+          totalQuestions: selectedQuestions.length,
+          studentInfo: includeFillout
+        }
       });
     }
 
     if (includeAnswerBooklet) {
-      fullHtml += buildAnswerKeyHTML(answerData);
+      payloads.push({
+        type: 'answer-key',
+        data: {
+          id: examCode,
+          title: `${config.subject} – Answer Key`,
+          subtitle: 'Detailed explanations for each question',
+          subject: config.subject,
+          date: isoDate,
+          answers: examQuestions.map(q => ({
+            id: q.id,
+            question: q.text,
+            correctOption: q.correct,
+            explanation: q.explanation
+          }))
+        }
+      });
     }
 
-    if (typeof printDocument === 'function') {
-      await printDocument(fullHtml);
-    } else {
-      const win = window.open('', '_blank');
-      if (win) {
-        win.document.write(fullHtml);
-        win.document.close();
-        win.focus();
-        win.print();
-      } else {
-        ui.showToast('Please allow popups to print the document.', 'error');
-      }
+    // ── Export each document sequentially ──────────────────────────────
+    const results = [];
+    for (const { type, data } of payloads) {
+      const result = await safeExportDocument(type, data);
+      results.push(result);
     }
 
+    // ── Success ────────────────────────────────────────────────────────
     incrementPDFLimits();
-    ui.showToast(`PDF generated successfully! Exam code: ${examCode}`, 'success');
-    btn.dataset.seed = '';
+
+    let summary;
+    if (results.length === 1) {
+      summary = results[0].filename;
+    } else {
+      const names = results.map(r => r.filename).join(', ');
+      summary = `${results.length} PDFs (${names})`;
+    }
+    ui.showToast(`Generated: ${summary} — Exam code: ${examCode}`, 'success');
+
   } catch (err) {
-    console.error(err);
-    ui.showToast('Failed to generate PDF. Please try again.', 'error');
+    console.error('[PDFSettings] Generate failed:', err);
+
+    // Surface useful messages for the common failure modes.
+    const code = err && err.code;
+    let message = 'Failed to generate PDF. Please try again.';
+    if (code === 'TIMEOUT')         message = 'PDF generation timed out — try fewer questions.';
+    else if (code === 'STORAGE')    message = 'Could not save PDF — check storage permissions.';
+    else if (code === 'VALIDATION') message = 'Invalid exam data — ' + (err.message || 'unknown error');
+    else if (code === 'COMPILE')    message = 'PDF compile error — please report this.';
+    else if (code === 'ASSET_LOAD') message = 'Could not load PDF assets — check your connection once.';
+    else if (err && err.message)    message = 'PDF generation failed: ' + err.message;
+
+    ui.showToast(message, 'error');
   } finally {
     btn.disabled = false;
     btn.textContent = 'Generate PDF';

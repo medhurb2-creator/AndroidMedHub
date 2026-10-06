@@ -9,6 +9,34 @@
  *   - Downloaded METADATA lives in localStorage (DOWNLOADED_META_KEY) → cards render offline.
  *   - Undownloaded catalogue items are NEVER persisted. Offline you see only what you saved.
  *
+ * Sorting:
+ *   Documents are sorted alphabetically by title — case-insensitive, locale-
+ *   aware, with natural numeric ordering so "Chapter 2" precedes "Chapter 10".
+ *   This applies to every filter EXCEPT "recent", which sorts by updatedAt
+ *   descending (newest first) with a title tie-breaker.
+ *
+ *   Sorting happens at render time in `sortDocuments()`, which is the single
+ *   authoritative point of order. Filter sources (loaded docs, persisted
+ *   downloads, persisted favorites) all funnel through it, so display order
+ *   is consistent regardless of where the data came from.
+ *
+ * Filter sourcing:
+ *   The "Downloaded" and "Favorites" filters do NOT filter the loaded list.
+ *   They read directly from their persisted sources (localStorage), so a
+ *   download or favorite from page 5 is visible even when only page 1 is
+ *   loaded. This fixes the "sometimes nothing, sometimes some, sometimes all"
+ *   behaviour where the filter depended on how many pages had been loaded.
+ *
+ * Pagination on revisit:
+ *   The in-memory catalogue cache (in content.js) preserves cursor and
+ *   hasMore, so revisiting a subject shows the first page WITH a working
+ *   "Load more" button — not a silently truncated list.
+ *
+ * Offline race handling:
+ *   When the browser goes offline mid-fetch, the in-flight response is
+ *   discarded and the offline-only set is rendered. This is done by
+ *   checking navigator.onLine after every await boundary.
+ *
  * Metadata contract:
  *   `saveDownloadedMeta` persists the FULL public document shape returned by
  *   the catalogue queries — including `isPremium`, `subject`, `description`,
@@ -52,7 +80,6 @@ const TYPE_NAMES = {
     visual: 'Visual Concepts'
 };
 const FAVORITES_KEY = 'favorite_resources';
-// Persisted metadata for DOWNLOADED files only
 const DOWNLOADED_META_KEY = 'downloaded_resource_meta';
 
 // ==================== DIAGNOSTIC LOGGER ====================
@@ -60,10 +87,6 @@ const DOWNLOADED_META_KEY = 'downloaded_resource_meta';
 //   localStorage.setItem('debugPremium', '1')   → on
 //   localStorage.removeItem('debugPremium')     → off
 // Then reload the page.
-//
-// Every log is tagged `[premium:...]` so you can filter the console with
-// the string "premium". Colours are applied via console.log %c formatting
-// so the important lines stand out in a busy console.
 
 const DBG_KEY = 'debugPremium';
 
@@ -80,12 +103,6 @@ const LOG_STYLE = {
     dim: 'color:#6b7280',
 };
 
-/**
- * Log a tagged group of diagnostic data.
- * @param {string} tag
- * @param {any} payload
- * @param {'info'|'ok'|'warn'|'fail'} [level]
- */
 function _log(tag, payload, level = 'info') {
     if (!_dbg()) return;
     const style = LOG_STYLE[level] || LOG_STYLE.info;
@@ -96,9 +113,6 @@ function _log(tag, payload, level = 'info') {
     } catch { /* ignore */ }
 }
 
-/**
- * Log a one-line summary (no group). Useful for scanning.
- */
 function _logLine(tag, message, level = 'info') {
     if (!_dbg()) return;
     const style = LOG_STYLE[level] || LOG_STYLE.info;
@@ -107,11 +121,6 @@ function _logLine(tag, message, level = 'info') {
     } catch { /* ignore */ }
 }
 
-/**
- * Summarise a document record into a compact shape for logging.
- * Shows the exact value and type of isPremium, plus the full key list so
- * missing fields are obvious.
- */
 function _summariseDoc(d) {
     return {
         _id: d._id,
@@ -130,7 +139,6 @@ let currentCursor = null;
 let isLoading = false;
 let hasMore = true;
 let currentFilter = 'all';
-let searchTerm = '';
 let allDocuments = [];
 const activeDownloads = new Map();
 export const docMap = new Map();
@@ -158,19 +166,6 @@ function setDownloadedMeta(map) {
  * thumbnail blob have been written to IndexedDB. The persisted record is
  * the sole source of truth for offline rendering, filtering, and — critically
  * — the Open handler's premium check.
- *
- * Fields are grouped by concern so it is easy to see what belongs where:
- *
- *   Identity        _id, title, subject, category
- *   Attribution     author, year
- *   Entitlement     isPremium         ← drives preview-mode decision offline
- *   Content         fileType, fileSize, description, tags
- *   Media           r2ThumbnailKey    (raw key; URL is derived online)
- *   Counters        downloadCount, viewCount, version
- *   Timestamps      uploadedAt, updatedAt
- *
- * `isPremium` is coerced with `=== true` so the value is always a strict
- * boolean.
  *
  * @param {object} doc  the full document record from docMap
  */
@@ -239,7 +234,11 @@ function removeDownloadedMeta(id) {
 
 // ==================== FAVORITES ====================
 function getFavorites() {
-    return JSON.parse(localStorage.getItem(FAVORITES_KEY) || '[]');
+    try {
+        return JSON.parse(localStorage.getItem(FAVORITES_KEY) || '[]');
+    } catch {
+        return [];
+    }
 }
 function setFavorites(list) {
     localStorage.setItem(FAVORITES_KEY, JSON.stringify(list));
@@ -248,27 +247,136 @@ function isFavorite(id) {
     return getFavorites().includes(id);
 }
 
-// ==================== FILTER & SEARCH ====================
+// ==================== FILTER SOURCES ====================
+//
+// "Downloaded" and "Favorites" read directly from their persisted stores,
+// NOT from the currently-loaded page. This makes both filters complete
+// regardless of pagination.
+
+function getDownloadedDocuments() {
+    const meta = getDownloadedMeta();
+    const manifest = content.getDownloadManifest() || {};
+    return Object.values(meta).filter(d => d && manifest[d._id]);
+}
+
+function getFavoriteDocuments() {
+    const favs = getFavorites();
+    if (favs.length === 0) return [];
+    const favSet = new Set(favs);
+
+    /** @type {Map<string, object>} */
+    const result = new Map();
+    allDocuments.forEach(d => {
+        if (favSet.has(d._id)) result.set(d._id, d);
+    });
+
+    const meta = getDownloadedMeta();
+    const manifest = content.getDownloadManifest() || {};
+    Object.values(meta).forEach(d => {
+        if (!d || !favSet.has(d._id)) return;
+        if (!manifest[d._id]) return;
+        if (!result.has(d._id)) result.set(d._id, d);
+    });
+
+    return Array.from(result.values());
+}
+
+// ==================== FILTER ====================
+
+/**
+ * Apply filter and search to a document list. Does NOT sort — sorting is
+ * applied separately by `sortDocuments()` so filter and order are
+ * independent concerns.
+ *
+ * @param {Array<object>} docs
+ * @param {string} filterType
+ * @param {string} searchTerm
+ * @returns {Array<object>}
+ */
 function filterDocuments(docs, filterType, searchTerm) {
-    let filtered = docs;
-    if (searchTerm.trim()) {
-        const term = searchTerm.trim().toLowerCase();
-        filtered = filtered.filter(d => d.title.toLowerCase().includes(term));
-    }
+    let filtered;
+
     switch (filterType) {
         case 'favorites':
-            filtered = filtered.filter(d => isFavorite(d._id));
+            filtered = getFavoriteDocuments();
             break;
         case 'downloaded':
-            filtered = filtered.filter(d => content.isDownloaded(d._id));
+            filtered = getDownloadedDocuments();
             break;
         case 'recent':
-            filtered = filtered.slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+            // Source is the loaded docs; sorting is applied later.
+            filtered = docs.slice();
             break;
+        case 'all':
         default:
+            filtered = docs;
             break;
     }
+
+    if (searchTerm && searchTerm.trim()) {
+        const term = searchTerm.trim().toLowerCase();
+        filtered = filtered.filter(d => (d.title || '').toLowerCase().includes(term));
+    }
+
     return filtered;
+}
+
+// ==================== SORT ====================
+
+/**
+ * Sort documents for display.
+ *
+ * Default: alphabetical by title — case-insensitive, locale-aware, with
+ * natural numeric ordering so "Chapter 2" precedes "Chapter 10". Documents
+ * with empty titles sort last.
+ *
+ * The "recent" sort mode uses updatedAt (falling back to uploadedAt)
+ * descending, with a title tie-breaker for stable ordering when timestamps
+ * are equal.
+ *
+ * Returns a new array; does not mutate the input.
+ *
+ * @param {Array<object>} docs
+ * @param {string} sortMode
+ * @returns {Array<object>}
+ */
+function sortDocuments(docs, sortMode) {
+    const copy = docs.slice();
+
+    if (sortMode === 'recent') {
+        return copy.sort((a, b) => {
+            const ta = Number(a.updatedAt || a.uploadedAt || 0);
+            const tb = Number(b.updatedAt || b.uploadedAt || 0);
+            if (tb !== ta) return tb - ta;
+            return _compareTitles(a.title, b.title);
+        });
+    }
+
+    return copy.sort((a, b) => _compareTitles(a.title, b.title));
+}
+
+/**
+ * Compare two titles for alphabetical ordering.
+ * @private
+ * @param {any} a
+ * @param {any} b
+ * @returns {number}
+ */
+function _compareTitles(a, b) {
+    const ta = String(a == null ? '' : a).trim();
+    const tb = String(b == null ? '' : b).trim();
+    // Empty titles sort to the end, not the beginning.
+    if (!ta && !tb) return 0;
+    if (!ta) return 1;
+    if (!tb) return -1;
+    try {
+        return ta.localeCompare(tb, undefined, { numeric: true, sensitivity: 'base' });
+    } catch {
+        // Fallback for engines without localeCompare options.
+        const la = ta.toLowerCase();
+        const lb = tb.toLowerCase();
+        return la < lb ? -1 : la > lb ? 1 : 0;
+    }
 }
 
 // ==================== RENDER ====================
@@ -280,7 +388,12 @@ function applyFiltersAndRender() {
     }
     const searchEl = document.getElementById('search-input');
     const term = searchEl ? searchEl.value : '';
-    const filtered = filterDocuments(allDocuments, currentFilter, term);
+
+    // Filter, then sort. Order is applied uniformly to every filter source.
+    const filtered = sortDocuments(
+        filterDocuments(allDocuments, currentFilter, term),
+        currentFilter,
+    );
 
     if (_dbg()) {
         _log('render', {
@@ -288,23 +401,33 @@ function applyFiltersAndRender() {
             searchTerm: term,
             totalInAllDocuments: allDocuments.length,
             afterFilter: filtered.length,
-            premiumInAll: allDocuments.filter(d => d.isPremium === true).length,
             premiumInFiltered: filtered.filter(d => d.isPremium === true).length,
-            docs: filtered.map(_summariseDoc),
+            firstFiveTitles: filtered.slice(0, 5).map(d => d.title),
         });
     }
 
     if (filtered.length === 0) {
-        grid.innerHTML = '<div class="no-data">No resources match your criteria.</div>';
+        let emptyMsg;
+        if (currentFilter === 'downloaded') {
+            emptyMsg = 'No downloaded resources yet.';
+        } else if (currentFilter === 'favorites') {
+            emptyMsg = 'No favorites yet.';
+        } else if (!navigator.onLine) {
+            emptyMsg = 'You are offline and have no downloaded resources.';
+        } else {
+            emptyMsg = 'No resources match your criteria.';
+        }
+        grid.innerHTML = `<div class="no-data">${emptyMsg}</div>`;
         return;
     }
+
     grid.innerHTML = filtered.map(doc => createResourceCard(doc)).join('');
     attachCardEventListeners();
 }
 
 /**
  * Thumbnail resolution order:
- *   1. Cached blob object URL (works offline) – always preferred
+ *   1. Cached blob object URL (works offline) — always preferred
  *   2. Public remote URL (only if online)
  *   3. null → placeholder
  */
@@ -381,7 +504,6 @@ function attachCardEventListeners() {
             const doc = docMap.get(id);
             const isOpen = btn.classList.contains('btn-open');
 
-            // ── DEBUG: entry point — what did the click give us? ──────────
             if (_dbg()) {
                 _logLine(
                     'click',
@@ -394,13 +516,11 @@ function attachCardEventListeners() {
                 );
             }
 
-            // ===== OPEN (uses cached blob – works offline) =====
+            // ===== OPEN =====
             if (isOpen) {
                 let previewMode = false;
                 let hasActive = false;
 
-                // Fetch subscription state so we can log it regardless of
-                // whether the premium branch fires.
                 if (doc && doc.isPremium === true) {
                     hasActive = await subscription.hasActiveSubscription();
                     if (!hasActive) {
@@ -408,7 +528,6 @@ function attachCardEventListeners() {
                     }
                 }
 
-                // ── DEBUG: full decision trace ────────────────────────────
                 if (_dbg()) {
                     const reason = !doc
                         ? 'doc not in docMap'
@@ -438,14 +557,6 @@ function attachCardEventListeners() {
                 const title = btn.dataset.title || 'Document';
                 const fileType = btn.dataset.type || 'pdf';
 
-                if (_dbg()) {
-                    _logLine(
-                        'open-final',
-                        `id=${id} previewMode=${previewMode} title="${title}" type=${fileType}`,
-                        previewMode ? 'warn' : 'ok'
-                    );
-                }
-
                 viewer.openDocument(id, title, fileType, { previewMode });
                 return;
             }
@@ -469,17 +580,9 @@ function attachCardEventListeners() {
                     router.navigateTo('subscription');
                     return;
                 }
-                _logLine(
-                    'download-allowed',
-                    `id=${id} premium + subscribed → proceeding`,
-                    'ok'
-                );
+                _logLine('download-allowed', `id=${id} premium + subscribed → proceeding`, 'ok');
             } else {
-                _logLine(
-                    'download-allowed',
-                    `id=${id} free resource → proceeding`,
-                    'ok'
-                );
+                _logLine('download-allowed', `id=${id} free resource → proceeding`, 'ok');
             }
 
             startDownload(id);
@@ -513,11 +616,19 @@ function attachCardEventListeners() {
                 btn.textContent = '⭐ Remove favorite';
             }
             setFavorites(favs);
+
+            // Full re-render keeps sort and filter coherent.
+            if (currentFilter === 'favorites') {
+                applyFiltersAndRender();
+                return;
+            }
             const card = btn.closest('.resource-card');
             const doc = docMap.get(id);
-            if (doc) {
+            if (card && doc) {
                 card.outerHTML = createResourceCard(doc);
                 attachCardEventListeners();
+            } else {
+                applyFiltersAndRender();
             }
         });
     });
@@ -541,17 +652,11 @@ function attachCardEventListeners() {
 
             removeDownloadedMeta(id);
 
-            const doc = docMap.get(id);
-            if (doc) {
-                if (!navigator.onLine) {
-                    loadOfflineResources();
-                    applyFiltersAndRender();
-                } else {
-                    const card = btn.closest('.resource-card');
-                    card.outerHTML = createResourceCard(doc);
-                    attachCardEventListeners();
-                }
+            // Full re-render — the deleted item may be a filter source.
+            if (!navigator.onLine || currentFilter === 'downloaded') {
+                loadOfflineResources();
             }
+            applyFiltersAndRender();
             ui.showToast('File deleted', 'success');
         });
     });
@@ -570,11 +675,7 @@ function handleGlobalClick(e) {
 
 // ==================== THUMBNAIL CACHING ====================
 async function cacheThumbnail(resourceId, thumbnailUrl) {
-    if (!thumbnailUrl) {
-        console.warn(`[Thumbnail] No thumbnail URL for ${resourceId}`);
-        return false;
-    }
-
+    if (!thumbnailUrl) return false;
     if (thumbnailCache.has(resourceId)) return true;
 
     const existing = await db.getThumbnailBlob(resourceId);
@@ -591,10 +692,9 @@ async function cacheThumbnail(resourceId, thumbnailUrl) {
 
         await db.saveThumbnailBlob(resourceId, blob);
         thumbnailCache.set(resourceId, URL.createObjectURL(blob));
-        console.log(`[Thumbnail] Cached: ${resourceId} (${blob.size} bytes)`);
         return true;
     } catch (err) {
-        console.error(`[Thumbnail] Failed for ${resourceId}:`, err);
+        console.warn(`[Thumbnail] Failed for ${resourceId}:`, err);
         return false;
     }
 }
@@ -608,9 +708,7 @@ async function hydrateThumbnailCache(docs) {
                 const blob = await db.getThumbnailBlob(id);
                 if (!blob) return;
                 thumbnailCache.set(id, URL.createObjectURL(blob));
-            } catch (err) {
-                console.warn(`[Thumbnail] Hydrate failed for ${id}:`, err);
-            }
+            } catch { /* ignore */ }
         })
     );
 }
@@ -724,10 +822,9 @@ async function startDownload(resourceId) {
         // Persisted metadata — this is where isPremium is written.
         saveDownloadedMeta(doc);
 
-        if (doc) {
-            card.outerHTML = createResourceCard(doc);
-            attachCardEventListeners();
-        }
+        // Full re-render: the card's sort position may change, and if the
+        // user is filtered by "downloaded" or "all", a new card may appear.
+        applyFiltersAndRender();
 
         _logLine(
             'download-complete',
@@ -760,44 +857,24 @@ async function startDownload(resourceId) {
 }
 
 // ==================== OFFLINE LOADING ====================
+
 /**
- * Build the resource list purely from what has actually been downloaded.
+ * Build the resource list from what has actually been downloaded.
+ * Sorting and filtering are applied by `applyFiltersAndRender`.
  */
 function loadOfflineResources() {
-    const meta = getDownloadedMeta();
-    const manifest = content.getDownloadManifest();
-
-    const docs = Object.values(meta).filter(d => manifest && manifest[d._id]);
+    const docs = getDownloadedDocuments();
 
     if (_dbg()) {
-        const allRecords = Object.values(meta);
         _log('offline-load', {
-            totalPersistedRecords: allRecords.length,
-            withManifestEntry: docs.length,
-            records: allRecords.map(r => ({
-                _id: r._id,
-                title: r.title,
-                isPremium: r.isPremium,
-                typeofIsPremium: typeof r.isPremium,
-                isStrictTrue: r.isPremium === true,
-                hasManifest: !!(manifest && manifest[r._id]),
-                keys: Object.keys(r),
-            })),
+            downloadedCount: docs.length,
+            titles: docs.map(d => d.title),
         });
     }
 
     allDocuments = docs;
     docMap.clear();
     allDocuments.forEach(d => docMap.set(d._id, d));
-
-    if (_dbg()) {
-        _logLine(
-            'offline-loaded',
-            `docMap now has ${docMap.size} entries, ` +
-            `${allDocuments.filter(d => d.isPremium === true).length} premium`,
-            'info'
-        );
-    }
 
     currentCursor = null;
     hasMore = false;
@@ -806,6 +883,17 @@ function loadOfflineResources() {
     const loadMoreSpinner = document.getElementById('load-more-spinner');
     if (loadMoreBtn) loadMoreBtn.style.display = 'none';
     if (loadMoreSpinner) loadMoreSpinner.style.display = 'none';
+}
+
+/**
+ * Immediate offline-only render, bypassing the isLoading guard.
+ * Called from the offline event handler so an in-flight fetch cannot
+ * block the offline view from appearing.
+ */
+function renderOfflineNow() {
+    isLoading = false;
+    loadOfflineResources();
+    applyFiltersAndRender();
 }
 
 // ==================== LOAD RESOURCES ====================
@@ -817,6 +905,7 @@ async function loadResources(reset = true) {
         currentCursor = null;
         hasMore = true;
         allDocuments = [];
+        docMap.clear();
         const loadMoreBtn = document.getElementById('load-more-btn');
         const loadMoreSpinner = document.getElementById('load-more-spinner');
         if (loadMoreBtn) loadMoreBtn.style.display = 'none';
@@ -832,8 +921,6 @@ async function loadResources(reset = true) {
 
     if (navigator.onLine) {
         try {
-            console.log(`[ResourceBrowser] Fetching: subject=${currentSubject}, category=${currentCategory}, cursor=${currentCursor}`);
-
             const result = await content.fetchResources(
                 currentSubject,
                 currentCategory,
@@ -841,13 +928,21 @@ async function loadResources(reset = true) {
                 {}
             );
 
-            // ── DEBUG: what the backend actually returned ──────────────
+            // The fetch may have spanned a connectivity change. If we are
+            // offline now, discard the response and render the offline set
+            // instead.
+            if (!navigator.onLine) {
+                isLoading = false;
+                renderOfflineNow();
+                return;
+            }
+
             if (_dbg()) {
                 const docs = result && Array.isArray(result.documents) ? result.documents : [];
                 const premiumCount = docs.filter(d => d.isPremium === true).length;
 
                 _log('backend-response', {
-                    source: 'network',
+                    source: result && result.source,
                     subject: currentSubject,
                     category: currentCategory,
                     reset,
@@ -856,14 +951,8 @@ async function loadResources(reset = true) {
                     nextCursor: result && result.cursor,
                     receivedCount: docs.length,
                     premiumCount,
-                    documents: docs.map(_summariseDoc),
+                    titles: docs.slice(0, 5).map(d => d.title),
                 }, premiumCount > 0 ? 'ok' : 'warn');
-
-                _logLine(
-                    'backend-summary',
-                    `received ${docs.length} docs, ${premiumCount} with isPremium === true`,
-                    premiumCount > 0 ? 'ok' : 'fail'
-                );
             }
 
             if (reset) {
@@ -874,7 +963,7 @@ async function loadResources(reset = true) {
             allDocuments.forEach(d => docMap.set(d._id, d));
 
             currentCursor = result.cursor;
-            hasMore = result.hasMore;
+            hasMore = result.hasMore === true;
 
             const loadMoreBtn = document.getElementById('load-more-btn');
             if (loadMoreBtn) loadMoreBtn.style.display = hasMore ? 'inline-block' : 'none';
@@ -882,17 +971,6 @@ async function loadResources(reset = true) {
             if (loadMoreSpinner) loadMoreSpinner.style.display = 'none';
 
             networkSucceeded = true;
-
-            // ── DEBUG: docMap state after mapping ──────────────────────
-            if (_dbg()) {
-                _log('docMap-after-map', {
-                    source: 'network',
-                    totalInAllDocuments: allDocuments.length,
-                    totalInDocMap: docMap.size,
-                    premiumInDocMap: Array.from(docMap.values()).filter(d => d.isPremium === true).length,
-                    documents: allDocuments.map(_summariseDoc),
-                });
-            }
 
         } catch (error) {
             console.warn('[ResourceBrowser] Network fetch failed, falling back to offline set:', error);
@@ -913,14 +991,6 @@ async function loadResources(reset = true) {
 }
 
 // ==================== VIEWER ====================
-/**
- * Open a resource in the embedded viewer.
- *
- * @param {string} docId
- * @param {string} title
- * @param {string} fileType
- * @param {{ previewMode?: boolean }|null} [opts]
- */
 export function showViewer(docId, title, fileType, opts = null) {
     if (_dbg()) {
         _logLine(
@@ -945,18 +1015,19 @@ function attachConnectivityListeners() {
 
     window.addEventListener('online', () => {
         ui.showToast('Back online', 'success');
+        isLoading = false;
         loadResources(true);
     });
+
     window.addEventListener('offline', () => {
         ui.showToast('Offline – showing downloaded resources only', 'info');
-        loadResources(true);
+        // Immediate offline render — do NOT wait for any in-flight fetch.
+        renderOfflineNow();
     });
 }
 
 // ==================== INIT ====================
 export async function initResourceBrowser(subject, type, forceRefresh = false) {
-    console.log(`[ResourceBrowser] init: subject=${subject}, type=${type}, forceRefresh=${forceRefresh}`);
-
     const pageTitle = document.getElementById('page-title');
     if (!pageTitle) {
         console.error('[ResourceBrowser] page-title element not found!');
@@ -966,8 +1037,21 @@ export async function initResourceBrowser(subject, type, forceRefresh = false) {
     currentSubject = subject;
     currentCategory = CATEGORY_MAP[type] || type;
 
+    // Reset per-visit UI state so a filter from a previous subject does
+    // not leak into this one.
+    currentFilter = 'all';
+    const searchEl = document.getElementById('search-input');
+    if (searchEl) searchEl.value = '';
+
     const typeName = TYPE_NAMES[type] || 'Resources';
     pageTitle.textContent = `${typeName} – ${subject}`;
+
+    const dropdown = document.getElementById('filter-dropdown');
+    if (dropdown) {
+        dropdown.querySelectorAll('button').forEach(b => {
+            b.classList.toggle('active-filter', b.dataset.filter === 'all');
+        });
+    }
 
     if (_dbg()) {
         _logLine('init', `subject=${subject} category=${currentCategory} debug=ON`, 'info');
@@ -975,22 +1059,20 @@ export async function initResourceBrowser(subject, type, forceRefresh = false) {
 
     await loadResources(true);
 
-    const newSearchInput = document.getElementById('search-input');
-    if (newSearchInput) {
-        newSearchInput.oninput = null;
-        newSearchInput.addEventListener('input', debounce(() => applyFiltersAndRender(), 300));
+    if (searchEl) {
+        searchEl.oninput = null;
+        searchEl.addEventListener('input', debounce(() => applyFiltersAndRender(), 300));
     }
 
-    const newFilterBtn = document.getElementById('filter-btn');
-    if (newFilterBtn) {
-        newFilterBtn.onclick = (e) => {
+    const filterBtn = document.getElementById('filter-btn');
+    if (filterBtn) {
+        filterBtn.onclick = (e) => {
             e.stopPropagation();
-            const dropdown = document.getElementById('filter-dropdown');
-            if (dropdown) dropdown.classList.toggle('open');
+            const dd = document.getElementById('filter-dropdown');
+            if (dd) dd.classList.toggle('open');
         };
     }
 
-    const dropdown = document.getElementById('filter-dropdown');
     if (dropdown) {
         dropdown.querySelectorAll('button').forEach(btn => {
             btn.onclick = () => {
@@ -1003,9 +1085,9 @@ export async function initResourceBrowser(subject, type, forceRefresh = false) {
         });
     }
 
-    const newLoadMoreBtn = document.getElementById('load-more-btn');
-    if (newLoadMoreBtn) {
-        newLoadMoreBtn.onclick = () => {
+    const loadMoreBtn = document.getElementById('load-more-btn');
+    if (loadMoreBtn) {
+        loadMoreBtn.onclick = () => {
             if (!navigator.onLine) return;
             loadResources(false);
         };

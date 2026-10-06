@@ -6,25 +6,29 @@
  *
  * The bridge between the viewer's static HTML shell and the event-driven
  * core. Owns:
- *   • CSS injection (frozen styles + preview-mode CTA styling)
+ *   • CSS injection (only the animation rules that must live with the JS)
  *   • DOM element lookup cache (delegates to utils.getViewerElements)
- *   • Every click/change/input/keydown listener inside the viewer chrome
+ *   • Every click / change / input / keydown listener inside the viewer chrome
  *   • Auto-hide header/footer state machine
- *   • Fullscreen toggle
+ *   • Fullscreen toggle (delegates to native-bridge for platform awareness)
  *   • Zoom % / page counter / search count displays
- *   • DPR change detection
+ *   • DPR change detection (via platform.js reads)
+ *   • Fit-to-width observer (re-fits on rotation / resize unless user zoomed)
  *   • Embedded-viewer mount / unmount
- *   • Document-content clearing (the viewer DOM is wiped on destroy)
+ *   • Document-content clearing (preserves the four static chrome nodes)
  *   • Subscribe-to-bus glue that keeps labels in sync with state
- *   • Tap-sequence detection (single / double / triple) on the content area
+ *   • Tap-sequence detection: single → chrome, double → zoom (Android)
+ *   • Sidebar (drawer) open / close with scrim + ARIA state + manager dispatch
+ *   • Footer visibility per document kind (PDF-only)
  *
- * Exports (19):
+ * Exports (20):
  *   injectViewerStyles, refreshElementCache, setupControls,
  *   setupAutoHideListeners, showHeaderFooter, hideHeaderFooter,
  *   resetAutoHideTimer, toggleFullscreen, updatePageNumberDisplay,
  *   updateNavButtons, updateZoomDisplay, updateSearchCountDisplay,
- *   updateSearchBarState, setupDPRListener, mountChrome, unmountChrome,
- *   bindCoreEvents, teardownControls, clearViewerContent
+ *   updateSearchBarState, setupDPRListener, setupFitWidthObserver,
+ *   mountChrome, unmountChrome, bindCoreEvents, teardownControls,
+ *   clearViewerContent
  *
  * Boundary rules (architecture spec § 2.3):
  *   • Only file (besides viewer.js) permitted to query the DOM by element ID,
@@ -37,46 +41,77 @@
  *     owns the router.navigateTo call.
  *
  * Import exceptions (documented):
- *   • `../ui.js` — app-level toasts and loading overlays. Only three
- *     functions are used (showToast, showLoading, hideLoading).
+ *   • `../ui.js`        — app-level toasts. Only showToast is used here.
+ *   • `./platform.js`   — platform predicates + DPR reads (leaf module).
+ *   • `./native-bridge.js` — fullscreen (platform-aware).
+ *
+ * CSS ownership:
+ *   The bulk of viewer styling — page container, canvas wrapper, viewer main
+ *   overflow, sidebar, scrim, safe-area insets, dark-mode variables, tap
+ *   targets — lives in the page stylesheet (`resource-browser.css`). Only the
+ *   header/footer slide animations are injected here, because they're an
+ *   intrinsic part of the auto-hide state machine that this file owns.
+ *
+ * Footer visibility:
+ *   #viewer-footer holds the page counter, page-jump input, prev/next
+ *   buttons, and the zoom control cluster. It is declared
+ *   `style="display: none"` in viewer.html and must be explicitly shown for
+ *   PDFs. The DOCUMENT_LOADED subscriber here is the single authoritative
+ *   decision point.
+ *
+ *     PDF              → display: flex  (footer visible)
+ *     image / text     → display: none  (footer hidden)
+ *     office / other   → display: none  (footer hidden)
  *
  * Preview-mode CTA:
- *   When the viewer is in preview mode, core.js's _buildPreviewCTA() appends
- *   a card after the last preview page containing a "Subscribe to Continue"
- *   button. The button emits PREVIEW_SUBSCRIBE_REQUESTED on the bus. That
- *   event is handled by viewer.js, which calls router.navigateTo to route
- *   the user to the subscription page.
+ *   core.js's _buildPreviewCTA() appends a card after the last preview page
+ *   containing a "Subscribe to Continue" button. The button emits
+ *   PREVIEW_SUBSCRIBE_REQUESTED on the bus. That event is handled by
+ *   viewer.js, which calls router.navigateTo to route to the subscription
+ *   page.
  *
- *   This file is responsible for styling that card and for clamping the
- *   page counter, page input, and nav buttons to the effective limit so the
- *   UI matches what the render pipeline will actually display.
+ *   This file clamps the page counter, page input, and nav buttons to the
+ *   effective limit so the UI matches what the render pipeline will display.
  *
  * Document clearing (clearViewerContent):
- *   Called by core.destroy() as part of the canonical teardown, and again
- *   as a defensive step inside viewer.js's two entry points. It removes
- *   every DOM node the viewer created for the previous document — page
- *   containers, canvas wrappers, canvases, images, iframes, search-layer
- *   overlays, error containers, and the preview-mode CTA — while preserving
- *   the four static chrome nodes declared in viewer.html (#viewer-loading,
- *   #viewer-progress, #viewer-content, #viewer-text-layer).
+ *   Removes every DOM node the viewer created for the previous document while
+ *   preserving the four static chrome nodes declared in viewer.html:
+ *   #viewer-loading, #viewer-progress, #viewer-content, #viewer-text-layer.
  *
- *   This is what makes "close and reopen shows exactly what a fresh session
- *   would show" true. Without it, the previous document's DOM survives the
- *   close, bleeds into the next open, and (worse) removes #viewer-loading
- *   and #viewer-progress when main.innerHTML = '' is used naively.
+ * Tap-sequence behaviour (Android convention):
+ *   • Single tap  → toggle header/footer visibility.
+ *   • Double tap  → toggle zoom (fit-width ↔ 2×), viewport-centered.
+ *   • No triple tap — conflicts with long-press text selection.
  *
- * Tap-sequence behaviour (industry-standard, matches Acrobat / PDFKit /
- * Nutrient / Apryse):
- *   • Single tap  → nothing.
- *   • Double tap  → toggle header/footer visibility.
- *   • Triple tap  → toggle magnify (2× viewport-centered zoom).
+ * Keyboard shortcuts:
+ *   The entire keydown handler is gated behind `isWeb()`. Android has no
+ *   physical keyboard, so registering handlers for Ctrl+F, +, -, 0, arrows,
+ *   F3, F11 would be dead code and would clash with the hardware back button.
  *
- * Touch-action contract (cross-platform):
- *   `#viewer-main` uses `touch-action: pan-x pan-y`, NOT `manipulation`.
+ * Sidebar (drawer) integration:
+ *   The drawer (#viewer-outline-drawer) hosts three panels selected by
+ *   `data-panel`:
+ *     • "outline" → document outline (rendered by managers.OutlineManager)
+ *     • "search"  → search input + results (rendered by managers.SearchManager)
+ *     • "more"    → document info + actions (rendered by managers.MorePanel)
  *
- * Lifecycle correction (documented deviation from spec § 4.15):
- *   DOCUMENT_DESTROYED triggers `resetUIState()` (state only, listeners
- *   persist) rather than `teardownControls()`.
+ *   `_openSidebar()` sets `data-panel` and adds `.open`, then calls
+ *   `core.getManagers().dispatchPanel(panel)` to trigger the right manager
+ *   to render its content. Managers also observe `data-panel` via
+ *   MutationObserver, so the dispatch call here is a redundant safety net
+ *   for the "panel already selected, drawer re-opened" case.
+ *
+ * Fit-to-width observer:
+ *   `setupFitWidthObserver()` watches #viewer-main for width changes and
+ *   re-applies fit-to-width when the user has NOT manually zoomed. This
+ *   makes phone rotation and browser window resize re-fit the page to the
+ *   new width — matching Chrome and Edge PDF viewer behaviour.
+ *
+ *   User override is tracked from the `source` field of SCALE_APPLIED:
+ *     • 'fit' or 'reset'       → no override (user wants fit)
+ *     • 'double-tap'           → override (user zoomed in)
+ *     • 'button', 'keyboard',
+ *       'pinch', 'wheel'       → override
  *
  * @module viewer/ui-internal
  */
@@ -85,63 +120,125 @@
 
 import { CONFIG, Events } from './core.js';
 import { getViewerElements, escapeHtml } from './utils.js';
-import { showToast, showLoading, hideLoading } from '../ui.js';
+import {
+  isWeb,
+  devicePixelRatio,
+  getDPRClamped,
+} from './platform.js';
+import {
+  enterFullscreen,
+  exitFullscreen,
+  isFullscreen,
+} from './native-bridge.js';
+import { showToast } from '../ui.js';
 
 // ============================================================================
 // MODULE-PRIVATE STATE
 // ============================================================================
 
-/** Cached element map. Refreshed on document load and on demand. @private */
+/** Cached element map. @private @type {any} */
 let _els = null;
 
-/** Teardown registry: every function that undoes a listener or subscription. @private */
-/** @type {Array<() => void>} */
-let _listeners = [];
+/** Teardown registry: every function that undoes a listener or subscription. @private @type {Array<() => void>} */
+const _listeners = [];
 
 /** Idempotence flags. @private */
 let _controlsBound = false;
 let _autoHideBound = false;
 let _dprBound = false;
 let _eventsBound = false;
+let _fitWidthBound = false;
 
-/** Auto-hide state machine. @private */
-let _autoHideTimer = null;
-let _isHeaderVisible = true;
-let _isOverControls = false;
+// ── Auto-hide state machine ────────────────────────────────────────────────
+/** @private @type {ReturnType<typeof setTimeout>|null} */ let _autoHideTimer = null;
+/** @private */ let _isHeaderVisible = true;
+/** @private */ let _isOverControls = false;
 
-/** DPR tracking. @private */
-let _lastDPR = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+// ── DPR tracking ───────────────────────────────────────────────────────────
+/** @private */ let _lastDPR = 1;
 
-/** Memory-pressure toast throttle. @private */
-let _memoryToastAt = 0;
+// ── Toast throttle ─────────────────────────────────────────────────────────
+/** @private */ let _memoryToastAt = 0;
+/** @private */ let _offlineToastAt = 0;
 
-// ── Tap-sequence state ──────────────────────────────────────────────────────
-/** @private */ let _tapCount = 0;
-/** @private @type {ReturnType<typeof setTimeout>|null} */ let _tapTimer = null;
-/** @private */ let _tapLastX = 0;
-/** @private */ let _tapLastY = 0;
+// ── Tap-sequence state (single / double) ───────────────────────────────────
+/** @private @type {ReturnType<typeof setTimeout>|null} */ let _pendingTapTimer = null;
+/** @private */ let _pendingTapX = 0;
+/** @private */ let _pendingTapY = 0;
 
-// ── Magnify toggle state (triple-tap) ───────────────────────────────────────
+// ── Magnify toggle state (double tap) ──────────────────────────────────────
 /** @private */ let _isMagnified = false;
 /** @private */ let _preMagnifyScale = 1;
 
-// ── Preview-mode state ──────────────────────────────────────────────────────
+// ── Cached UI mirrors ──────────────────────────────────────────────────────
+/** @private */ let _currentViewMode = 'scroll';
+/** @private */ let _currentPage = 1;
+/** @private */ let _currentTotalPages = 1;
+/** @private */ let _currentScale = 1;
+/** @private */ let _currentEffectiveLimit = 1;
+
+// ── Search mirrors ─────────────────────────────────────────────────────────
+/** @private */ let _searchMatchCount = 0;
+/** @private */ let _searchCurrentIndex = -1;
+
+// ── Fit-to-width override tracking ─────────────────────────────────────────
 /**
- * Effective page limit for the page counter, page input max, and nav-button
- * disabling. Equals `numPages` normally; equals the preview limit
- * (10% of the document, at least 1) when in preview mode.
- *
+ * True when the user has manually chosen a zoom level. While true, the
+ * fit-width observer does NOT re-fit on width changes — respecting the
+ * user's explicit choice. Cleared when the user clicks the "fit" button
+ * (source === 'fit') or resets zoom (source === 'reset').
  * @private
  */
-let _currentEffectiveLimit = 1;
+let _userZoomOverride = false;
+
+/** @private @type {ResizeObserver|null} */ let _fitObserver = null;
+/** @private */ let _fitObserverWidth = 0;
 
 // ============================================================================
-// 1. CSS INJECTION
+// 1. PRIVATE HELPERS
+// ============================================================================
+
+/** @private @param {() => void} fn */
+function _register(fn) {
+  if (typeof fn === 'function') _listeners.push(fn);
+}
+
+/** @private */
+function _addListener(target, type, handler, options) {
+  if (!target || typeof target.addEventListener !== 'function') return;
+  try {
+    target.addEventListener(type, handler, options);
+    _register(() => {
+      try { target.removeEventListener(type, handler, options); } catch { /* ignore */ }
+    });
+  } catch { /* ignore */ }
+}
+
+/** @private */
+function _emit(core, event, payload) {
+  try { core.getBus().emit(event, payload); } catch { /* ignore */ }
+}
+
+/** @private @returns {any} */
+function _getEls() {
+  if (!_els) refreshElementCache();
+  return _els;
+}
+
+// ============================================================================
+// 2. CSS INJECTION
 // ============================================================================
 
 /**
- * Inject the viewer's CSS into `<head>` exactly once. Idempotent across
- * viewer inits and documents.
+ * Inject the viewer's animation-only CSS into `<head>` exactly once.
+ *
+ * The rest of the viewer's styling lives in the page stylesheet
+ * (`resource-browser.css`): page container, canvas wrapper, viewer-main
+ * overflow, sidebar, scrim, safe-area insets, dark-mode variables, tap
+ * targets.
+ *
+ * Only the header/footer slide animations are injected here, because they
+ * are the visual half of the auto-hide state machine owned by this file.
  *
  * @returns {void}
  */
@@ -152,27 +249,7 @@ export function injectViewerStyles() {
   const style = document.createElement('style');
   style.id = 'viewer-inline-styles';
   style.textContent = `
-    .viewer-loading-dots {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100%;
-      font-size: 2rem;
-      color: var(--text-secondary, #888);
-      gap: 0.25rem;
-    }
-    .viewer-loading-dots span {
-      animation: viewer-dot-bounce 1.4s infinite ease-in-out both;
-      display: inline-block;
-    }
-    .viewer-loading-dots span:nth-child(1) { animation-delay: 0s; }
-    .viewer-loading-dots span:nth-child(2) { animation-delay: 0.2s; }
-    .viewer-loading-dots span:nth-child(3) { animation-delay: 0.4s; }
-    @keyframes viewer-dot-bounce {
-      0%, 80%, 100% { transform: translateY(0); }
-      40% { transform: translateY(-0.5em); }
-    }
-
+    /* Auto-hide chrome: slide-in / slide-out animation. */
     .viewer-header {
       transition: transform 0.3s ease, opacity 0.3s ease;
       transform: translateY(0);
@@ -194,81 +271,18 @@ export function injectViewerStyles() {
       pointer-events: none;
     }
 
-    .canvas-wrapper {
-      content-visibility: auto;
-      contain-intrinsic-size: 200px;
-    }
-
-    /* Preview-mode CTA card. Rendered by core.js's _buildPreviewCTA after
-       the last preview page. Its subscribe button emits
-       PREVIEW_SUBSCRIBE_REQUESTED on the bus, which viewer.js handles by
-       routing to the subscription page. */
-    .viewer-preview-cta {
-      display: flex;
-      justify-content: center;
-      align-items: flex-start;
-      padding: 3rem 1.5rem 5rem;
-      box-sizing: border-box;
-    }
-    .viewer-preview-cta-inner {
-      max-width: 420px;
-      width: 100%;
-      text-align: center;
-      padding: 2rem 1.75rem;
-      background: var(--bg-secondary, #f9fafb);
-      border: 1px solid var(--border-color, #e5e7eb);
-      border-radius: 12px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
-    }
-    .viewer-preview-cta-icon {
-      font-size: 2.25rem;
-      line-height: 1;
-      margin-bottom: 0.5rem;
-    }
-    .viewer-preview-cta-title {
-      margin: 0 0 0.75rem;
-      font-size: 1.15rem;
-      font-weight: 600;
-      color: var(--text-primary, #111827);
-    }
-    .viewer-preview-cta-body {
-      margin: 0 0 1.25rem;
-      color: var(--text-secondary, #6b7280);
-      font-size: 0.95rem;
-      line-height: 1.5;
-    }
-    .viewer-preview-cta-btn {
-      display: inline-block;
-      padding: 0.6rem 1.25rem;
-      border: none;
-      border-radius: 8px;
-      background: var(--accent-color, #2563eb);
-      color: #fff;
-      font-size: 0.95rem;
-      font-weight: 500;
-      cursor: pointer;
-      transition: filter 0.15s ease, transform 0.05s ease;
-    }
-    .viewer-preview-cta-btn:hover {
-      filter: brightness(1.08);
-    }
-    .viewer-preview-cta-btn:active {
-      transform: translateY(1px);
-    }
-    .viewer-preview-cta-btn:focus-visible {
-      outline: 2px solid var(--accent-color, #2563eb);
-      outline-offset: 2px;
-    }
-
-    #viewer-main {
-      touch-action: pan-x pan-y;
+    @media (prefers-reduced-motion: reduce) {
+      .viewer-header,
+      .viewer-footer {
+        transition: none;
+      }
     }
   `;
   document.head.appendChild(style);
 }
 
 // ============================================================================
-// 2. ELEMENT CACHE
+// 3. ELEMENT CACHE
 // ============================================================================
 
 /**
@@ -280,48 +294,6 @@ export function injectViewerStyles() {
 export function refreshElementCache() {
   _els = getViewerElements();
   return _els;
-}
-
-/**
- * Internal accessor; refreshes the cache if it was never populated.
- * @private
- * @returns {any}
- */
-function _getEls() {
-  if (!_els) refreshElementCache();
-  return _els;
-}
-
-// ============================================================================
-// 3. TEARDOWN REGISTRY HELPERS
-// ============================================================================
-
-/**
- * Register a teardown function. Used for both DOM listener removers and
- * event-bus unsubscribe functions.
- * @private
- * @param {() => void} fn
- */
-function _register(fn) {
-  if (typeof fn === 'function') _listeners.push(fn);
-}
-
-/**
- * Add a DOM listener and register its removal.
- * @private
- * @param {EventTarget|null} target
- * @param {string} type
- * @param {EventListenerOrEventListenerObject} handler
- * @param {AddEventListenerOptions|boolean} [options]
- */
-function _addListener(target, type, handler, options) {
-  if (!target || typeof target.addEventListener !== 'function') return;
-  try {
-    target.addEventListener(type, handler, options);
-    _register(() => {
-      try { target.removeEventListener(type, handler, options); } catch { /* ignore */ }
-    });
-  } catch { /* ignore */ }
 }
 
 // ============================================================================
@@ -420,10 +392,7 @@ export function setupAutoHideListeners(_core) {
   _autoHideBound = true;
 }
 
-/**
- * Reset auto-hide state. Called on document destroy. Keeps listeners bound.
- * @private
- */
+/** @private */
 function _resetAutoHide() {
   _isOverControls = false;
   if (_autoHideTimer) {
@@ -438,37 +407,32 @@ function _resetAutoHide() {
 // ============================================================================
 
 /**
- * Toggle fullscreen on the viewer container. Called synchronously from click
- * or keydown handlers — never from a Promise chain — to preserve user
- * activation.
+ * Toggle fullscreen on the viewer container.
+ *
+ * On Android this enters/exits immersive mode (status bar hidden) via the
+ * native bridge. On web it uses the Fullscreen API. Both paths are
+ * synchronous with respect to user activation — the async work happens after
+ * the click has already been consumed.
  *
  * @returns {void}
  */
 export function toggleFullscreen() {
-  if (typeof document === 'undefined') return;
-  const els = _getEls();
-  const container = (els && els.container)
-    || document.querySelector('.viewer-container')
-    || document.documentElement;
-  if (!container) return;
-
-  if (!document.fullscreenElement) {
-    const p = container.requestFullscreen ? container.requestFullscreen() : null;
-    if (p && typeof p.catch === 'function') p.catch(() => { /* ignore */ });
+  if (isFullscreen()) {
+    exitFullscreen().catch(() => { /* ignore */ });
   } else {
-    const p = document.exitFullscreen ? document.exitFullscreen() : null;
-    if (p && typeof p.catch === 'function') p.catch(() => { /* ignore */ });
+    enterFullscreen().catch(() => { /* ignore */ });
   }
+  // Sync the button label after the browser's fullscreen state settles.
+  // On Android immersive mode there is no `fullscreenchange` event, so we
+  // always sync eagerly.
+  Promise.resolve().then(_syncFullscreenLabel);
 }
 
-/**
- * Sync the fullscreen button's title/aria-pressed with the browser state.
- * @private
- */
+/** @private */
 function _syncFullscreenLabel() {
   const els = _getEls();
   if (!els || !els.fullscreenBtn) return;
-  const isFs = !!document.fullscreenElement;
+  const isFs = isFullscreen();
   els.fullscreenBtn.setAttribute('aria-pressed', isFs ? 'true' : 'false');
   els.fullscreenBtn.title = isFs ? 'Exit fullscreen' : 'Enter fullscreen';
 }
@@ -478,43 +442,24 @@ function _syncFullscreenLabel() {
 // ============================================================================
 
 /**
- * Sync the page counter, page input, and page count. Also calls
- * updateNavButtons.
+ * Refresh the page counter from cached state. Kept public for external
+ * callers (core) that want to force a refresh.
  *
  * @returns {void}
  */
 export function updatePageNumberDisplay() {
-  const els = _getEls();
-  if (!els) return;
-  let current = 1;
-  let total = 1;
-  try {
-    // Reads happen via the core instance — not available here; we read from
-    // the DOM which ui-internal owns. Callers (bindCoreEvents) pass values
-    // through state. This function is state-agnostic on purpose so it can be
-    // called from anywhere.
-  } catch { /* ignore */ }
-  void current; void total;
+  _applyPageNumbers(_currentPage, _currentTotalPages);
 }
 
-/**
- * Apply the current page number, real total, and effective limit to the UI.
- *
- * @private
- * @param {number} current        1-based current page
- * @param {number} total          real total pages of the document
- */
+/** @private */
 function _applyPageNumbers(current, total) {
   const els = _getEls();
   if (!els) return;
 
   const totalClamped = Math.max(1, total || 1);
-
-  // Effective limit = preview limit in preview mode, else real total.
   const effective = _currentEffectiveLimit > 0
     ? Math.min(Math.max(1, _currentEffectiveLimit), totalClamped)
     : totalClamped;
-
   const c = Math.max(1, Math.min(current, totalClamped));
 
   if (els.pageNum) els.pageNum.textContent = String(c);
@@ -530,20 +475,12 @@ function _applyPageNumbers(current, total) {
   _applyNavButtons(c, effective);
 }
 
-/**
- * @private
- * @param {number} current
- * @param {number} effective
- */
+/** @private */
 function _applyNavButtons(current, effective) {
   const els = _getEls();
   if (!els) return;
-  let viewMode = 'scroll';
-  try {
-    viewMode = _currentViewMode;
-  } catch { /* ignore */ }
 
-  if (viewMode === 'scroll') {
+  if (_currentViewMode === 'scroll') {
     if (els.prevBtn) els.prevBtn.disabled = true;
     if (els.nextBtn) els.nextBtn.disabled = true;
   } else {
@@ -552,16 +489,8 @@ function _applyNavButtons(current, effective) {
   }
 }
 
-/** Cached view mode for nav-button disabling. Updated by bindCoreEvents. @private */
-let _currentViewMode = 'scroll';
-
-/** Cached current/total page for nav-button updates. @private */
-let _currentPage = 1;
-let _currentTotalPages = 1;
-
 /**
- * Public updater kept for external callers (core) that want to refresh from
- * known values.
+ * Public updater kept for external callers that want to refresh nav buttons.
  * @returns {void}
  */
 export function updateNavButtons() {
@@ -575,13 +504,8 @@ export function updateNavButtons() {
 export function updateZoomDisplay() {
   const els = _getEls();
   if (!els || !els.zoomLevel) return;
-  let scale = 1;
-  scale = _currentScale;
-  els.zoomLevel.textContent = Math.round(scale * 100) + '%';
+  els.zoomLevel.textContent = Math.round(_currentScale * 100) + '%';
 }
-
-/** Cached scale for zoom display. Updated by bindCoreEvents. @private */
-let _currentScale = 1;
 
 /**
  * Update the search count display (`M/N` or empty) and enable/disable the
@@ -605,12 +529,11 @@ export function updateSearchCountDisplay() {
   if (els.searchNext) els.searchNext.disabled = disabled;
 }
 
-/** Cached search state for count display. Updated by bindCoreEvents. @private */
-let _searchMatchCount = 0;
-let _searchCurrentIndex = -1;
-
 /**
- * Open or close the search bar. Toggles the `active` class and manages focus.
+ * Open or close the inline search bar in the header. In sidebar mode, this
+ * only manages the inline bar's visibility — the drawer's search panel is
+ * managed separately.
+ *
  * @param {boolean} [open]
  * @returns {void}
  */
@@ -632,19 +555,119 @@ export function updateSearchBarState(open) {
       try { els.searchInput.blur(); } catch { /* ignore */ }
     }
   }
+  if (els.searchBtn) {
+    els.searchBtn.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+  }
 }
 
-/**
- * @private
- * @returns {boolean}
- */
+/** @private @returns {boolean} */
 function _isSearchOpen() {
   const els = _getEls();
   return !!(els && els.searchBar && els.searchBar.classList.contains('active'));
 }
 
 // ============================================================================
-// 7. DPR LISTENER
+// 7. SIDEBAR (DRAWER) HELPERS
+// ============================================================================
+
+/** @private @returns {boolean} */
+function _hasSidebar() {
+  try {
+    return !!document.getElementById('viewer-outline-drawer')
+      && !!document.getElementById('viewer-drawer-scrim');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Open the sidebar with the given panel content.
+ *
+ * Sets `data-panel`, adds `.open` on both the drawer and its scrim, updates
+ * ARIA state on every toggle button, hides the inline search bar (the drawer
+ * owns search when it is open), and dispatches to the managers so the panel
+ * content renders.
+ *
+ * Idempotent — opening an already-open drawer simply switches the panel.
+ *
+ * @private
+ * @param {import('./core.js').ViewerCore} core
+ * @param {'outline'|'search'|'more'} panel
+ * @returns {void}
+ */
+function _openSidebar(core, panel) {
+  const els = _getEls();
+  if (!els || !els.outlineDrawer) return;
+  const drawer = els.outlineDrawer;
+  const scrim = document.getElementById('viewer-drawer-scrim');
+
+  const safePanel = (panel === 'search' || panel === 'more') ? panel : 'outline';
+
+  drawer.dataset.panel = safePanel;
+  drawer.classList.add('open');
+  drawer.setAttribute('aria-hidden', 'false');
+  if (scrim) scrim.classList.add('open');
+
+  // Update aria-expanded on every toggle that targets a panel.
+  _setToggleExpanded('viewer-outline-btn', safePanel === 'outline');
+  _setToggleExpanded('viewer-search-btn', safePanel === 'search');
+  _setToggleExpanded('viewer-more-btn', safePanel === 'more');
+
+  // The drawer owns the search UI when open — hide the inline bar so we
+  // don't have two search inputs fighting for focus.
+  if (safePanel === 'search' && els.searchBar) {
+    els.searchBar.classList.remove('active');
+  }
+
+  // Ask managers to render the panel content into the drawer.
+  try {
+    const managers = (typeof core.getManagers === 'function') ? core.getManagers() : null;
+    if (managers && typeof managers.dispatchPanel === 'function') {
+      managers.dispatchPanel(safePanel);
+    }
+  } catch { /* ignore */ }
+}
+
+/**
+ * Close the sidebar (and its scrim) and reset every toggle's ARIA state.
+ * Idempotent — safe to call when the drawer is already closed.
+ *
+ * @private
+ * @returns {void}
+ */
+function _closeSidebar() {
+  const els = _getEls();
+  if (els && els.outlineDrawer) {
+    els.outlineDrawer.classList.remove('open');
+    els.outlineDrawer.setAttribute('aria-hidden', 'true');
+  }
+  const scrim = document.getElementById('viewer-drawer-scrim');
+  if (scrim) scrim.classList.remove('open');
+  _setToggleExpanded('viewer-outline-btn', false);
+  _setToggleExpanded('viewer-search-btn', false);
+  _setToggleExpanded('viewer-more-btn', false);
+}
+
+/** @private */
+function _setToggleExpanded(id, expanded) {
+  try {
+    const el = document.getElementById(id);
+    if (el) el.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  } catch { /* ignore */ }
+}
+
+/** @private @returns {boolean} */
+function _isSidebarOpen() {
+  try {
+    const drawer = document.getElementById('viewer-outline-drawer');
+    return !!(drawer && drawer.classList.contains('open'));
+  } catch {
+    return false;
+  }
+}
+
+// ============================================================================
+// 8. DPR LISTENER
 // ============================================================================
 
 /**
@@ -656,15 +679,15 @@ export function setupDPRListener(core) {
   if (_dprBound) return;
   if (typeof window === 'undefined') return;
 
-  _lastDPR = window.devicePixelRatio || 1;
+  _lastDPR = devicePixelRatio();
 
   const handler = () => {
-    const current = window.devicePixelRatio || 1;
+    const current = devicePixelRatio();
     if (current === _lastDPR) return;
     _lastDPR = current;
     try {
       const state = core.getState();
-      state.set('dpr', Math.min(current, CONFIG.MAX_DPR));
+      state.set('dpr', getDPRClamped(CONFIG.MAX_DPR));
     } catch { /* ignore */ }
     try {
       const zoom = core.getZoom();
@@ -679,22 +702,97 @@ export function setupDPRListener(core) {
 }
 
 // ============================================================================
-// 8. CONTROL WIRING
+// 9. FIT-TO-WIDTH OBSERVER
 // ============================================================================
 
 /**
- * Emit a bus event safely.
- * @private
+ * Watch #viewer-main for width changes and re-apply fit-to-width when the
+ * user has NOT manually overridden the zoom.
+ *
+ * Chrome / Edge behaviour: a phone rotation or a browser window resize while
+ * fit-to-width is active keeps the page fitting the new width. As soon as
+ * the user pinches, buttons, or uses the keyboard to change the zoom, the
+ * observer goes quiet — respecting the user's explicit choice.
+ *
+ * Uses a ResizeObserver on #viewer-main. The observer fires on the initial
+ * observation; we rAF-coalesce so a window drag does not thrash.
+ *
+ * Idempotent — safe to call more than once; only the first call binds.
+ *
  * @param {import('./core.js').ViewerCore} core
- * @param {string} event
- * @param {any} [payload]
+ * @returns {void}
  */
-function _emit(core, event, payload) {
-  try { core.getBus().emit(event, payload); } catch { /* ignore */ }
+export function setupFitWidthObserver(core) {
+  if (_fitWidthBound) return;
+  if (typeof window === 'undefined') return;
+  if (typeof ResizeObserver !== 'function') return;
+
+  const els = _getEls();
+  if (!els || !els.main) return;
+
+  _fitObserverWidth = els.main.clientWidth;
+
+  let pending = false;
+
+  try {
+    _fitObserver = new ResizeObserver(() => {
+      if (pending) return;
+      pending = true;
+      requestAnimationFrame(() => {
+        pending = false;
+        try {
+          const main = els.main;
+          if (!main) return;
+          const w = main.clientWidth;
+          if (!(w > 0) || w === _fitObserverWidth) return;
+          _fitObserverWidth = w;
+
+          // User has chosen a scale manually — respect it.
+          if (_userZoomOverride) return;
+
+          // Re-apply fit-to-width via the core's private helper. It
+          // computes the new scale, sets state, and calls
+          // zoom.syncScale() so the next render uses the new scale.
+          if (core && typeof core._applyFitToWidth === 'function') {
+            Promise.resolve(core._applyFitToWidth()).catch(() => { /* ignore */ });
+          }
+        } catch { /* ignore */ }
+      });
+    });
+
+    _fitObserver.observe(els.main);
+
+    _register(() => {
+      try { if (_fitObserver) _fitObserver.disconnect(); } catch { /* ignore */ }
+      _fitObserver = null;
+      _fitWidthBound = false;
+    });
+
+    _fitWidthBound = true;
+  } catch { /* ignore */ }
 }
 
 /**
- * Wire every UI control listener. Idempotent — a second call is a no-op.
+ * Track whether the user has explicitly chosen a scale. Called from the
+ * SCALE_APPLIED subscriber. Sources that indicate "user did not override"
+ * clear the flag; everything else sets it.
+ *
+ * @private
+ * @param {string} source
+ */
+function _noteZoomSource(source) {
+  if (source === 'fit') { _userZoomOverride = false; return; }
+  if (source === 'reset') { _userZoomOverride = false; return; }
+  // button, keyboard, pinch, wheel, double-tap all mean the user chose.
+  _userZoomOverride = true;
+}
+
+// ============================================================================
+// 10. CONTROL WIRING
+// ============================================================================
+
+/**
+ * Wire every UI control listener. Idempotent.
  *
  * @param {import('./core.js').ViewerCore} core
  * @returns {void}
@@ -703,6 +801,8 @@ export function setupControls(core) {
   if (_controlsBound) return;
   const els = _getEls();
   if (!els || !els.container) return;
+
+  const hasSidebar = _hasSidebar();
 
   // ── View-mode toggle ────────────────────────────────────────────────────
   if (els.toggleViewBtn) {
@@ -811,27 +911,81 @@ export function setupControls(core) {
     });
   }
 
+  // ── Rotation (optional button; not in the current HTML) ────────────────
+  {
+    const rotateBtn = document.getElementById('viewer-rotate-btn');
+    if (rotateBtn) {
+      _addListener(rotateBtn, 'click', () => {
+        _emit(core, Events.ROTATE_REQUESTED, { delta: 90 });
+      });
+    }
+  }
+
   // ── Fullscreen ──────────────────────────────────────────────────────────
   if (els.fullscreenBtn) {
     _addListener(els.fullscreenBtn, 'click', () => {
       try { toggleFullscreen(); } catch { /* ignore */ }
     });
   }
-  _addListener(document, 'fullscreenchange', _syncFullscreenLabel);
+  if (isWeb()) {
+    _addListener(document, 'fullscreenchange', _syncFullscreenLabel);
+  }
 
-  // ── Search bar ──────────────────────────────────────────────────────────
-  if (els.searchBtn) {
-    _addListener(els.searchBtn, 'click', () => {
-      updateSearchBarState();
-      if (!_isSearchOpen()) {
-        try { core.getSearch().clear(); } catch { /* ignore */ }
+  // ── Outline button ─────────────────────────────────────────────────────
+  if (els.outlineBtn) {
+    _addListener(els.outlineBtn, 'click', () => {
+      if (hasSidebar) {
+        if (_isSidebarOpen() && els.outlineDrawer && els.outlineDrawer.dataset.panel === 'outline') {
+          _closeSidebar();
+        } else {
+          _openSidebar(core, 'outline');
+        }
+      } else {
+        // Legacy fallback when the sidebar shell is not present.
+        try { core.getOutline().toggle(); } catch { /* ignore */ }
       }
     });
   }
+
+  // ── Search button ──────────────────────────────────────────────────────
+  if (els.searchBtn) {
+    _addListener(els.searchBtn, 'click', () => {
+      if (hasSidebar) {
+        if (_isSidebarOpen() && els.outlineDrawer && els.outlineDrawer.dataset.panel === 'search') {
+          _closeSidebar();
+        } else {
+          _openSidebar(core, 'search');
+        }
+      } else {
+        // Legacy inline mode.
+        updateSearchBarState();
+        if (!_isSearchOpen()) {
+          try { core.getSearch().clear(); } catch { /* ignore */ }
+        }
+      }
+    });
+  }
+
+  // ── "More" button (optional; only if HTML provides it) ─────────────────
+  {
+    const moreBtn = document.getElementById('viewer-more-btn');
+    if (moreBtn && hasSidebar) {
+      _addListener(moreBtn, 'click', () => {
+        if (_isSidebarOpen() && els.outlineDrawer && els.outlineDrawer.dataset.panel === 'more') {
+          _closeSidebar();
+        } else {
+          _openSidebar(core, 'more');
+        }
+      });
+    }
+  }
+
+  // ── Inline search bar controls (legacy path + sidebar header fallback) ─
   if (els.searchClose) {
     _addListener(els.searchClose, 'click', () => {
       updateSearchBarState(false);
       try { core.getSearch().clear(); } catch { /* ignore */ }
+      if (hasSidebar && _isSidebarOpen()) _closeSidebar();
     });
   }
   if (els.searchInput) {
@@ -859,6 +1013,7 @@ export function setupControls(core) {
         e.preventDefault();
         updateSearchBarState(false);
         try { core.getSearch().clear(); } catch { /* ignore */ }
+        if (hasSidebar && _isSidebarOpen()) _closeSidebar();
       }
     });
   }
@@ -888,19 +1043,25 @@ export function setupControls(core) {
     });
   });
 
-  // ── Outline drawer ──────────────────────────────────────────────────────
-  if (els.outlineBtn) {
-    _addListener(els.outlineBtn, 'click', () => {
-      try { core.getOutline().toggle(); } catch { /* ignore */ }
+  // ── Scrim: click closes the sidebar ────────────────────────────────────
+  if (hasSidebar) {
+    const scrim = document.getElementById('viewer-drawer-scrim');
+    if (scrim) {
+      _addListener(scrim, 'click', () => {
+        _closeSidebar();
+        if (_isSearchOpen()) updateSearchBarState(false);
+      });
+    }
+  } else {
+    // Legacy fallback: click outside the drawer closes it.
+    _addListener(document, 'click', (e) => {
+      if (!els.outlineDrawer) return;
+      if (!e.target || !e.target.closest) return;
+      if (e.target.closest('.outline-drawer')) return;
+      if (e.target.closest('#viewer-outline-btn')) return;
+      els.outlineDrawer.classList.remove('open');
     });
   }
-  _addListener(document, 'click', (e) => {
-    if (!els.outlineDrawer) return;
-    if (!e.target || !e.target.closest) return;
-    if (e.target.closest('.outline-drawer')) return;
-    if (e.target.closest('#viewer-outline-btn')) return;
-    els.outlineDrawer.classList.remove('open');
-  });
 
   // ── Open local file ─────────────────────────────────────────────────────
   if (els.openLocalBtn && els.fileInput) {
@@ -914,20 +1075,22 @@ export function setupControls(core) {
     });
   }
 
-  // ── Drag & drop ─────────────────────────────────────────────────────────
-  const dropHandler = (e) => {
-    if (!e.dataTransfer || !e.dataTransfer.files || e.dataTransfer.files.length === 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const file = e.dataTransfer.files[0];
-    if (file) _emit(core, Events.LOCAL_FILE_OPEN_REQUESTED, { file });
-  };
-  const dragOverHandler = (e) => {
-    e.preventDefault();
-    try { e.dataTransfer.dropEffect = 'copy'; } catch { /* ignore */ }
-  };
-  _addListener(document, 'drop', dropHandler);
-  _addListener(document, 'dragover', dragOverHandler);
+  // ── Drag & drop (web only — no drag on Android) ────────────────────────
+  if (isWeb()) {
+    const dropHandler = (e) => {
+      if (!e.dataTransfer || !e.dataTransfer.files || e.dataTransfer.files.length === 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const file = e.dataTransfer.files[0];
+      if (file) _emit(core, Events.LOCAL_FILE_OPEN_REQUESTED, { file });
+    };
+    const dragOverHandler = (e) => {
+      e.preventDefault();
+      try { e.dataTransfer.dropEffect = 'copy'; } catch { /* ignore */ }
+    };
+    _addListener(document, 'drop', dropHandler);
+    _addListener(document, 'dragover', dragOverHandler);
+  }
 
   // ── Back button ─────────────────────────────────────────────────────────
   if (els.backBtn) {
@@ -936,46 +1099,112 @@ export function setupControls(core) {
     });
   }
 
-  // ── Keyboard shortcuts ──────────────────────────────────────────────────
-  _addListener(document, 'keydown', (e) => {
-    const target = e.target;
-    const inInput = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
-    const isSearchInput = target && els.searchInput && target === els.searchInput;
+  // ── Keyboard shortcuts (web only) ──────────────────────────────────────
+  if (isWeb()) {
+    _addListener(document, 'keydown', (e) => {
+      const target = e.target;
+      const inInput = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
+      const isSearchInput = target && els.searchInput && target === els.searchInput;
+      const mod = e.ctrlKey || e.metaKey;
 
-    if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
-      e.preventDefault();
-      toggleFullscreen();
-      return;
-    }
-
-    if (e.key === 'F3') {
-      if (_isSearchOpen()) {
+      // ── Ctrl/Cmd + F → open search ────────────────────────────────────
+      if (mod && (e.key === 'f' || e.key === 'F')) {
         e.preventDefault();
-        try { core.getSearch().next(); } catch { /* ignore */ }
+        if (hasSidebar) _openSidebar(core, 'search');
+        else updateSearchBarState(true);
+        return;
       }
-      return;
-    }
 
-    if (e.key === 'Escape' && _isSearchOpen()) {
-      e.preventDefault();
-      updateSearchBarState(false);
-      try { core.getSearch().clear(); } catch { /* ignore */ }
-      return;
-    }
+      // ── F11 → fullscreen ──────────────────────────────────────────────
+      if (e.key === 'F11') {
+        e.preventDefault();
+        toggleFullscreen();
+        return;
+      }
 
-    if (inInput && !isSearchInput) return;
+      // ── F3 → next search match ────────────────────────────────────────
+      if (e.key === 'F3' && !e.shiftKey) {
+        if (_isSearchOpen() || (hasSidebar && _isSidebarOpen())) {
+          e.preventDefault();
+          try { core.getSearch().next(); } catch { /* ignore */ }
+        }
+        return;
+      }
 
-    switch (e.key) {
-      case 'ArrowLeft':
-        if (_currentViewMode === 'page') {
+      // ── Shift + F3 → previous search match ────────────────────────────
+      if (e.key === 'F3' && e.shiftKey) {
+        if (_isSearchOpen() || (hasSidebar && _isSidebarOpen())) {
+          e.preventDefault();
+          try { core.getSearch().previous(); } catch { /* ignore */ }
+        }
+        return;
+      }
+
+      // ── Escape → close search / sidebar ───────────────────────────────
+      if (e.key === 'Escape') {
+        if (_isSearchOpen()) {
+          e.preventDefault();
+          updateSearchBarState(false);
+          try { core.getSearch().clear(); } catch { /* ignore */ }
+          if (_isSidebarOpen()) _closeSidebar();
+          return;
+        }
+        if (_isSidebarOpen()) {
+          e.preventDefault();
+          _closeSidebar();
+          return;
+        }
+      }
+
+      // Do not steal keystrokes from text inputs unless they're the search
+      // input (which has its own handler for Enter / Escape).
+      if (inInput && !isSearchInput) return;
+
+      // ── Arrow keys (page mode only) ───────────────────────────────────
+      switch (e.key) {
+        case 'ArrowLeft':
+          if (_currentViewMode === 'page') {
+            e.preventDefault();
+            if (_currentPage > 1) {
+              _emit(core, Events.PAGE_JUMP_REQUESTED, { pageNum: _currentPage - 1, reason: 'keyboard' });
+            }
+          }
+          break;
+        case 'ArrowRight': {
+          if (_currentViewMode === 'page') {
+            e.preventDefault();
+            const limit = _currentEffectiveLimit > 0
+              ? Math.min(_currentEffectiveLimit, _currentTotalPages)
+              : _currentTotalPages;
+            if (_currentPage < limit) {
+              _emit(core, Events.PAGE_JUMP_REQUESTED, { pageNum: _currentPage + 1, reason: 'keyboard' });
+            }
+          }
+          break;
+        }
+
+        // ── Home / End → first / last page ────────────────────────────────
+        case 'Home':
+          e.preventDefault();
+          _emit(core, Events.PAGE_JUMP_REQUESTED, { pageNum: 1, reason: 'keyboard' });
+          break;
+        case 'End': {
+          e.preventDefault();
+          const limit = _currentEffectiveLimit > 0
+            ? Math.min(_currentEffectiveLimit, _currentTotalPages)
+            : _currentTotalPages;
+          _emit(core, Events.PAGE_JUMP_REQUESTED, { pageNum: limit, reason: 'keyboard' });
+          break;
+        }
+
+        // ── PageUp / PageDown → prev / next page ──────────────────────────
+        case 'PageUp':
           e.preventDefault();
           if (_currentPage > 1) {
             _emit(core, Events.PAGE_JUMP_REQUESTED, { pageNum: _currentPage - 1, reason: 'keyboard' });
           }
-        }
-        break;
-      case 'ArrowRight':
-        if (_currentViewMode === 'page') {
+          break;
+        case 'PageDown': {
           e.preventDefault();
           const limit = _currentEffectiveLimit > 0
             ? Math.min(_currentEffectiveLimit, _currentTotalPages)
@@ -983,77 +1212,66 @@ export function setupControls(core) {
           if (_currentPage < limit) {
             _emit(core, Events.PAGE_JUMP_REQUESTED, { pageNum: _currentPage + 1, reason: 'keyboard' });
           }
+          break;
         }
-        break;
-      case '+':
-      case '=':
-        if (!isSearchInput) {
-          e.preventDefault();
-          _emit(core, Events.SCALE_REQUESTED, {
-            scale: Math.min(_currentScale + CONFIG.ZOOM_STEP, CONFIG.MAX_ZOOM),
-            source: 'keyboard',
-          });
-        }
-        break;
-      case '-':
-        if (!isSearchInput) {
-          e.preventDefault();
-          _emit(core, Events.SCALE_REQUESTED, {
-            scale: Math.max(_currentScale - CONFIG.ZOOM_STEP, CONFIG.MIN_ZOOM),
-            source: 'keyboard',
-          });
-        }
-        break;
-      case '0':
-        if (!isSearchInput) {
-          e.preventDefault();
-          _emit(core, Events.SCALE_REQUESTED, { scale: 1.0, source: 'keyboard' });
-        }
-        break;
-      default:
-        break;
-    }
-  });
 
-  // ── Tap sequence (single / double / triple) on the content area ─────────
+        // ── Zoom: + / = / - / 0 ───────────────────────────────────────────
+        case '+':
+        case '=':
+          if (!isSearchInput) {
+            e.preventDefault();
+            _emit(core, Events.SCALE_REQUESTED, {
+              scale: Math.min(_currentScale + CONFIG.ZOOM_STEP, CONFIG.MAX_ZOOM),
+              source: 'keyboard',
+            });
+          }
+          break;
+        case '-':
+          if (!isSearchInput) {
+            e.preventDefault();
+            _emit(core, Events.SCALE_REQUESTED, {
+              scale: Math.max(_currentScale - CONFIG.ZOOM_STEP, CONFIG.MIN_ZOOM),
+              source: 'keyboard',
+            });
+          }
+          break;
+        case '0':
+          if (!isSearchInput) {
+            e.preventDefault();
+            _emit(core, Events.SCALE_REQUESTED, { scale: 1.0, source: 'keyboard' });
+          }
+          break;
+
+        default:
+          break;
+      }
+    });
+  }
+
+  // ── Tap sequence (single → chrome, double → zoom) ──────────────────────
   if (els.main) {
     _addListener(els.main, 'click', (e) => {
       const target = e.target;
       if (target && typeof target.closest === 'function') {
-        if (target.closest('button, a, input, select, textarea')) return;
+        if (target.closest('button, a, input, select, textarea, .outline-drawer, .viewer-preview-cta, #viewer-drawer-scrim')) return;
       }
 
       const x = e.clientX;
       const y = e.clientY;
 
-      _tapCount++;
-      _tapLastX = x;
-      _tapLastY = y;
-
-      if (_tapTimer) {
-        clearTimeout(_tapTimer);
-        _tapTimer = null;
-      }
-
-      if (_tapCount >= 3) {
-        _tapCount = 0;
-        _emit(core, Events.TRIPLE_TAP, { x, y });
+      if (_pendingTapTimer !== null) {
+        clearTimeout(_pendingTapTimer);
+        _pendingTapTimer = null;
+        _emit(core, Events.DOUBLE_TAP, { x, y });
         return;
       }
 
-      if (_tapCount === 2) {
-        _tapTimer = setTimeout(() => {
-          _tapTimer = null;
-          _tapCount = 0;
-          _emit(core, Events.DOUBLE_TAP, { x: _tapLastX, y: _tapLastY });
-        }, CONFIG.DOUBLE_SETTLE_MS);
-        return;
-      }
-
-      _tapTimer = setTimeout(() => {
-        _tapTimer = null;
-        _tapCount = 0;
-      }, CONFIG.TAP_SEQUENCE_GAP_MS);
+      _pendingTapX = x;
+      _pendingTapY = y;
+      _pendingTapTimer = setTimeout(() => {
+        _pendingTapTimer = null;
+        _emit(core, Events.SINGLE_TAP, { x: _pendingTapX, y: _pendingTapY });
+      }, CONFIG.DOUBLE_SETTLE_MS);
     });
   }
 
@@ -1061,7 +1279,7 @@ export function setupControls(core) {
 }
 
 // ============================================================================
-// 9. BUS SUBSCRIPTIONS
+// 11. BUS SUBSCRIPTIONS
 // ============================================================================
 
 /**
@@ -1078,10 +1296,6 @@ export function bindCoreEvents(core) {
     try { _register(bus.on(event, handler)); } catch { /* ignore */ }
   };
 
-  /**
-   * @private
-   * @returns {number}
-   */
   const effectiveLimit = () => {
     try {
       if (core && typeof core.getEffectivePageLimit === 'function') {
@@ -1114,20 +1328,40 @@ export function bindCoreEvents(core) {
 
     let current = 1;
     let total = 1;
+    let documentKind = null;
     try {
       const s = core.getState();
       current = s.get('currentPage') || 1;
       total = s.get('numPages') || 1;
+      documentKind = s.get('documentKind');
       _currentPage = current;
       _currentTotalPages = total;
       _currentViewMode = s.get('viewMode') || 'scroll';
+      _currentScale = s.get('scale') || 1;
     } catch { /* ignore */ }
 
     _currentEffectiveLimit = effectiveLimit();
 
+    if (els.footer) {
+      els.footer.style.display = (documentKind === 'pdf') ? 'flex' : 'none';
+    }
+
     _applyPageNumbers(current, total);
     updateZoomDisplay();
     showHeaderFooter();
+
+    // A fresh document starts without a user zoom override — fit-to-width
+    // has just been applied by core._loadPdf, so the observer should be
+    // free to re-fit on subsequent width changes.
+    _userZoomOverride = false;
+
+    // Refresh the fit-width observer's baseline width now that the DOM
+    // has changed.
+    try {
+      if (_fitObserver && els.main) {
+        _fitObserverWidth = els.main.clientWidth;
+      }
+    } catch { /* ignore */ }
   });
 
   subscribe(Events.DOCUMENT_ERROR, (payload) => {
@@ -1138,11 +1372,27 @@ export function bindCoreEvents(core) {
     if (!els.main) return;
     const rawMessage = payload && payload.message ? payload.message : 'Failed to load document';
     const safe = escapeHtml(String(rawMessage));
-    els.main.innerHTML = `<div class="error-container" role="alert">
-      <p>Failed to load document: ${safe}</p>
-      <button class="btn-secondary" data-viewer-action="back">Go Back</button>
-    </div>`;
-    const backBtn = els.main.querySelector('[data-viewer-action="back"]');
+
+    // Preserve the four static chrome nodes; append the error container.
+    const keep = new Set();
+    if (els.loading) keep.add(els.loading);
+    if (els.progress) keep.add(els.progress);
+    if (els.content) keep.add(els.content);
+    if (els.textLayerContainer) keep.add(els.textLayerContainer);
+    for (const child of Array.from(els.main.children)) {
+      if (!keep.has(child)) {
+        try { child.remove(); } catch { /* ignore */ }
+      }
+    }
+
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'error-container';
+    errorDiv.setAttribute('role', 'alert');
+    errorDiv.innerHTML = `<p>Failed to load document: ${safe}</p>
+      <button class="btn-secondary" data-viewer-action="back">Go Back</button>`;
+    els.main.appendChild(errorDiv);
+
+    const backBtn = errorDiv.querySelector('[data-viewer-action="back"]');
     if (backBtn) {
       _addListener(backBtn, 'click', () => {
         _emit(core, Events.NAV_BACK_REQUESTED, {});
@@ -1175,10 +1425,18 @@ export function bindCoreEvents(core) {
   // ── Scale applied ────────────────────────────────────────────────────────
   subscribe(Events.SCALE_APPLIED, (payload) => {
     if (payload && typeof payload.scale === 'number') _currentScale = payload.scale;
-    if (!payload || payload.source !== 'triple-tap') {
+    if (payload && typeof payload.source === 'string') {
+      _noteZoomSource(payload.source);
+    }
+    if (!payload || payload.source !== 'double-tap') {
       _isMagnified = false;
     }
     updateZoomDisplay();
+  });
+
+  // ── Rotation applied ────────────────────────────────────────────────────
+  subscribe(Events.ROTATION_APPLIED, () => {
+    updateNavButtons();
   });
 
   // ── Search ───────────────────────────────────────────────────────────────
@@ -1236,18 +1494,18 @@ export function bindCoreEvents(core) {
     resetAutoHideTimer();
   });
 
-  // ── Double tap → toggle chrome ───────────────────────────────────────────
-  subscribe(Events.DOUBLE_TAP, () => {
+  // ── Single tap → toggle chrome ──────────────────────────────────────────
+  subscribe(Events.SINGLE_TAP, () => {
     if (_isHeaderVisible) hideHeaderFooter();
     else showHeaderFooter();
   });
 
-  // ── Triple tap → toggle magnify ──────────────────────────────────────────
-  subscribe(Events.TRIPLE_TAP, () => {
+  // ── Double tap → toggle zoom ────────────────────────────────────────────
+  subscribe(Events.DOUBLE_TAP, () => {
     if (_isMagnified) {
       _emit(core, Events.SCALE_REQUESTED, {
         scale: _preMagnifyScale,
-        source: 'triple-tap',
+        source: 'double-tap',
       });
       _isMagnified = false;
     } else {
@@ -1255,7 +1513,7 @@ export function bindCoreEvents(core) {
       const target = Math.min(_currentScale * CONFIG.MAGNIFY_FACTOR, CONFIG.MAX_ZOOM);
       _emit(core, Events.SCALE_REQUESTED, {
         scale: target,
-        source: 'triple-tap',
+        source: 'double-tap',
       });
       _isMagnified = true;
     }
@@ -1268,6 +1526,14 @@ export function bindCoreEvents(core) {
     if (now - _memoryToastAt < 30000) return;
     _memoryToastAt = now;
     try { showToast('Low memory — some pages may reload as you scroll', 'warning'); } catch { /* ignore */ }
+  });
+
+  // ── Network offline → throttled toast ───────────────────────────────────
+  subscribe(Events.NETWORK_OFFLINE, () => {
+    const now = Date.now();
+    if (now - _offlineToastAt < 30000) return;
+    _offlineToastAt = now;
+    try { showToast('You are offline', 'warning'); } catch { /* ignore */ }
   });
 
   // ── Worker error → dev-only toast ────────────────────────────────────────
@@ -1312,7 +1578,7 @@ export function bindCoreEvents(core) {
 }
 
 // ============================================================================
-// 10. EMBEDDED MOUNT / UNMOUNT
+// 12. EMBEDDED MOUNT / UNMOUNT
 // ============================================================================
 
 /**
@@ -1327,7 +1593,7 @@ export function mountChrome(_core) {
   const els = _getEls();
   if (els && els.container) {
     const c = els.container;
-    c.style.display = 'flex';
+    c.style.display = 'block';
     c.style.position = 'fixed';
     c.style.top = '0';
     c.style.left = '0';
@@ -1358,7 +1624,7 @@ export function unmountChrome(_core) {
 }
 
 // ============================================================================
-// 11. STATE RESET & TEARDOWN
+// 13. STATE RESET & TEARDOWN
 // ============================================================================
 
 /**
@@ -1371,17 +1637,34 @@ export function resetUIState() {
   const els = _getEls();
   if (els) {
     if (els.loading) els.loading.style.display = 'none';
-    if (els.progress) els.progress.style.display = 'none';
+    if (els.progress) {
+      els.progress.value = 0;
+      els.progress.style.display = 'none';
+    }
     if (els.searchInput) els.searchInput.value = '';
     if (els.searchBar) els.searchBar.classList.remove('active');
-    if (els.outlineDrawer) els.outlineDrawer.classList.remove('open');
+    if (els.outlineDrawer) {
+      els.outlineDrawer.classList.remove('open');
+      els.outlineDrawer.setAttribute('aria-hidden', 'true');
+    }
+    if (els.footer) els.footer.style.display = 'none';
   }
 
-  if (_tapTimer) {
-    clearTimeout(_tapTimer);
-    _tapTimer = null;
+  try {
+    const scrim = document.getElementById('viewer-drawer-scrim');
+    if (scrim) scrim.classList.remove('open');
+  } catch { /* ignore */ }
+
+  _setToggleExpanded('viewer-outline-btn', false);
+  _setToggleExpanded('viewer-search-btn', false);
+  _setToggleExpanded('viewer-more-btn', false);
+
+  if (_pendingTapTimer) {
+    clearTimeout(_pendingTapTimer);
+    _pendingTapTimer = null;
   }
-  _tapCount = 0;
+  _pendingTapX = 0;
+  _pendingTapY = 0;
 
   _isMagnified = false;
   _preMagnifyScale = 1;
@@ -1394,6 +1677,7 @@ export function resetUIState() {
   _currentViewMode = 'scroll';
   _searchMatchCount = 0;
   _searchCurrentIndex = -1;
+  _userZoomOverride = false;
   _resetAutoHide();
   updateSearchCountDisplay();
   updateZoomDisplay();
@@ -1402,8 +1686,8 @@ export function resetUIState() {
 }
 
 /**
- * Remove every listener and subscription registered by ui-internal. Idempotent.
- * Called on full viewer shutdown (not on document switch).
+ * Remove every listener and subscription registered by ui-internal.
+ * Idempotent. Called on full viewer shutdown (not on document switch).
  *
  * @returns {void}
  */
@@ -1415,61 +1699,65 @@ export function teardownControls() {
   _autoHideBound = false;
   _dprBound = false;
   _eventsBound = false;
+  _fitWidthBound = false;
 
-  if (_tapTimer) {
-    clearTimeout(_tapTimer);
-    _tapTimer = null;
+  try { if (_fitObserver) _fitObserver.disconnect(); } catch { /* ignore */ }
+  _fitObserver = null;
+  _fitObserverWidth = 0;
+
+  if (_pendingTapTimer) {
+    clearTimeout(_pendingTapTimer);
+    _pendingTapTimer = null;
   }
-  _tapCount = 0;
+  _pendingTapX = 0;
+  _pendingTapY = 0;
+
+  if (_autoHideTimer) {
+    clearTimeout(_autoHideTimer);
+    _autoHideTimer = null;
+  }
 
   _isMagnified = false;
   _preMagnifyScale = 1;
-
   _currentEffectiveLimit = 1;
-
-  _resetAutoHide();
+  _currentPage = 1;
+  _currentTotalPages = 1;
+  _currentScale = 1;
+  _currentViewMode = 'scroll';
+  _searchMatchCount = 0;
+  _searchCurrentIndex = -1;
+  _userZoomOverride = false;
+  _els = null;
 }
 
 // ============================================================================
-// 12. DOCUMENT CLEARING
+// 14. DOCUMENT CLEARING
 // ============================================================================
 
 /**
  * Remove every DOM node the viewer created during a document load, while
- * preserving the static chrome nodes declared in viewer.html.
+ * preserving the four static chrome nodes declared in viewer.html.
  *
- * WHAT SURVIVES (the four static chrome nodes):
+ * WHAT SURVIVES:
  *   • #viewer-loading       — the loading spinner
  *   • #viewer-progress      — the progress bar
- *   • #viewer-content       — reserved container (empty in the current HTML)
- *   • #viewer-text-layer    — reserved container (empty in the current HTML)
+ *   • #viewer-content       — reserved container
+ *   • #viewer-text-layer    — reserved container
  *
  * WHAT IS REMOVED:
- *   • Every .page-container       (from the last PDF load)
- *   • Every .canvas-wrapper       (inside page containers)
- *   • Every canvas, img, iframe   (from PDF/image/office loads)
- *   • Every .search-layer         (search highlights)
- *   • Every .error-container      (load failures)
- *   • Every .viewer-preview-cta   (preview-mode subscribe card)
+ *   • Every .page-container, .canvas-wrapper, canvas, img, iframe
+ *   • Every .search-layer, .error-container, .viewer-preview-cta
  *   • Any <pre> from a text-document load
- *   • Every other direct child of #viewer-main that is not on the survive list
+ *   • Every other direct child of #viewer-main not on the survive list
  *
  * ALSO:
  *   • Empties #viewer-outline-drawer and removes its .open class.
+ *   • Closes the scrim.
  *   • Clears #viewer-title textContent.
  *   • Exits fullscreen if the viewer was the fullscreen element.
  *
- * Idempotent. Safe to call before the core is initialised, after destroy, or
- * on a document that was never loaded.
- *
- * WHY THIS EXISTS:
- *   core.destroy() tears down the engine, workers, caches, and state, but
- *   the previous document's DOM survives — page containers, canvases,
- *   search overlays, and error containers stay attached to #viewer-main.
- *   On the next open, viewer.js would need to wipe them, and doing so with
- *   `main.innerHTML = ''` also deletes #viewer-loading and #viewer-progress.
- *   This function identifies document content vs. static chrome, preserving
- *   the latter.
+ * Idempotent. Safe to call before init, after destroy, or on a document
+ * that was never loaded.
  *
  * @returns {void}
  */
@@ -1483,14 +1771,12 @@ export function clearViewerContent() {
     if (els.main) {
       const main = els.main;
 
-      // Nodes declared in viewer.html that must survive the clear.
       const keep = new Set();
       if (els.loading) keep.add(els.loading);
       if (els.progress) keep.add(els.progress);
       if (els.content) keep.add(els.content);
       if (els.textLayerContainer) keep.add(els.textLayerContainer);
 
-      // Snapshot children first — removing during iteration mutates the list.
       const toRemove = [];
       for (const child of Array.from(main.children)) {
         if (!keep.has(child)) toRemove.push(child);
@@ -1499,7 +1785,6 @@ export function clearViewerContent() {
         try { node.remove(); } catch { /* ignore */ }
       }
 
-      // Reset the preserved nodes' visible state.
       if (els.loading) els.loading.style.display = 'none';
       if (els.progress) {
         els.progress.value = 0;
@@ -1507,20 +1792,29 @@ export function clearViewerContent() {
       }
     }
 
-    // Outline drawer: empty its contents and close it.
     if (els.outlineDrawer) {
       els.outlineDrawer.innerHTML = '';
       els.outlineDrawer.classList.remove('open');
+      els.outlineDrawer.setAttribute('aria-hidden', 'true');
     }
 
-    // Reset the header title so a reopen doesn't briefly show the old name.
+    const scrim = document.getElementById('viewer-drawer-scrim');
+    if (scrim) scrim.classList.remove('open');
+
+    _setToggleExpanded('viewer-outline-btn', false);
+    _setToggleExpanded('viewer-search-btn', false);
+    _setToggleExpanded('viewer-more-btn', false);
+
     if (els.title) {
       els.title.textContent = '';
     }
 
-    // Exit fullscreen if the viewer was in it.
+    if (els.footer) {
+      els.footer.style.display = 'none';
+    }
+
     try {
-      if (document.fullscreenElement) document.exitFullscreen();
+      if (isFullscreen()) exitFullscreen().catch(() => { /* ignore */ });
     } catch { /* ignore */ }
   } catch { /* ignore */ }
 }

@@ -15,6 +15,25 @@
  *   • ViewerCore   — lifecycle, document loading, subsystem orchestration
  *   • createCore() — singleton factory
  *
+ * Performance posture:
+ *   All FEATURES flags default to TRUE — the viewer boots with the full
+ *   optimized pipeline by default:
+ *     • Priority-queue render scheduling with cancellation
+ *     • Byte-accounted LRU caches with device-tuned caps
+ *     • Hybrid tiled rendering for large pages
+ *     • Worker-offloaded search
+ *     • Velocity-aware rasterization throttling
+ *     • Two-phase zoom (GPU transform → async re-raster)
+ *     • rAF-batched pan writes
+ *     • Directional render-ahead prefetch (5 pages)
+ *     • Low-resolution thumbnail placeholders
+ *     • Full EngineAdapter routing (ready for PDFium-WASM swap)
+ *
+ *   To diagnose a specific subsystem, turn its flag off via the URL:
+ *     ?viewerFlags=USE_SCHEDULER,USE_TILING
+ *   This *enables* the listed flags on top of the defaults — it does not
+ *   disable them. To disable a flag permanently, edit the value in CONFIG.
+ *
  * Preview-mode support:
  *   When `loadDocument(blob, fileType, title, { previewMode: true })` is
  *   called, the PDF path caps the render pipeline to
@@ -27,6 +46,24 @@
  *   subscribed users are never affected. See resource-browser.js for the
  *   trigger and viewer.js for the transport.
  *
+ * Android / Capacitor posture:
+ *   `_doInit` calls `setupNativeBridge(this)`, which wires the Android back
+ *   button, immersive-mode status bar, keep-awake, and file intents through
+ *   `native-bridge.js`. Every native call has a web fallback, so `npm run dev`
+ *   works unchanged. Device detection delegates to `platform.js`, which is
+ *   the single source of truth for environment questions.
+ *
+ * Layout invariants:
+ *   • The page canvas is the page. `.canvas-wrapper` is a transparent
+ *     positioning context only — no clipping, no contain, no fixed size.
+ *     Its size tracks the canvas via `_onRenderComplete`.
+ *   • #viewer-main is the scroll surface. It scrolls on BOTH axes
+ *     (`overflow: auto; touch-action: pan-x pan-y` in CSS) so landscape and
+ *     zoomed content is reachable without a pan transform.
+ *   • Off-screen pages are skipped in layout/paint by `content-visibility:
+ *     auto` on the wrapper (restored, safely, because the wrapper now
+ *     always tracks its canvas).
+ *
  * Destroy semantics:
  *   `destroy()` runs on every document switch AND on explicit viewer close.
  *   It tears down the engine, workers, scheduler, caches, and state, and it
@@ -35,8 +72,11 @@
  *   viewer.html (#viewer-loading, #viewer-progress, #viewer-content,
  *   #viewer-text-layer) survive the clear.
  *
+ *   The sidebar drawer, its scrim, and every toggle's aria-expanded state
+ *   are also reset so the next open starts from a clean, closed state.
+ *
  * Import discipline:
- *   • Imports only from ./utils.js and the six sibling subsystem factories.
+ *   • Imports only from ./utils.js and the sibling subsystem factories.
  *   • NEVER imports from ../content.js, ../subscription.js, ../ui.js, ../router.js.
  *   • Is imported by viewer.js only.
  *
@@ -73,6 +113,9 @@ import {
   revokeAllObjectURLs,
 } from './utils.js';
 
+import { getDeviceProfile } from './platform.js';
+import { setupNativeBridge } from './native-bridge.js';
+
 import { createEngine } from './engine.js';
 import { createRenderPipeline } from './render.js';
 import { createInteractionLayer } from './interaction.js';
@@ -85,6 +128,7 @@ import {
   setupControls,
   setupAutoHideListeners,
   setupDPRListener,
+  setupFitWidthObserver,
   bindCoreEvents,
   teardownControls,
   mountChrome,
@@ -134,12 +178,14 @@ export const CONFIG = deepFreeze({
   MAX_ZOOM: 5.0,
   ZOOM_SETTLE_DEBOUNCE_MS: 120,
 
-  // ── Tap sequences (double-tap / triple-tap) ───────────────────────────────
+  // ── Tap sequences ─────────────────────────────────────────────────────────
+  // Android convention: single tap toggles chrome, double tap toggles zoom.
+  // Triple tap is not recognized (conflicts with long-press text selection).
   TAP_SEQUENCE_GAP_MS: 350,
   DOUBLE_SETTLE_MS: 250,
 
-  // Multiplier applied by the triple-tap magnify toggle. Magnify is always
-  // viewport-centered, never anchored to the tap point.
+  // Multiplier applied by the double-tap zoom toggle. The toggle is always
+  // viewport-centered.
   MAGNIFY_FACTOR: 2.0,
 
   // ── Preview mode ──────────────────────────────────────────────────────────
@@ -175,18 +221,26 @@ export const CONFIG = deepFreeze({
   // ── Velocity thresholds ───────────────────────────────────────────────────
   VELOCITY_SUSPEND_PX_PER_FRAME: 40,
   VELOCITY_PREFETCH_MAX: 500,
-  PREFETCH_DEPTH_SLOW: 2,
-  PREFETCH_DEPTH_FAST: 0,
+  // 5 pages above/below the current page are kept warm while scrolling
+  // slowly. At high velocity, only 2 pages — the visible set moves fast
+  // enough that deeper prefetch would waste render budget on pages the
+  // user has already passed.
+  PREFETCH_DEPTH_SLOW: 5,
+  PREFETCH_DEPTH_FAST: 2,
 
   // ── Render concurrency ────────────────────────────────────────────────────
+  // Bounded by hardwareConcurrency - 1 to leave one core for the main thread.
+  // Capped at 6 to let modern phones and tablets overlap engine work with
+  // canvas composition. PDF.js worker contention is the practical ceiling;
+  // beyond 6, additional concurrency slows total throughput on most devices.
   RENDER_CONCURRENCY: (() => {
     try {
       const hc = typeof navigator !== 'undefined' && navigator.hardwareConcurrency
         ? navigator.hardwareConcurrency
         : 4;
-      return Math.max(1, Math.min(4, hc - 1));
+      return Math.max(1, Math.min(6, hc - 1));
     } catch {
-      return 2;
+      return 3;
     }
   })(),
 
@@ -214,26 +268,60 @@ export const CONFIG = deepFreeze({
   PDF_CANVAS_CLASS: 'pdf-canvas',
   VIEW_MODE_STORAGE_KEY: 'viewer-viewMode',
 
+  // ── Fit-to-width layout ───────────────────────────────────────────────────
+  // Horizontal padding (px) subtracted from the content area width when
+  // computing the initial fit-to-width scale.
+  FIT_WIDTH_H_PADDING_PX: 32,
+
+  // Maximum time (ms) to wait for #viewer-main to have a non-zero width
+  // before giving up on fit-to-width. Prevents the viewer from hanging if
+  // the container is never shown.
+  FIT_WIDTH_WAIT_TIMEOUT_MS: 2000,
+
+  // ── Metadata prefetch ─────────────────────────────────────────────────────
+  // Eagerly fetch page metadata for the first N pages so the initial
+  // scrollbar geometry is approximately correct. Pages past N are fetched
+  // on demand when the scroll viewport approaches them.
+  EAGER_METADATA_PAGES: 20,
+
   // ── Dev-mode flags (not feature flags; gate diagnostics) ──────────────────
   DEBUG_VIEWER: false,
   DEBUG_WORKERS: false,
   DEBUG_MEMORY: false,
 
   // ── Feature flags ─────────────────────────────────────────────────────────
-  // Defaults false so the viewer boots with behaviour identical to the
-  // previous monolithic viewer. Each phase flips one flag on.
+  //
+  // All performance features are enabled by default. This is the tuned
+  // configuration for production: every subsystem ships its optimized path.
+  //
+  // Each flag can be turned off individually to diagnose a specific subsystem
+  // or to recover a fallback path if an edge case is discovered. The fallback
+  // paths are the exact behaviour of the previous monolithic viewer.
+  //
+  // Flags and their subsystems:
+  //   USE_WORKER_SEARCH       → managers.SearchManager → workers / search.worker.js
+  //   USE_SCHEDULER           → render.RenderScheduler priority queue
+  //   USE_TILING              → render.TileManager hybrid canvas/tile decision
+  //   USE_ENGINE_ADAPTER      → engine.EngineAdapter routes all PDF.js calls
+  //   USE_LRU_CACHES          → managers.LRUCache + MemoryManager caps
+  //   USE_VELOCITY_THROTTLE   → interaction.ScrollManager pause/resume
+  //   USE_TWO_PHASE_ZOOM      → interaction.ZoomManager GPU transform
+  //   USE_RAF_PAN             → interaction.PanManager rAF-batched writes
+  //   USE_RENDER_PREFETCH     → interaction.ScrollManager directional prefetch
+  //   USE_LOW_RES_PLACEHOLDER → render.TileManager pinned thumbnails
+  //   USE_PARSER_WORKER       → workers / parser.worker.js (Phase 5 stub)
   FEATURES: {
-    USE_WORKER_SEARCH: false,
-    USE_SCHEDULER: false,
-    USE_TILING: false,
-    USE_ENGINE_ADAPTER: false,
-    USE_LRU_CACHES: false,
-    USE_VELOCITY_THROTTLE: false,
-    USE_TWO_PHASE_ZOOM: false,
-    USE_RAF_PAN: false,
-    USE_RENDER_PREFETCH: false,
-    USE_LOW_RES_PLACEHOLDER: false,
-    USE_PARSER_WORKER: false,
+    USE_WORKER_SEARCH: true,
+    USE_SCHEDULER: true,
+    USE_TILING: true,
+    USE_ENGINE_ADAPTER: true,
+    USE_LRU_CACHES: true,
+    USE_VELOCITY_THROTTLE: true,
+    USE_TWO_PHASE_ZOOM: true,
+    USE_RAF_PAN: true,
+    USE_RENDER_PREFETCH: true,
+    USE_LOW_RES_PLACEHOLDER: true,
+    USE_PARSER_WORKER: true,
   },
 });
 
@@ -288,12 +376,18 @@ export const Events = deepFreeze({
   ZOOM_GESTURE_START: 'zoom:gesture-start',
   ZOOM_GESTURE_END: 'zoom:gesture-end',
 
+  // Rotation
+  ROTATE_REQUESTED: 'rotate:requested',
+  ROTATION_APPLIED: 'rotation:applied',
+
   // Panning / gestures
+  // Android convention: single tap toggles chrome, double tap toggles zoom.
+  SINGLE_TAP: 'single-tap',
+  DOUBLE_TAP: 'double-tap',
+  TRIPLE_TAP: 'triple-tap', // reserved; not emitted by default UI
+  SWIPE: 'swipe',
   PAN_START: 'pan:start',
   PAN_END: 'pan:end',
-  DOUBLE_TAP: 'double-tap',
-  TRIPLE_TAP: 'triple-tap',
-  SWIPE: 'swipe',
   INTERACTION_ACTIVITY: 'interaction:activity',
   SCROLL_VELOCITY: 'scroll:velocity',
 
@@ -327,6 +421,9 @@ export const Events = deepFreeze({
 
   // App-level intents
   LOCAL_FILE_OPEN_REQUESTED: 'local-file:open-requested',
+
+  // Network
+  NETWORK_OFFLINE: 'network:offline',
 
   // Preview-mode subscribe CTA. Emitted by the CTA card that core inserts
   // after the last preview page. Handled by viewer.js, which routes the user
@@ -397,11 +494,7 @@ export class EventBus {
     /** @type {Function} */
     const wrapper = (...args) => {
       this.off(event, wrapper);
-      try {
-        handler(...args);
-      } catch {
-        // swallow — mirrors emit's fault isolation
-      }
+      try { handler(...args); } catch { /* swallow */ }
     };
     return this.on(event, wrapper);
   }
@@ -416,11 +509,7 @@ export class EventBus {
     if (!set || set.size === 0) return;
     const snapshot = Array.from(set);
     for (const handler of snapshot) {
-      try {
-        handler(payload);
-      } catch {
-        // Intentionally swallowed. Modules own their own error reporting.
-      }
+      try { handler(payload); } catch { /* swallow */ }
     }
   }
 
@@ -471,6 +560,7 @@ const DEFAULT_STATE = Object.freeze({
   outline: [],
 
   scale: 1.0,
+  rotation: 0, // 0 | 90 | 180 | 270 (clockwise)
   viewMode: 'scroll',
   dpr: 1,
   scrollVelocityPxPerFrame: 0,
@@ -498,6 +588,8 @@ const DEFAULT_STATE = Object.freeze({
     hardwareConcurrency: 4,
     memoryCapBytes: 200 * 1024 * 1024,
     deviceMemory: 4,
+    isNative: false,
+    platform: 'web',
   },
 });
 
@@ -642,6 +734,7 @@ export class ViewerCore {
     /** @type {boolean} */ this._destroying = false;
 
     /** @type {Array<() => void>} */ this._teardowns = [];
+    /** @type {null | (() => void)} */ this._nativeTeardown = null;
 
     /** @type {boolean} */ this._pageSizePreloadStarted = false;
   }
@@ -700,6 +793,7 @@ export class ViewerCore {
     const previewMode = !!(opts && opts.previewMode);
     this._state.set('previewMode', previewMode);
     this._state.set('previewPageLimit', 0);
+    this._state.set('rotation', 0);
 
     this._state.set('isLoading', true);
     this._state.set('error', null);
@@ -743,13 +837,26 @@ export class ViewerCore {
   }
 
   /**
-   * Canonical teardown. Idempotent. Ordered per architecture spec § 5.6.
+   * Canonical teardown. Idempotent.
    *
    * Runs on every document switch AND on explicit viewer close. Clears the
    * viewer DOM via `clearViewerContent()` so the next document starts from
    * a blank slate — page containers, canvases, search overlays, error
    * containers, and the preview-mode CTA are removed; the four static
    * chrome nodes from viewer.html are preserved.
+   *
+   * Also resets the sidebar drawer, its scrim, every toggle's aria-expanded
+   * state, and the outline drawer's dataset — so the next open starts from
+   * a clean, closed state. This is what fixes the "second open loses
+   * single/double tap" and "third open blinks and closes" symptoms: a stale
+   * `.open` class on the drawer would leave the scrim capturing taps, and a
+   * stale `.active` on the search bar would leave the input stealing
+   * keyboard events.
+   *
+   * Native bridge subscriptions (back button, app state, color scheme,
+   * network) are VIEWER-LIFETIME and are NOT torn down here — they must
+   * survive a document switch so the drawer close / search close handler
+   * remains live. They are torn down only by `__resetCoreSingletonForTests`.
    *
    * @returns {void}
    */
@@ -814,35 +921,30 @@ export class ViewerCore {
       } catch { /* ignore */ }
 
       // 7b. Clear the viewer DOM so the next document starts from a blank
-      //     slate. Without this, the previous document's wrappers, canvases,
-      //     search-highlight overlays, and error containers survive the
-      //     close and bleed into the next open.
-      //
-      //     Preserves the four static chrome nodes declared in viewer.html:
-      //     #viewer-loading, #viewer-progress, #viewer-content,
-      //     #viewer-text-layer. Also resets loading/progress visible state,
-      //     empties the outline drawer, and clears the viewer title.
+      //     slate. Preserves the four static chrome nodes declared in
+      //     viewer.html: #viewer-loading, #viewer-progress, #viewer-content,
+      //     #viewer-text-layer.
       try {
         clearViewerContent();
       } catch { /* ignore */ }
 
-      // 8. Core's own cross-module subscriptions (in `_teardowns`) are
-      //    VIEWER-LIFETIME. They are registered exactly once during
-      //    `_doInit()` and MUST survive a document switch.
-      //
-      //    `destroy()` runs on every document switch, not just on full
-      //    viewer teardown. Tearing the subscriptions down here would strip
-      //    the core of its `RENDER_COMPLETE` handler, and the next document
-      //    would render its canvases into memory that is never inserted
-      //    into the DOM — producing the white blank pages on the second
-      //    open of the same document.
-      //
-      //    The subscriptions die naturally with the JS context when the
-      //    page is unloaded. No explicit teardown is needed.
+      // 7c. Reset sidebar / scrim / toggle ARIA state. This is the critical
+      //     fix for "second open loses tap handling". A stale `.open` class
+      //     on the drawer leaves the scrim capturing pointer events; a stale
+      //     `.active` on the search bar steals keyboard focus; a stale
+      //     `aria-expanded="true"` on a toggle misinforms assistive tech.
+      this._resetSidebarState();
+
+      // 8. Core's own cross-module subscriptions (in `_teardowns`) and the
+      //    native bridge subscriptions are VIEWER-LIFETIME. They must survive
+      //    a document switch so the RENDER_COMPLETE handler and the back
+      //    button handler remain live. They die naturally with the JS context
+      //    when the page unloads.
 
       // 9. Reset state.
       this._state.reset();
       this._state.set('isDestroyed', false);
+      this._state.set('rotation', 0);
       this._pageSizePreloadStarted = false;
 
       // 10. Notify.
@@ -937,6 +1039,16 @@ export class ViewerCore {
     return this._managers ? this._managers.outline : null;
   }
 
+  /**
+   * The full managers aggregate. Exposes `dispatchPanel(panel)` so ui-internal
+   * can force a panel render after opening the sidebar.
+   *
+   * @returns {any}
+   */
+  getManagers() {
+    return this._managers;
+  }
+
   /** @returns {any} */
   getScroll() {
     return this._interaction ? this._interaction.scroll : null;
@@ -1009,9 +1121,7 @@ export class ViewerCore {
       showHeaderFooter: () => {
         core.getBus().emit(Events.INTERACTION_ACTIVITY, {});
       },
-      hideHeaderFooter: () => {
-        // No-op facade stub — hidden internally.
-      },
+      hideHeaderFooter: () => { /* no-op facade stub */ },
       resetAutoHideTimer: () => {
         core.getBus().emit(Events.INTERACTION_ACTIVITY, {});
       },
@@ -1034,7 +1144,7 @@ export class ViewerCore {
     const flags = this._applyUrlFlagOverrides(CONFIG.FEATURES);
     this._state.set('flags', flags);
 
-    // 5. Compute device profile.
+    // 5. Compute device profile (delegates to platform.js).
     this._state.set('deviceProfile', this._detectDeviceProfile());
 
     // 6. Inject CSS + refresh element cache.
@@ -1103,10 +1213,24 @@ export class ViewerCore {
     setupDPRListener(this);
     bindCoreEvents(this);
 
+    // 10b. Watch for #viewer-main width changes and re-apply fit-to-width
+    //      when the user hasn't manually overridden the zoom. Handles
+    //      rotation and window resize.
+    setupFitWidthObserver(this);
+
     // 11. Wire core-level cross-module subscriptions.
     this._wireCrossModuleEvents();
 
-    // 12. Mark ready.
+    // 12. Wire native bridge (Android back button, immersive mode, keep-awake,
+    //     file intents). Web fallbacks are used in `npm run dev` — Escape key
+    //     proxies the back button, visibilitychange proxies app state, etc.
+    try {
+      this._nativeTeardown = setupNativeBridge(this);
+    } catch {
+      this._nativeTeardown = null;
+    }
+
+    // 13. Mark ready.
     this._state.set('initTimestamp', Date.now());
     this._initialised = true;
     this._bus.emit(Events.CORE_READY, { timestamp: this._state.get('initTimestamp') });
@@ -1126,7 +1250,7 @@ export class ViewerCore {
       } catch { /* ignore */ }
     }));
 
-    // Render completion → insert canvas.
+    // Render completion → insert canvas + adopt rendered size on wrapper.
     this._teardowns.push(bus.on(Events.RENDER_COMPLETE, (payload) => {
       this._onRenderComplete(payload);
     }));
@@ -1145,6 +1269,27 @@ export class ViewerCore {
       const prev = this._state.get('scale');
       if (prev === payload.scale) return;
       this._state.set('scale', payload.scale);
+    }));
+
+    // Rotation requested → update state, emit applied, re-render visible.
+    this._teardowns.push(bus.on(Events.ROTATE_REQUESTED, (payload) => {
+      const current = this._state.get('rotation') || 0;
+      let next;
+      if (payload && typeof payload.rotation === 'number') {
+        next = ((payload.rotation % 360) + 360) % 360;
+      } else if (payload && payload.delta === -90) {
+        next = ((current - 90) % 360 + 360) % 360;
+      } else {
+        next = (current + 90) % 360;
+      }
+      if (next === current) return;
+      this._state.set('rotation', next);
+      this._bus.emit(Events.ROTATION_APPLIED, { rotation: next });
+      // Force a layout rebuild so page wrappers pick up the new dimensions
+      // (rotation swaps width and height for 90° / 270°).
+      Promise.resolve()
+        .then(() => this.renderCurrentLayout())
+        .catch(() => { /* ignore */ });
     }));
 
     // Search lifecycle.
@@ -1173,11 +1318,30 @@ export class ViewerCore {
       this._state.set('currentMatchIndex', payload.index);
     }));
 
-    // View-mode change → persist.
+    // ── View-mode change → persist AND rebuild the layout ─────────────
+    //
+    // Two responsibilities:
+    //
+    //   1. Persist the user's choice to localStorage so the next session
+    //      starts in the same mode.
+    //
+    //   2. Rebuild the layout. `state.set('viewMode', 'page')` alone only
+    //      mutates state — it does not touch the DOM. The toggle button in
+    //      ui-internal.js emits LAYOUT_CHANGED on click, but that event is
+    //      informational (it announces that a change occurred); nothing
+    //      subscribes to it to trigger a rebuild.
+    //
+    //      This subscriber IS the rebuild trigger. It calls
+    //      renderCurrentLayout(), which tears down the current DOM structure
+    //      and builds the one matching the new mode.
     this._teardowns.push(this._state.subscribe('viewMode', (payload) => {
       try {
         localStorage.setItem(CONFIG.VIEW_MODE_STORAGE_KEY, payload.next);
       } catch { /* ignore */ }
+
+      Promise.resolve()
+        .then(() => this.renderCurrentLayout())
+        .catch(() => { /* ignore — core surfaces errors via document:error */ });
     }));
 
     // Document destroy → reset preload flag.
@@ -1226,8 +1390,20 @@ export class ViewerCore {
       numPages,
       outline,
       currentPage: 1,
+      rotation: 0,
       scale: 1.0,
     });
+
+    // Clear the sidebar drawer's content so the new document's outline
+    // renders into a clean shell. Panel is reset to outline as the default.
+    // The managers will repopulate it when the drawer opens.
+    try {
+      const drawer = document.getElementById('viewer-outline-drawer');
+      if (drawer) {
+        drawer.innerHTML = '';
+        drawer.dataset.panel = 'outline';
+      }
+    } catch { /* ignore */ }
 
     // Preview mode: cap rendered pages to CONFIG.PREVIEW_PAGE_FRACTION of the
     // total. Always at least 1 so short documents still show something. This
@@ -1241,6 +1417,17 @@ export class ViewerCore {
     } else {
       this._state.set('previewPageLimit', 0);
     }
+
+    // ── Fit-to-width ────────────────────────────────────────────────────
+    // Compute the scale that makes page 1 fill the content area width. This
+    // is the default zoom on every Android PDF viewer (Drive, Acrobat,
+    // Xodo). Must run BEFORE DOCUMENT_LOADED so ui-internal's subscriber
+    // reads the correct scale when it refreshes the zoom % display.
+    //
+    // The helper waits for the viewer to have a non-zero width if it hasn't
+    // been mounted yet (clientWidth === 0). This makes the behaviour robust
+    // to any ordering of `mountChrome()` and `loadDocument()`.
+    await this._applyFitToWidth();
 
     this._bus.emit(Events.DOCUMENT_LOADED, {
       numPages,
@@ -1259,7 +1446,7 @@ export class ViewerCore {
     const main = els.main;
     main.classList.remove('scroll-view');
     main.classList.add('page-view');
-    main.innerHTML = '';
+    this._clearViewerMainPreservingChrome();
 
     const wrapper = document.createElement('div');
     wrapper.style.width = '100%';
@@ -1268,7 +1455,6 @@ export class ViewerCore {
     wrapper.style.alignItems = 'center';
     wrapper.style.justifyContent = 'center';
     wrapper.style.transformOrigin = 'center center';
-    wrapper.style.touchAction = 'none';
 
     const img = document.createElement('img');
     img.src = createObjectURL(blob);
@@ -1276,8 +1462,6 @@ export class ViewerCore {
     img.style.maxHeight = 'none';
     img.style.objectFit = 'contain';
     img.style.transformOrigin = 'center center';
-    img.style.transition = 'transform 0.1s';
-    img.style.touchAction = 'none';
 
     wrapper.appendChild(img);
     main.appendChild(wrapper);
@@ -1310,7 +1494,7 @@ export class ViewerCore {
     pre.style.height = '100%';
     pre.style.boxSizing = 'border-box';
 
-    els.main.innerHTML = '';
+    this._clearViewerMainPreservingChrome();
     els.main.appendChild(pre);
 
     if (els.footer) els.footer.style.display = 'none';
@@ -1334,7 +1518,7 @@ export class ViewerCore {
     iframe.style.height = '100%';
     iframe.style.border = 'none';
 
-    els.main.innerHTML = '';
+    this._clearViewerMainPreservingChrome();
     els.main.appendChild(iframe);
 
     if (els.footer) els.footer.style.display = 'none';
@@ -1353,10 +1537,15 @@ export class ViewerCore {
 
     const url = createObjectURL(blob);
     const safeMime = escapeHtml(this._state.get('mimeType') || 'unknown');
-    els.main.innerHTML = `<div class="unsupported">
+    this._clearViewerMainPreservingChrome();
+
+    const container = document.createElement('div');
+    container.className = 'unsupported';
+    container.innerHTML = `
       <p>Preview not available for this file type (${safeMime}).</p>
       <a href="${url}" download class="btn-primary">Download to view locally</a>
-    </div>`;
+    `;
+    els.main.appendChild(container);
 
     if (els.footer) els.footer.style.display = 'none';
 
@@ -1380,7 +1569,7 @@ export class ViewerCore {
 
     let container = main.querySelector('.' + CONFIG.PAGE_CONTAINER_CLASS);
     if (!container) {
-      main.innerHTML = '';
+      this._clearViewerMainPreservingChrome();
       container = document.createElement('div');
       container.className = CONFIG.PAGE_CONTAINER_CLASS;
 
@@ -1394,6 +1583,9 @@ export class ViewerCore {
         const wrapper = document.createElement('div');
         wrapper.className = CONFIG.CANVAS_WRAPPER_CLASS;
         wrapper.dataset.page = String(i);
+        // A minimum height reserves space before the first render so the
+        // scrollbar doesn't jump. The wrapper is later resized to the exact
+        // canvas dimensions in _onRenderComplete.
         wrapper.style.minHeight = '200px';
         container.appendChild(wrapper);
       }
@@ -1434,17 +1626,15 @@ export class ViewerCore {
     const main = els.main;
     main.classList.add('page-view');
     main.classList.remove('scroll-view');
-    main.innerHTML = '';
+    this._clearViewerMainPreservingChrome();
 
     const container = document.createElement('div');
     container.className = CONFIG.PAGE_CONTAINER_CLASS;
-    container.style.transformOrigin = '0 0';
     main.appendChild(container);
 
     // Clamp the page to the preview limit defensively. Navigation requests
-    // are already clamped in interaction.js, but a stale currentPage (e.g.
-    // from a previous document) could slip through if the caller bypasses
-    // destroy().
+    // are already clamped in interaction.js, but a stale currentPage could
+    // slip through if the caller bypasses destroy().
     const rawPageNum = this._state.get('currentPage');
     const pageNum = this.isPageAllowed(rawPageNum)
       ? rawPageNum
@@ -1468,12 +1658,16 @@ export class ViewerCore {
 
     const scheduler = this.getScheduler();
     const scale = this._state.get('scale');
+    const rotation = this._state.get('rotation') || 0;
 
     const job = {
-      id: `page:${pageNum}:${scale}`,
+      // Include rotation in the ID so a rotation change produces a new job
+      // rather than being deduplicated against the previous rotation.
+      id: `page:${pageNum}:${scale}:${rotation}`,
       kind: 'page',
       pageNum,
       scale,
+      rotation,
       tileRect: null,
       priority,
       onComplete: () => { /* handled via RENDER_COMPLETE event */ },
@@ -1502,6 +1696,26 @@ export class ViewerCore {
     } catch { /* ignore */ }
   }
 
+  /**
+   * RENDER_COMPLETE handler.
+   *
+   * Inserts the freshly-rendered canvas into its wrapper AND adopts the
+   * canvas's rendered CSS size on the wrapper. The size adoption is what
+   * keeps the wrapper in sync when the user zooms — without it, the wrapper
+   * stays at its previous scale's dimensions and the enlarged canvas
+   * overflows (clipping it under the old `contain: paint`; now it just
+   * leaves gaps in the scroll geometry).
+   *
+   * Marks the scroll layout dirty via `markLayoutDirty()` rather than
+   * recomputing synchronously. `recomputeLayout` does getBoundingClientRect
+   * on every wrapper — a forced synchronous layout. With 15 pages completing
+   * in one scheduler burst, that's 15 full layout recalcs. Marking dirty is
+   * O(1); the next scroll frame batches the recompute. A single recompute
+   * after `_preloadPageSizes` gives the scrollbar its correct initial height.
+   *
+   * @private
+   * @param {any} payload
+   */
   _onRenderComplete(payload) {
     if (!payload || !payload.canvas) return;
     const { pageNum, scale, canvas, kind } = payload;
@@ -1519,9 +1733,37 @@ export class ViewerCore {
     wrapper.appendChild(canvas);
     wrapper.dataset.renderedScale = String(scale);
 
+    // ── Adopt the canvas's own CSS size ────────────────────────────────
+    //
+    // The canvas was sized by the engine at the requested scale: its
+    // backing store is `scale × dpr × viewport`, and its CSS size is the
+    // logical (post-DPR) size. Adopting that size on the wrapper makes the
+    // wrapper follow the canvas. Without this, the wrapper can be smaller
+    // than the canvas whenever the render was enqueued at a scale that has
+    // since settled to something else.
+    const cw = canvas.style.width;
+    const ch = canvas.style.height;
+    if (cw) wrapper.style.width = cw;
+    if (ch) {
+      wrapper.style.height = ch;
+      wrapper.style.minHeight = ch;
+    }
+
+    // ── Mark layout dirty (do NOT recompute synchronously) ─────────────
+    //
+    // recomputeLayout() forces a synchronous layout of every wrapper. In a
+    // burst of N renders this would be N full layout passes. markLayoutDirty
+    // is O(1) and defers the recompute to the next scroll frame. The initial
+    // recompute after preload (see `_preloadPageSizes`) covers the at-rest
+    // case where no scroll event will fire to trigger the batch.
     try {
       const scroll = this.getScroll();
-      if (scroll && scroll.recomputeLayout) scroll.recomputeLayout();
+      if (scroll && scroll.markLayoutDirty) {
+        scroll.markLayoutDirty();
+      } else if (scroll && scroll.recomputeLayout) {
+        // Defensive fallback for a scroll manager without markLayoutDirty.
+        scroll.recomputeLayout();
+      }
     } catch { /* ignore */ }
   }
 
@@ -1541,18 +1783,32 @@ export class ViewerCore {
     }
   }
 
+  /**
+   * Eagerly fetch metadata for the first N pages so the initial scrollbar
+   * geometry is approximately correct. Pages past N are fetched on demand
+   * by `_ensurePageMetadata` when the scroll viewport approaches them.
+   *
+   * Without this cap, a 500-page PDF would launch 500 getPage calls
+   * immediately, saturating the engine queue and delaying the visible page's
+   * render. With the cap, the visible page and its neighbours get the queue
+   * to themselves; the rest stream in as the user scrolls.
+   *
+   * Runs once per document — `_pageSizePreloadStarted` guards re-entry.
+   *
+   * @private
+   * @returns {Promise<void>}
+   */
   async _preloadPageSizes() {
     if (this._pageSizePreloadStarted) return;
     this._pageSizePreloadStarted = true;
 
-    // In preview mode, only prefetch metadata for the pages that will be
-    // rendered. This keeps the prefetch budget proportional to what the user
-    // can actually see, and avoids fetching metadata for locked pages.
     const numPages = this.getEffectivePageLimit();
     const cache = this.getCache();
 
+    const eagerCount = Math.min(numPages, CONFIG.EAGER_METADATA_PAGES);
+
     const queue = [];
-    for (let i = 1; i <= numPages; i++) {
+    for (let i = 1; i <= eagerCount; i++) {
       if (cache && cache.hasPageViewport && cache.hasPageViewport(i)) continue;
       queue.push(i);
     }
@@ -1578,6 +1834,16 @@ export class ViewerCore {
       workers.push(worker());
     }
     await Promise.allSettled(workers);
+
+    // Metadata for the first screen is now cached. Recompute once so the
+    // scrollbar reflects the true document height without waiting for the
+    // user to scroll (which is when the deferred recompute would otherwise
+    // fire).
+    try {
+      const scroll = this.getScroll();
+      if (scroll && scroll.recomputeLayout) scroll.recomputeLayout();
+      if (scroll && scroll.refreshVisible) scroll.refreshVisible();
+    } catch { /* ignore */ }
   }
 
   _syncWrapperDimensions() {
@@ -1586,6 +1852,11 @@ export class ViewerCore {
     const wrappers = els.main.querySelectorAll('.' + CONFIG.CANVAS_WRAPPER_CLASS);
     const scale = this._state.get('scale');
     wrappers.forEach((wrapper) => {
+      // Skip wrappers that already hold a rendered canvas at the current
+      // scale — those were sized correctly by _onRenderComplete.
+      const rendered = wrapper.dataset.renderedScale;
+      if (rendered && Number(rendered) === scale) return;
+
       const pageNum = parseInt(wrapper.dataset.page, 10);
       if (!Number.isFinite(pageNum)) return;
       this._syncWrapperDimensionsSingle(pageNum, undefined, wrapper, scale);
@@ -1597,25 +1868,198 @@ export class ViewerCore {
     const meta = metaOverride || (cache && cache.getPageViewport ? cache.getPageViewport(pageNum) : null);
     if (!meta) return;
     const scale = typeof scaleOverride === 'number' ? scaleOverride : this._state.get('scale');
+    const rotation = this._state.get('rotation') || 0;
     const els = getViewerElements();
     if (!els || !els.main) return;
     const wrapper = wrapperOverride
       || els.main.querySelector(`.${CONFIG.CANVAS_WRAPPER_CLASS}[data-page="${pageNum}"]`);
     if (!wrapper) return;
-    const w = meta.width * scale;
-    const h = meta.height * scale;
+
+    // Swap width/height for 90° / 270° rotations.
+    const swapped = rotation === 90 || rotation === 270;
+    const naturalW = swapped ? meta.height : meta.width;
+    const naturalH = swapped ? meta.width : meta.height;
+    const w = naturalW * scale;
+    const h = naturalH * scale;
     wrapper.style.width = `${w}px`;
     wrapper.style.height = `${h}px`;
     wrapper.style.minHeight = `${h}px`;
+
+    // Mark scroll layout dirty so the wrapper cache rebuilds on the next
+    // frame. This avoids a synchronous forced layout per wrapper.
+    try {
+      const scroll = this.getScroll();
+      if (scroll && scroll.markLayoutDirty) scroll.markLayoutDirty();
+    } catch { /* ignore */ }
+  }
+
+  /**
+   * Compute the fit-to-width scale for page 1 and install it in state.
+   *
+   * If the viewer is not yet laid out (clientWidth === 0), waits for the
+   * first non-zero width via a one-shot ResizeObserver, with a timeout as a
+   * safety net. This makes the fit-to-width behaviour robust to any
+   * ordering of `mountChrome()` and `loadDocument()`.
+   *
+   * Silently no-ops if the width never becomes usable or metadata fails.
+   *
+   * @private
+   * @returns {Promise<void>}
+   */
+  async _applyFitToWidth() {
+    try {
+      const els = getViewerElements();
+      if (!els || !els.main) return;
+
+      let availableWidth = els.main.clientWidth;
+      if (!(availableWidth > 0)) {
+        availableWidth = await this._waitForViewerWidth(
+          els.main,
+          CONFIG.FIT_WIDTH_WAIT_TIMEOUT_MS,
+        );
+        if (!(availableWidth > 0)) return;
+      }
+
+      const cache = this.getCache();
+      let meta = cache && cache.getPageViewport ? cache.getPageViewport(1) : null;
+      if (!meta && this._engine && this._engine.getPageMetadata) {
+        try {
+          meta = await this._engine.getPageMetadata(1);
+          if (meta && cache && cache.setPageViewport) cache.setPageViewport(1, meta);
+        } catch { /* ignore */ }
+      }
+      if (!meta || !(meta.width > 0)) return;
+
+      const usable = Math.max(
+        availableWidth - CONFIG.FIT_WIDTH_H_PADDING_PX,
+        100,
+      );
+      const fitScale = clamp(usable / meta.width, CONFIG.MIN_ZOOM, CONFIG.MAX_ZOOM);
+
+      this._state.set('scale', fitScale);
+      const zoom = this.getZoom();
+      if (zoom && typeof zoom.syncScale === 'function') {
+        zoom.syncScale(fitScale);
+      }
+    } catch { /* keep the default scale */ }
+  }
+
+  /**
+   * Resolve with `element.clientWidth` once it becomes non-zero, or after
+   * `timeoutMs` elapses (whichever comes first). Used by `_applyFitToWidth`
+   * to survive the case where the viewer is not yet visible when a document
+   * is loaded.
+   *
+   * @private
+   * @param {HTMLElement} element
+   * @param {number} timeoutMs
+   * @returns {Promise<number>}
+   */
+  _waitForViewerWidth(element, timeoutMs) {
+    return new Promise((resolve) => {
+      let done = false;
+      let timer = null;
+      /** @type {ResizeObserver|null} */
+      let ro = null;
+
+      const finish = (w) => {
+        if (done) return;
+        done = true;
+        if (timer) { clearTimeout(timer); timer = null; }
+        try { if (ro) ro.disconnect(); } catch { /* ignore */ }
+        resolve(typeof w === 'number' && w > 0 ? w : 0);
+      };
+
+      try {
+        if (typeof ResizeObserver !== 'function') {
+          // Browser without ResizeObserver — fall back to a timeout.
+          timer = setTimeout(() => finish(element.clientWidth), timeoutMs);
+          return;
+        }
+
+        ro = new ResizeObserver(() => {
+          const w = element.clientWidth;
+          if (w > 0) finish(w);
+        });
+        ro.observe(element);
+
+        // Safety timeout — resolve with whatever the current width is.
+        timer = setTimeout(() => finish(element.clientWidth), timeoutMs);
+      } catch {
+        finish(element.clientWidth);
+      }
+    });
+  }
+
+  /**
+   * Remove every direct child of #viewer-main except the four static chrome
+   * nodes declared in viewer.html. Used by every loader and by the layout
+   * builders — replaces the old `main.innerHTML = ''` which wiped the
+   * loading spinner and progress bar.
+   *
+   * @private
+   * @returns {void}
+   */
+  _clearViewerMainPreservingChrome() {
+    const els = getViewerElements();
+    if (!els || !els.main) return;
+    const main = els.main;
+
+    const keep = new Set();
+    if (els.loading) keep.add(els.loading);
+    if (els.progress) keep.add(els.progress);
+    if (els.content) keep.add(els.content);
+    if (els.textLayerContainer) keep.add(els.textLayerContainer);
+
+    const toRemove = [];
+    for (const child of Array.from(main.children)) {
+      if (!keep.has(child)) toRemove.push(child);
+    }
+    for (const node of toRemove) {
+      try { node.remove(); } catch { /* ignore */ }
+    }
+  }
+
+  /**
+   * Reset the sidebar drawer, its scrim, and every toggle's aria-expanded
+   * state to a clean, closed state. Called by `destroy()` so a document
+   * switch starts with no stale UI state that could capture taps or
+   * misinform assistive tech.
+   *
+   * @private
+   * @returns {void}
+   */
+  _resetSidebarState() {
+    try {
+      const drawer = document.getElementById('viewer-outline-drawer');
+      if (drawer) {
+        drawer.classList.remove('open');
+        drawer.setAttribute('aria-hidden', 'true');
+        drawer.innerHTML = '';
+        drawer.dataset.panel = 'outline';
+      }
+
+      const scrim = document.getElementById('viewer-drawer-scrim');
+      if (scrim) scrim.classList.remove('open');
+
+      const outlineBtn = document.getElementById('viewer-outline-btn');
+      if (outlineBtn) outlineBtn.setAttribute('aria-expanded', 'false');
+
+      const searchBtn = document.getElementById('viewer-search-btn');
+      if (searchBtn) searchBtn.setAttribute('aria-expanded', 'false');
+
+      const moreBtn = document.getElementById('viewer-more-btn');
+      if (moreBtn) moreBtn.setAttribute('aria-expanded', 'false');
+
+      const searchBar = document.getElementById('viewer-search-bar');
+      if (searchBar) searchBar.classList.remove('active');
+    } catch { /* ignore */ }
   }
 
   /**
    * Build the preview-mode subscribe call-to-action card. Emits
    * PREVIEW_SUBSCRIBE_REQUESTED on the bus when the button is clicked;
    * viewer.js handles that event and routes to the subscription page.
-   *
-   * The card itself carries no styling in JS — all classes are declared in
-   * ui-internal.js's injected CSS.
    *
    * @private
    * @param {number} previewLimit
@@ -1668,33 +2112,23 @@ export class ViewerCore {
 
   // ── Private: environment detection ────────────────────────────────────────
 
+  /**
+   * Build the device profile passed to state and consumed by CacheManager /
+   * MemoryManager for cap sizing. Delegates static device reads to
+   * `platform.js` and adds the memory cap (which depends on CONFIG and
+   * therefore cannot live in platform.js without a cycle).
+   *
+   * @private
+   * @returns {object}
+   */
   _detectDeviceProfile() {
-    let isMobile = false;
-    let isLowMemory = false;
-    let hardwareConcurrency = 4;
-    let deviceMemory = 4;
-
-    try {
-      if (typeof navigator !== 'undefined') {
-        const ua = navigator.userAgent || '';
-        isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(ua);
-        hardwareConcurrency = navigator.hardwareConcurrency || 4;
-        if (typeof navigator.deviceMemory === 'number') {
-          deviceMemory = navigator.deviceMemory;
-          isLowMemory = deviceMemory < 4;
-        }
-      }
-    } catch { /* ignore */ }
-
-    const capMb = isMobile || isLowMemory
+    const base = getDeviceProfile();
+    const capMb = (base.isMobile || base.isLowMemory)
       ? CONFIG.MEMORY_CAP_MOBILE_MB
       : CONFIG.MEMORY_CAP_DESKTOP_MB;
 
     return Object.freeze({
-      isMobile,
-      isLowMemory,
-      hardwareConcurrency,
-      deviceMemory,
+      ...base,
       memoryCapBytes: capMb * 1024 * 1024,
     });
   }
@@ -1770,13 +2204,20 @@ export function createCore() {
 // ============================================================================
 
 /**
- * Test-only: reset the module-level singleton.
+ * Test-only: reset the module-level singleton, tearing down the native
+ * bridge subscriptions that survive a document switch.
  *
  * @private
  */
 export function __resetCoreSingletonForTests() {
   if (_singleton) {
     try { _singleton.destroy(); } catch { /* ignore */ }
+    try {
+      if (typeof _singleton._nativeTeardown === 'function') {
+        _singleton._nativeTeardown();
+      }
+    } catch { /* ignore */ }
+    _singleton._nativeTeardown = null;
   }
   _singleton = null;
 }

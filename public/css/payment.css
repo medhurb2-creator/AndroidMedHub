@@ -3,7 +3,7 @@
    Requires common.css (tokens, form primitives, buttons base, .error-message,
    keyframes shimmer, --transition).
    Adds ONLY: page shell, order summary, payment instructions, status area,
-   retry button, two-row pay header, shimmer skeleton, retry button,
+   retry button, two-row pay header, shimmer skeleton, receipt modal,
    neutral-pill button overrides, responsive.
    ========================================================================== */
 
@@ -34,6 +34,11 @@
     margin-bottom: 0.5rem;
     font-size: 1rem;
     color: var(--text-primary);
+    gap: 1rem;
+}
+.order-summary p > span:first-child {
+    color: var(--text-muted);
+    flex-shrink: 0;
 }
 .amount {
     font-size: 1.25rem;
@@ -85,9 +90,8 @@
     margin-bottom: 0.75rem;
 }
 
-/* Retry button — see note: original selector #retry-btn does not match
-   HTML's id="retryBtn". Kept as-is to preserve current output. */
-#retry-btn {
+/* Retry button — fixed to match HTML's id="retryBtn" (was #retry-btn) */
+#retryBtn {
     width: 100%;
     padding: 0.8rem;
     font-size: 1rem;
@@ -95,8 +99,10 @@
     background: var(--bg-secondary);
     color: var(--text-primary);
     border: 1px solid var(--border);
+    cursor: pointer;
+    transition: var(--transition);
 }
-#retry-btn:hover {
+#retryBtn:hover {
     background: var(--bg-card);
     border-color: var(--accent);
 }
@@ -261,6 +267,12 @@
     animation: shimmer 1.5s infinite;
     border-radius: 4px;
 }
+.shimmer-container {
+    /* Not in original file, but referenced by section.txt */
+    max-width: 600px;
+    margin: 1.5rem auto;
+    padding: 0 1rem;
+}
 .shimmer-card {
     background: #2a2a3e;
     border: 1px solid #444;
@@ -297,6 +309,127 @@
     margin-top: 1rem;
 }
 
+/* ================================================================
+   RECEIPT MODAL
+   ================================================================ */
+.receipt-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    animation: receiptFadeIn 0.25s ease;
+}
+.receipt-modal.show { display: flex; }
+
+@keyframes receiptFadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+.receipt-card {
+    width: 100%;
+    max-width: 420px;
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.5rem 1.25rem 1.25rem;
+    box-shadow: var(--shadow-lg);
+    text-align: center;
+    animation: receiptPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes receiptPop {
+    from { opacity: 0; transform: scale(0.92) translateY(12px); }
+    to   { opacity: 1; transform: scale(1)    translateY(0);    }
+}
+
+.receipt-success-icon {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: #16a34a;
+    color: #fff;
+    font-size: 2rem;
+    font-weight: 700;
+    box-shadow: 0 6px 20px rgba(22, 163, 74, 0.35);
+    animation: receiptIconPop 0.4s ease-out 0.1s both;
+}
+
+@keyframes receiptIconPop {
+    0%   { transform: scale(0);   }
+    60%  { transform: scale(1.15); }
+    100% { transform: scale(1);   }
+}
+
+.receipt-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 0.25rem;
+}
+
+.receipt-subtitle {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    margin: 0 0 1.25rem;
+}
+
+.receipt-body {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+    padding: 0.75rem 1rem;
+    margin-bottom: 1.25rem;
+    text-align: left;
+}
+
+.receipt-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.45rem 0;
+    font-size: 0.875rem;
+    border-bottom: 1px dashed var(--border);
+}
+.receipt-row:last-child { border-bottom: none; }
+
+.receipt-row > span:first-child {
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+.receipt-row > span:last-child {
+    color: var(--text-primary);
+    font-weight: 600;
+    text-align: right;
+    word-break: break-word;
+}
+.receipt-row .amount {
+    color: #16a34a;
+    font-weight: 700;
+}
+
+.receipt-card .btn-primary {
+    width: 100%;
+}
+
+.receipt-countdown {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin: 0.75rem 0 0;
+}
+
 /* ---------- Responsive ---------- */
 @media (max-width: 640px) {
     .payment-container {
@@ -311,4 +444,13 @@
     .pay-header-bottom h2 { font-size: 1.2rem; }
     .pay-header-bottom .plan-summary { font-size: 0.8rem; }
     .order-summary { padding: 1rem; }
+}
+
+/* Very-small-screen tweaks for the receipt */
+@media (max-width: 400px) {
+    .receipt-card { padding: 1.25rem 1rem 1rem; }
+    .receipt-success-icon { width: 56px; height: 56px; font-size: 1.75rem; }
+    .receipt-title { font-size: 1.15rem; }
+    .receipt-row { font-size: 0.825rem; }
+    .receipt-body { padding: 0.6rem 0.8rem; }
 }

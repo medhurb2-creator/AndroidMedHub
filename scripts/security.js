@@ -2,10 +2,15 @@
 
 /**
  * Security & Anti-Cheating Module – OFFLINE FRIENDLY
- * Provides device fingerprinting, time manipulation detection, account locking,
- * and session validation using the new session management system.
- * Follows WhatsApp-style approach: warn first, block functionality until time is corrected,
- * and only lock after multiple attempts.
+ *
+ * Responsibilities:
+ *   - Cross-platform device identity (delegated to ./security/device.js)
+ *   - Time manipulation detection (server time comes from Convex)
+ *   - Account locking after repeated violations
+ *   - Session validation via the Convex backend
+ *   - Device management (delegates to auth/actions:*)
+ *
+ * All backend calls go through `convexHttpClient` — no third-party endpoints.
  */
 
 import * as utils from './utils.js';
@@ -15,86 +20,94 @@ import * as router from './router.js';
 import * as db from './db.js';
 import { convexHttpClient } from './convex-client.js';
 
+import {
+    getDeviceId,
+    getDeviceInfo,
+    getCachedDeviceId,
+    getCachedDeviceInfo,
+    initializeDevice,
+    refreshDeviceInfo,
+    clearDeviceData,
+    setAppVersion,
+} from './security/device.js';
+
+// Re-export device identity so the rest of the app can continue to pull it
+// from security.js during the migration. Prefer importing from
+// './security/device.js' directly in new code.
+export {
+    getDeviceId,
+    getDeviceInfo,
+    getCachedDeviceId,
+    getCachedDeviceInfo,
+    initializeDevice,
+    refreshDeviceInfo,
+    clearDeviceData,
+};
+
 // Constants
-const MAX_TIME_DRIFT_MS = 10 * 60 * 1000; // 10 minutes tolerance
-const WARNING_THRESHOLD_MS = 3 * 60 * 1000; // 3 minutes – show warning
-const LOCK_THRESHOLD_COUNT = 3; // number of violations before lock
-const LOCK_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
-const SERVER_TIME_CACHE_TTL = 60 * 1000; // 1 minute
+const MAX_TIME_DRIFT_MS = 10 * 60 * 1000;   // 10 minutes tolerance
+const WARNING_THRESHOLD_MS = 3 * 60 * 1000;  // 3 minutes – show warning
+const LOCK_THRESHOLD_COUNT = 3;              // number of violations before lock
+const LOCK_WINDOW_MS = 24 * 60 * 60 * 1000;  // 24 hours
+const SERVER_TIME_CACHE_TTL = 60 * 1000;     // 1 minute
 
 let serverTimeCache = null;
 let serverTimeCacheExpiry = 0;
 
-// ==================== DEVICE FINGERPRINT ====================
+// ==================== DEVICE IDENTITY (CANONICAL SHAPE) ====================
 
 /**
- * Generate a unique device fingerprint based on browser/device characteristics
- * @returns {string} fingerprint (not cryptographic, but unique enough)
+ * Build the canonical device identity payload for auth actions.
+ *
+ * Every backend action (login, register, googleSignIn, linkGoogleAccount,
+ * removeDeviceAndContinue, etc.) expects:
+ *
+ *     { deviceId, deviceInfo }
+ *
+ * `deviceId` is the stable MedVix identifier (`dv_…`). `deviceInfo` is the
+ * normalized metadata object produced by ./security/device.js and stored
+ * verbatim by the backend.
+ *
+ * @returns {Promise<{ deviceId: string, deviceInfo: object }>}
  */
-export function generateDeviceFingerprint() {
-    const components = [
-        navigator.userAgent,
-        navigator.language,
-        navigator.platform,
-        screen.width + 'x' + screen.height,
-        screen.colorDepth,
-        new Date().getTimezoneOffset(),
-        navigator.hardwareConcurrency || 'unknown',
-        navigator.deviceMemory || 'unknown',
-    ].join('|');
+export async function buildDeviceIdentity() {
+    const [deviceId, deviceInfo] = await Promise.all([
+        getDeviceId(),
+        getDeviceInfo(),
+    ]);
+    return { deviceId, deviceInfo };
+}
 
-    // Simple hash
-    let hash = 0;
-    for (let i = 0; i < components.length; i++) {
-        const char = components.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash |= 0;
-    }
-    return Math.abs(hash).toString(16).padStart(8, '0') + 
-           Date.now().toString(36).substring(2, 10);
+// ==================== DEPRECATED ALIASES ====================
+
+/**
+ * @deprecated Use getDeviceId() or buildDeviceIdentity() instead.
+ * The value returned here is the same as the new deviceId.
+ */
+export async function getDeviceFingerprint() {
+    return getDeviceId();
 }
 
 /**
- * Get stored device fingerprint or generate and store
- * @returns {string}
- */
-export function getDeviceFingerprint() {
-    let fp = utils.getLocalStorage('deviceFingerprint');
-    if (!fp) {
-        fp = generateDeviceFingerprint();
-        utils.setLocalStorage('deviceFingerprint', fp);
-    }
-    return fp;
-}
-
-/**
- * Set device fingerprint (usually from server after registration)
- * @param {string} fp
+ * @deprecated No-op kept for compatibility. Device identity is derived
+ * on-device; there's nothing to set from the server.
  */
 export function setDeviceFingerprint(fp) {
-    utils.setLocalStorage('deviceFingerprint', fp);
+    if (fp) utils.setLocalStorage('deviceFingerprint', fp);
 }
 
-// ==================== SESSION MANAGEMENT HELPERS ====================
+// ==================== SESSION HELPERS ====================
 
-/**
- * Get the current session ID from localStorage (set during login)
- * @returns {string|null}
- */
 export function getSessionId() {
     return utils.getLocalStorage('sessionId') || null;
 }
 
-/**
- * Check if the current session is still valid on the backend.
- * @returns {Promise<boolean>}
- */
 export async function validateSessionWithBackend() {
     const token = utils.getLocalStorage('accessToken');
     if (!token) return false;
     try {
-        const result = await convexHttpClient.action("auth/actions:verifyToken", { token });
-        return result.success;
+        const result = await convexHttpClient.action('auth/actions:verifyToken', { token });
+        return !!result?.success;
     } catch {
         return false;
     }
@@ -103,48 +116,70 @@ export async function validateSessionWithBackend() {
 // ==================== TIME MANIPULATION DETECTION ====================
 
 /**
- * Get server time – if offline, return null (graceful degradation)
- * @returns {Promise<number|null>} server timestamp in ms
+ * Get server time from Convex.
+ *
+ * The backend exposes `system/queries:getServerTime`, which returns the
+ * authoritative `Date.now()`. Falls back to the HTTP Date header of the
+ * same Convex deployment if the query fails.
+ *
+ * @returns {Promise<number|null>} server timestamp in ms, or null when offline
  */
 async function getServerTime() {
     if (serverTimeCache && Date.now() < serverTimeCacheExpiry) {
         return serverTimeCache;
     }
 
+    if (!navigator.onLine) return null;
+
+    // ---- Preferred: Convex backend query ----
     try {
-        // Use a lightweight endpoint that returns server time (or just use Date header)
-        const response = await fetch('https://medicalexamroom.onrender.com/api/v1/health', {
-            method: 'GET',
-            signal: AbortSignal.timeout(3000)
-        });
-        if (!response.ok) throw new Error('Server time unavailable');
-        const data = await response.json();
-        const serverTime = data.serverTime || new Date(response.headers.get('Date')).getTime();
-        if (serverTime) {
-            serverTimeCache = serverTime;
+        const result = await convexHttpClient.query('system/queries:getServerTime');
+        if (result?.success && typeof result.data?.serverTime === 'number') {
+            serverTimeCache = result.data.serverTime;
             serverTimeCacheExpiry = Date.now() + SERVER_TIME_CACHE_TTL;
-            return serverTime;
+            return serverTimeCache;
         }
     } catch (e) {
-        console.warn('[Security] Could not fetch server time, assuming offline');
+        console.warn('[Security] Convex time unavailable, falling back', e?.message || e);
     }
+
+    // ---- Fallback: Date header of the Convex HTTP endpoint ----
+    try {
+        const convexUrl = convexHttpClient?.url || '';
+        const healthUrl = convexUrl.replace('.convex.cloud', '.convex.site') + '/';
+        const res = await fetch(healthUrl, {
+            method: 'HEAD',
+            signal: AbortSignal.timeout(3000),
+        });
+        const header = res.headers.get('Date');
+        if (header) {
+            const t = new Date(header).getTime();
+            if (!Number.isNaN(t)) {
+                serverTimeCache = t;
+                serverTimeCacheExpiry = Date.now() + SERVER_TIME_CACHE_TTL;
+                return t;
+            }
+        }
+    } catch (e) {
+        console.warn('[Security] Convex Date header unavailable');
+    }
+
     return null;
 }
 
 /**
  * Detect time manipulation by comparing client time with server time.
  * If offline, assumes valid and returns warning action.
- * @returns {Promise<Object>} { valid: boolean, drift: number, message: string, action: 'ok'|'warn'|'block'|'lock' }
+ * @returns {Promise<Object>} { valid, drift, message, action: 'ok'|'warn'|'block'|'lock' }
  */
 export async function detectTimeManipulation() {
     const serverTime = await getServerTime();
     if (!serverTime) {
-        // Offline – cannot verify, assume valid but warn user
-        return { 
-            valid: true, 
-            drift: 0, 
+        return {
+            valid: true,
+            drift: 0,
             message: 'Offline mode – time not verified. Please ensure your device time is correct.',
-            action: 'warn'
+            action: 'warn',
         };
     }
 
@@ -152,54 +187,43 @@ export async function detectTimeManipulation() {
     const drift = Math.abs(clientTime - serverTime);
 
     if (drift > MAX_TIME_DRIFT_MS) {
-        // Severe violation – record and possibly lock
         await recordViolation('time_manipulation', drift);
         const count = await getViolationCount('time_manipulation');
-        
+
         if (count >= LOCK_THRESHOLD_COUNT) {
-            return { 
-                valid: false, 
-                drift, 
+            return {
+                valid: false,
+                drift,
                 message: 'Your device time is significantly off. Account locked for security.',
-                action: 'lock'
-            };
-        } else {
-            return { 
-                valid: false, 
-                drift, 
-                message: 'Your device time does not match our servers. Please enable automatic time sync to continue.',
-                action: 'block'
+                action: 'lock',
             };
         }
-    } else if (drift > WARNING_THRESHOLD_MS) {
-        // Warning threshold – allow but show warning
-        return { 
-            valid: true, 
-            drift, 
+        return {
+            valid: false,
+            drift,
+            message: 'Your device time does not match our servers. Please enable automatic time sync to continue.',
+            action: 'block',
+        };
+    }
+
+    if (drift > WARNING_THRESHOLD_MS) {
+        return {
+            valid: true,
+            drift,
             message: 'Your device time is slightly off. For accurate exam timing, please enable automatic time sync.',
-            action: 'warn'
+            action: 'warn',
         };
     }
 
     return { valid: true, drift: 0, message: '', action: 'ok' };
 }
 
-/**
- * Validate client time against server (used in requests)
- * @param {number} clientTime - timestamp sent from client
- * @returns {Promise<boolean>} true if within tolerance or offline
- */
 export async function validateClientTime(clientTime) {
     const serverTime = await getServerTime();
-    if (!serverTime) return true; // offline, can't validate
-    const drift = Math.abs(clientTime - serverTime);
-    return drift <= MAX_TIME_DRIFT_MS;
+    if (!serverTime) return true;
+    return Math.abs(clientTime - serverTime) <= MAX_TIME_DRIFT_MS;
 }
 
-/**
- * Get a safe timestamp – uses server time if available, else client time with warning
- * @returns {Promise<number>}
- */
 export async function getSafeTimestamp() {
     const serverTime = await getServerTime();
     if (serverTime) return serverTime;
@@ -208,38 +232,38 @@ export async function getSafeTimestamp() {
 }
 
 /**
- * Check time consistency on app start and periodically
+ * Check time consistency on app start and periodically.
  * Also validates the session if online.
  * @returns {Promise<boolean>} true if time is acceptable and session valid (or offline)
  */
 export async function checkTimeConsistency() {
-    // 1. Check time manipulation
     const result = await detectTimeManipulation();
-    
+
     if (result.action === 'lock') {
         await lockAccount('time_manipulation', result.drift);
         ui.showToast(result.message, 'error', 0);
         router.navigateTo('locked?reason=time_manipulation');
         return false;
-    } else if (result.action === 'block') {
+    }
+    if (result.action === 'block') {
         ui.showToast(result.message, 'warning', 0);
         ui.setAppSetting('timeBlocked', true);
         return false;
-    } else if (result.action === 'warn') {
+    }
+    if (result.action === 'warn') {
         ui.showToast(result.message, 'warning', 5000);
         ui.setAppSetting('timeBlocked', false);
     } else {
         ui.setAppSetting('timeBlocked', false);
     }
 
-    // 2. If online, also validate session via token verification
+    // If online, validate the session via the Convex backend
     if (navigator.onLine) {
         const token = utils.getLocalStorage('accessToken');
         if (token) {
             try {
-                const verifyResult = await convexHttpClient.action("auth/actions:verifyToken", { token });
-                if (!verifyResult.success) {
-                    // Token invalid or session revoked – force logout
+                const verifyResult = await convexHttpClient.action('auth/actions:verifyToken', { token });
+                if (!verifyResult?.success) {
                     ui.showToast('Your session has expired or been revoked. Please login again.', 'warning');
                     await auth.clearUser();
                     utils.removeLocalStorage('accessToken');
@@ -247,7 +271,6 @@ export async function checkTimeConsistency() {
                     router.navigateTo('login');
                     return false;
                 }
-                // Session is valid; update lastSeen (optional) – will be updated on next request
             } catch (err) {
                 console.warn('[Security] Session validation error:', err);
             }
@@ -270,58 +293,74 @@ async function recordViolation(type, details) {
 async function getViolationCount(type) {
     const violations = await getViolations();
     const now = Date.now();
-    return violations.filter(v => 
-        v.type === type && (now - v.timestamp) < LOCK_WINDOW_MS
+    return violations.filter(
+        v => v.type === type && (now - v.timestamp) < LOCK_WINDOW_MS
     ).length;
 }
 
 async function getViolations() {
-    const stored = await db.getSecurityViolations() || [];
-    return stored;
+    return (await db.getSecurityViolations()) || [];
 }
 
 // ==================== ACCOUNT LOCKING ====================
+
+async function clearSubscriptionIfPresent() {
+    try {
+        const mod = await import(/* @vite-ignore */ './subscription.js');
+        if (typeof mod?.clearSubscription === 'function') {
+            await mod.clearSubscription();
+        }
+    } catch {
+        // subscription module not present — nothing to clean
+    }
+}
 
 async function lockAccount(reason, details) {
     await db.saveLockStatus({
         locked: true,
         reason,
         details,
-        timestamp: Date.now()
+        timestamp: Date.now(),
     });
-    
+
     await auth.clearUser();
-    await subscription.clearSubscription(); // subscription module is imported elsewhere; we'll handle it
+    await clearSubscriptionIfPresent();
     utils.removeLocalStorage('accessToken');
     utils.removeLocalStorage('sessionId');
 }
 
 export async function getLockStatus() {
-    return await db.getLockStatus() || { locked: false };
+    return (await db.getLockStatus()) || { locked: false };
 }
 
 // ==================== SECURITY EVENT LOGGING ====================
 
+/**
+ * Log a security event.
+ *
+ * Sends to Convex via `security/actions:logSecurityEvent` when online,
+ * queues for later sync otherwise. The device ID is attached automatically.
+ */
 export async function logSecurityEvent(event, details) {
+    const deviceId = await getDeviceId();
+
     const logEntry = {
         event,
         timestamp: Date.now(),
-        deviceFingerprint: getDeviceFingerprint(),
+        deviceId,
         sessionId: getSessionId(),
-        details
+        details,
     };
-    
+
     await db.addSecurityLog(logEntry);
-    
+
     if (navigator.onLine && auth.checkAuth()) {
         try {
-            await fetch('https://medicalexamroom.onrender.com/api/v1/security/log', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${utils.getLocalStorage('accessToken')}`
-                },
-                body: JSON.stringify(logEntry)
+            await convexHttpClient.action('security/actions:logSecurityEvent', {
+                token: utils.getLocalStorage('accessToken'),
+                event,
+                details,
+                deviceId,
             });
         } catch {
             await db.addToSyncQueue('security_log', logEntry);
@@ -334,78 +373,162 @@ export async function logSecurityEvent(event, details) {
 // ==================== SESSION VALIDATION ====================
 
 export async function validateSession() {
-    // 1. Check lock status
     const lockStatus = await getLockStatus();
     if (lockStatus.locked) return false;
-    
-    // 2. Check time consistency (also validates token/session)
+
     const timeOk = await checkTimeConsistency();
     if (!timeOk) return false;
-    
-    // 3. Check device fingerprint match (if user has a stored fingerprint)
+
     const user = auth.getUser();
-    if (user && user.deviceFingerprint && user.deviceFingerprint !== getDeviceFingerprint()) {
-        ui.showToast('New device detected. Please verify your identity.', 'warning', 5000);
+    if (user && user.deviceId) {
+        const currentId = await getDeviceId();
+        if (user.deviceId !== currentId) {
+            ui.showToast('New device detected. Please verify your identity.', 'warning', 5000);
+        }
     }
-    
     return true;
 }
 
 // ==================== INITIALIZATION ====================
 
-export async function initSecurity() {
+/**
+ * Initialize security subsystems.
+ * @param {Object} [options]
+ * @param {string} [options.appVersion] – current app version, stored with device info
+ */
+export async function initSecurity(options = {}) {
+    if (options.appVersion) setAppVersion(options.appVersion);
+
+    await initializeDevice({ appVersion: options.appVersion });
     await checkTimeConsistency();
-    setInterval(async () => {
-        await checkTimeConsistency();
+
+    setInterval(() => {
+        checkTimeConsistency();
     }, 5 * 60 * 1000);
 }
 
-// ==================== Device Management Stubs ====================
+// ==================== DEVICE MANAGEMENT (delegates to auth actions) ====================
 
 /**
- * Get list of user's active devices/sessions.
- * @returns {Promise<Array>}
+ * Get the list of active devices for the current user.
+ * Delegates to `auth/actions:listActiveDevices`.
+ *
+ * @returns {Promise<{ devices: Array, maxDevices: number, devicesUsed: number, overLimit: boolean }>}
  */
 export async function getUserDevices() {
-  // TODO: Fetch from backend (e.g., get sessions list)
-  // For now, return an empty array so the profile page doesn't crash.
-  return [];
+    try {
+        const token = utils.getLocalStorage('accessToken');
+        if (!token) return { devices: [], maxDevices: 1, devicesUsed: 0, overLimit: false };
+
+        const currentDeviceId = await getDeviceId();
+        const result = await convexHttpClient.action('auth/actions:listActiveDevices', {
+            token,
+            currentDeviceId,
+        });
+        if (!result?.success) {
+            return { devices: [], maxDevices: 1, devicesUsed: 0, overLimit: false };
+        }
+        return result.data;
+    } catch (err) {
+        console.warn('[security] getUserDevices failed', err);
+        return { devices: [], maxDevices: 1, devicesUsed: 0, overLimit: false };
+    }
 }
 
 /**
- * Log out a specific device/session.
+ * Remove a specific device from the current user's account.
+ * Delegates to `auth/actions:removeOtherDevice`.
+ *
  * @param {string} deviceId
- * @returns {Promise<Object>}
+ * @returns {Promise<{ success: boolean, message?: string }>}
  */
 export async function logoutDevice(deviceId) {
-  console.log('[security] logoutDevice', deviceId);
-  // TODO: Call backend to revoke session/device
-  return { success: true };
+    try {
+        const token = utils.getLocalStorage('accessToken');
+        if (!token) return { success: false, message: 'Not authenticated' };
+
+        const currentDeviceId = await getDeviceId();
+        const result = await convexHttpClient.action('auth/actions:removeOtherDevice', {
+            token,
+            deviceId,
+            currentDeviceId,
+        });
+
+        if (!result?.success) {
+            return { success: false, message: result?.message || 'Failed to remove device' };
+        }
+        return { success: true };
+    } catch (err) {
+        console.warn('[security] logoutDevice failed', err);
+        return { success: false, message: err?.message || 'Failed to remove device' };
+    }
 }
 
 /**
- * Log out all other devices except current.
- * @returns {Promise<Object>}
+ * Log out from all other devices except the current one.
+ * Delegates to `auth/actions:removeOtherDevices`.
+ *
+ * @returns {Promise<{ success: boolean, message?: string }>}
  */
 export async function logoutAllOtherDevices() {
-  console.log('[security] logoutAllOtherDevices');
-  // TODO: Call backend to revoke all other sessions
-  return { success: true };
+    try {
+        const token = utils.getLocalStorage('accessToken');
+        if (!token) return { success: false, message: 'Not authenticated' };
+
+        const currentSessionId = getSessionId();
+        if (!currentSessionId) return { success: false, message: 'No active session' };
+
+        const result = await convexHttpClient.action('auth/actions:removeOtherDevices', {
+            token,
+            currentSessionId,
+        });
+
+        if (!result?.success) {
+            return { success: false, message: result?.message || 'Failed to log out other devices' };
+        }
+        return { success: true, message: result.data?.message };
+    } catch (err) {
+        console.warn('[security] logoutAllOtherDevices failed', err);
+        return { success: false, message: err?.message || 'Failed to log out other devices' };
+    }
 }
 
 // ==================== EXPOSE GLOBALLY ====================
 
 window.security = {
-    generateDeviceFingerprint,
+    // Canonical device identity helper (for auth actions)
+    buildDeviceIdentity,
+
+    // Device identity (new)
+    getDeviceId,
+    getDeviceInfo,
+    getCachedDeviceId,
+    getCachedDeviceInfo,
+    initializeDevice,
+    refreshDeviceInfo,
+    clearDeviceData,
+
+    // Device identity (deprecated aliases)
     getDeviceFingerprint,
     setDeviceFingerprint,
+
+    // Sessions
     getSessionId,
     validateSessionWithBackend,
+
+    // Time
     detectTimeManipulation,
     validateClientTime,
     getSafeTimestamp,
     checkTimeConsistency,
+
+    // Events & validation
     logSecurityEvent,
     validateSession,
-    getLockStatus
+    getLockStatus,
+
+    // Device management
+    getUserDevices,
+    logoutDevice,
+    logoutAllOtherDevices,
 };

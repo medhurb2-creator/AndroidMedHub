@@ -16,16 +16,23 @@
           <div class="shimmer-logo-icon"></div>
           <div class="shimmer-logo-text"></div>
         </div>
-        <div><span class="shimmer-btn-sm" style="margin-right:0.5rem;"></span><span class="shimmer-btn-sm"></span></div>
+        <div>
+          <span class="shimmer-btn-sm" style="margin-right:0.5rem;"></span>
+          <span class="shimmer-btn-sm"></span>
+        </div>
       </div>
       <div class="shimmer-header-bottom">
         <div class="shimmer-title-large"></div>
         <div class="shimmer-status"></div>
       </div>
     </div>
+
     <main style="padding:1rem;">
       <div class="shimmer-banner"></div>
+
+      <!-- 4 shimmer cards: custom + monthly + quarterly + yearly -->
       <div class="shimmer-grid">
+        <!-- Custom amount card shimmer -->
         <div class="shimmer-plan-card">
           <div class="shimmer-line shimmer-title"></div>
           <div class="shimmer-line shimmer-price"></div>
@@ -35,34 +42,62 @@
           <div class="shimmer-line shimmer-feature"></div>
           <div class="shimmer-btn"></div>
         </div>
+
+        <!-- Monthly shimmer -->
         <div class="shimmer-plan-card">
-          <div class="shimmer-line shimmer-title"></div>
-          <div class="shimmer-line shimmer-price"></div>
-          <div class="shimmer-line shimmer-duration"></div>
+          <div class="shimmer-line shimmer-period"></div>
+          <div class="shimmer-line shimmer-price-lg"></div>
+          <div class="shimmer-line shimmer-tagline"></div>
           <div class="shimmer-line shimmer-feature"></div>
           <div class="shimmer-line shimmer-feature"></div>
           <div class="shimmer-line shimmer-feature"></div>
+          <div class="shimmer-line shimmer-feature"></div>
+          <div class="shimmer-line shimmer-feature"></div>
+          <div class="shimmer-line shimmer-device-label"></div>
+          <div class="shimmer-device-row">
+            <div class="shimmer-device-chip"></div>
+            <div class="shimmer-device-chip"></div>
+          </div>
           <div class="shimmer-btn"></div>
         </div>
+
+        <!-- Quarterly shimmer -->
         <div class="shimmer-plan-card">
-          <div class="shimmer-line shimmer-title"></div>
-          <div class="shimmer-line shimmer-price"></div>
-          <div class="shimmer-line shimmer-duration"></div>
+          <div class="shimmer-line shimmer-period"></div>
+          <div class="shimmer-line shimmer-price-lg"></div>
+          <div class="shimmer-line shimmer-tagline"></div>
           <div class="shimmer-line shimmer-feature"></div>
           <div class="shimmer-line shimmer-feature"></div>
           <div class="shimmer-line shimmer-feature"></div>
+          <div class="shimmer-line shimmer-feature"></div>
+          <div class="shimmer-line shimmer-feature"></div>
+          <div class="shimmer-line shimmer-device-label"></div>
+          <div class="shimmer-device-row">
+            <div class="shimmer-device-chip"></div>
+            <div class="shimmer-device-chip"></div>
+          </div>
           <div class="shimmer-btn"></div>
         </div>
+
+        <!-- Yearly shimmer -->
         <div class="shimmer-plan-card">
-          <div class="shimmer-line shimmer-title"></div>
-          <div class="shimmer-line shimmer-price"></div>
-          <div class="shimmer-line shimmer-duration"></div>
+          <div class="shimmer-line shimmer-period"></div>
+          <div class="shimmer-line shimmer-price-lg"></div>
+          <div class="shimmer-line shimmer-tagline"></div>
           <div class="shimmer-line shimmer-feature"></div>
           <div class="shimmer-line shimmer-feature"></div>
           <div class="shimmer-line shimmer-feature"></div>
+          <div class="shimmer-line shimmer-feature"></div>
+          <div class="shimmer-line shimmer-feature"></div>
+          <div class="shimmer-line shimmer-device-label"></div>
+          <div class="shimmer-device-row">
+            <div class="shimmer-device-chip"></div>
+            <div class="shimmer-device-chip"></div>
+          </div>
           <div class="shimmer-btn"></div>
         </div>
       </div>
+
       <div class="shimmer-payment-info"></div>
       <div style="height:40px;width:120px;background:#2a2a3e;border-radius:var(--radius-sm);margin:2rem auto 0;background:linear-gradient(90deg,#2a2a3e 25%,#444 50%,#2a2a3e 75%);background-size:200px 100%;animation:shimmer 1.5s infinite;"></div>
     </main>
@@ -89,10 +124,11 @@
     </div>
 
     <div class="main-body">
-      <!-- Method Selection -->
+      <!-- ===== Method Selection ===== -->
       <div id="view-method-selection" class="body-view active">
         <h2 class="section-title">Select Payment Method</h2>
         <p class="section-subtitle">Choose how you'd like to subscribe to premium access</p>
+
         <div class="payment-options">
           <div class="payment-option trial-option" id="trialOption">
             <div class="option-header">
@@ -110,6 +146,7 @@
             </ul>
             <p class="trial-limitations">⏳ 3 hours only · 🔒 One-time use</p>
           </div>
+
           <div class="payment-option" id="stkOption">
             <div class="option-header">
               <span class="icon">📱</span>
@@ -120,6 +157,7 @@
               <span class="badge">Instant</span>
             </div>
           </div>
+
           <div class="payment-option" id="c2bOption">
             <div class="option-header">
               <span class="icon">🏦</span>
@@ -131,30 +169,36 @@
             </div>
           </div>
         </div>
+
         <div class="payment-info">
           <p>💳 M‑Pesa only. After payment, access is granted instantly.</p>
           <p>🔒 Time manipulation locks your account – never change device time.</p>
         </div>
       </div>
 
-      <!-- STK Plans -->
+      <!-- ===== STK Plans ===== -->
       <div id="view-stk-plans" class="body-view">
         <h2 class="section-title">Choose a Plan</h2>
-        <p class="section-subtitle">Select your preferred subscription plan below</p>
+        <p class="section-subtitle">Pick the period that suits you — 1‑device or 2‑device access</p>
+
+        <!-- Plan cards rendered by renderInlinePlans() -->
         <div id="inline-plan-cards" class="plan-grid"></div>
+
         <div class="footer-back">
           <button id="backToMethodsBtn" class="inline-back-btn">← Back to payment methods</button>
         </div>
+
         <div class="payment-info">
           <p>💳 M‑Pesa only. After payment, access is granted instantly.</p>
           <p>🔒 Time manipulation locks your account – never change device time.</p>
         </div>
       </div>
 
-      <!-- C2B Details -->
+      <!-- ===== C2B Details ===== -->
       <div id="view-c2b-details" class="body-view">
         <h2 class="section-title">Pay via M-PESA Buy Goods</h2>
         <p class="section-subtitle">Follow the steps below to complete your payment</p>
+
         <div id="c2b-instructions" class="c2b-instructions">
           <ol>
             <li>Open the M‑PESA menu.</li>
@@ -165,16 +209,18 @@
             <li>Complete the payment using your M‑PESA PIN.</li>
           </ol>
         </div>
-        <div id="c2b-claim-form" class="c2b-claim-form">
 
+        <div id="c2b-claim-form" class="c2b-claim-form">
           <div class="form-group">
-            <label for="c2b-mpesa-code">M‑Pesa Transaction Code </label>
+            <label for="c2b-mpesa-code">M‑Pesa Transaction Code</label>
             <input type="text" id="c2b-mpesa-code" placeholder="e.g. LJ4X7K3F">
             <div class="hint">Enter the 10‑digit code from your M‑Pesa confirmation SMS.</div>
           </div>
           <button id="verifyC2BBtn" class="btn-primary">Verify Payment</button>
         </div>
+
         <div id="verification-status" class="verification-status"></div>
+
         <div class="footer-back">
           <button id="backToMethodsC2BBtn" class="inline-back-btn">← Back to payment methods</button>
         </div>

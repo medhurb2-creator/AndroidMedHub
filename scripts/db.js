@@ -574,6 +574,73 @@ export async function getSetting(key, defaultValue = null) {
     }
 }
 
+// ==================== APP CONFIG ====================
+//
+// The app config (subscription plans + trial duration + device discount)
+// is fetched from `system/queries:getAppConfig` by subscription.js and
+// persisted here so the subscription page can render offline and on
+// cold start without a network round-trip.
+//
+// Storage: the existing `settings` store, under a single `appConfig` key.
+// The settings store already has a `keyPath: 'key'` and this reuses its
+// shape — no schema bump required, no new object store.
+
+const APP_CONFIG_KEY = 'appConfig';
+
+/**
+ * Persist the app config (plans + settings) to IndexedDB.
+ *
+ * @param {Object|null} config
+ *   Shape: { trialDurationHours, twoDeviceDiscountPercent, subscriptionPlans, ... }
+ * @returns {Promise<void>}
+ */
+export async function saveAppConfig(config) {
+    if (!config || typeof config !== 'object') return;
+    try {
+        const store = await getStore('settings', 'readwrite');
+        return new Promise((resolve, reject) => {
+            const request = store.put({
+                key: APP_CONFIG_KEY,
+                value: config,
+                updatedAt: Date.now(),
+            });
+            request.onsuccess = () => resolve();
+            request.onerror = (err) => reject(err);
+        });
+    } catch (e) {
+        console.warn('[DB] saveAppConfig failed, using localStorage fallback', e);
+        utils.setLocalStorage(APP_CONFIG_KEY, config);
+    }
+}
+
+/**
+ * Retrieve the cached app config from IndexedDB.
+ *
+ * Returns `null` (not `undefined`) if nothing is cached, matching the
+ * contract subscription.js expects:
+ *
+ *     const cached = await db.getAppConfig?.();
+ *     if (cached) { ... }
+ *
+ * @returns {Promise<Object|null>}
+ */
+export async function getAppConfig() {
+    try {
+        const store = await getStore('settings', 'readonly');
+        return new Promise((resolve, reject) => {
+            const request = store.get(APP_CONFIG_KEY);
+            request.onsuccess = () => {
+                const entry = request.result;
+                resolve(entry && entry.value !== undefined ? entry.value : null);
+            };
+            request.onerror = (err) => reject(err);
+        });
+    } catch (e) {
+        console.warn('[DB] getAppConfig failed, using localStorage fallback', e);
+        return utils.getLocalStorage(APP_CONFIG_KEY, null);
+    }
+}
+
 // ==================== QUESTIONS ====================
 export async function saveQuestions(questions) {
     if (!questions || !questions.length) return;

@@ -36,6 +36,7 @@
           <div class="shimmer-line shimmer-line-lg"></div>
           <div class="shimmer-line"></div>
           <div class="shimmer-line"></div>
+          <div class="shimmer-line"></div>
           <div class="shimmer-line" style="width: 70%;"></div>
         </div>
         <div class="shimmer-card">
@@ -54,8 +55,6 @@
       <div class="pay-header">
         <div class="pay-header-top">
           <div class="left-group">
-            <img src="/assets/images/logo.png" alt="Logo" width="36" height="36">
-            <span class="brand">MedVix</span>
             <button id="backBtn" class="btn-text" style="font-size: 0.9rem; padding: 0.2rem 0.5rem;">← Back</button>
           </div>
           <div class="right-group">
@@ -73,6 +72,7 @@
         <div class="order-summary">
           <h3>Order Summary</h3>
           <p><span>Plan:</span> <span id="plan-name"></span></p>
+          <p><span>Devices:</span> <span id="plan-devices"></span></p>
           <p><span>Amount:</span> <span id="plan-price" class="amount"></span></p>
           <p><span>Duration:</span> <span id="plan-duration"></span></p>
         </div>
@@ -101,6 +101,28 @@
           <div id="poll-attempt" class="poll-attempt" style="margin-top: 0.5rem;"></div>
         </div>
       </main>
+
+      <!-- ===== RECEIPT MODAL ===== -->
+      <div id="receipt-modal" class="receipt-modal" aria-hidden="true" role="dialog" aria-labelledby="receipt-title">
+        <div class="receipt-card">
+          <div class="receipt-success-icon" aria-hidden="true">✓</div>
+          <h2 id="receipt-title" class="receipt-title">Payment Successful</h2>
+          <p class="receipt-subtitle">Your subscription is now active</p>
+
+          <div class="receipt-body">
+            <div class="receipt-row"><span>Reference</span><span id="receipt-ref">—</span></div>
+            <div class="receipt-row"><span>Plan</span><span id="receipt-plan">—</span></div>
+            <div class="receipt-row"><span>Devices</span><span id="receipt-devices">—</span></div>
+            <div class="receipt-row"><span>Amount</span><span id="receipt-amount" class="amount">—</span></div>
+            <div class="receipt-row"><span>Duration</span><span id="receipt-duration">—</span></div>
+            <div class="receipt-row"><span>Valid until</span><span id="receipt-expiry">—</span></div>
+            <div class="receipt-row"><span>Date</span><span id="receipt-date">—</span></div>
+          </div>
+
+          <button id="receiptContinueBtn" type="button" class="btn-primary btn-large">Continue</button>
+          <p class="receipt-countdown" id="receipt-countdown">Continuing in 10s…</p>
+        </div>
+      </div>
     </div>
   </div>
 </section>

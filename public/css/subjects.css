@@ -10,11 +10,15 @@
    ========================================================================== */
 
 /* ---------- Page container ----------
-   Blocks common's max-width: 1200px + side padding (original was full-width). */
+   Blocks common's max-width: 1200px + side padding (original was full-width).
+   Explicit width/box-sizing make the container immune to any inherited
+   constraint from an outer wrapper. */
 .page-container {
     max-width: none;
     margin: 0;
     padding: 0;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 /* ---------- Sticky header shell ----------
@@ -151,6 +155,18 @@ header {
     white-space: nowrap;
 }
 
+/* ---------- Main layout ----------
+   Explicitly full width + box-border. Prevents any inherited constraint
+   (from common.css or a future wrapper) from narrowing the grid's parent. */
+main {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 0;
+    margin: 0;
+}
+
 /* ---------- Main heading override ---------- */
 main h1 {
     font-size: 1.8rem;
@@ -250,14 +266,45 @@ main h1 {
     margin-top: 0.25rem;
 }
 
-/* ---------- Subject grid ---------- */
+/* ---------- Subject grid ----------
+   Fluid column count — the number of columns is derived from the actual
+   rendered width at layout time, NOT from breakpoint media queries.
+
+   Why this matters:
+     On first install, CSS arrives late and the WebView's initial layout
+     viewport can be wider than the physical device. Breakpoint media
+     queries (min-width: 480 / 768 / 1024) then fire against that
+     incorrect width and the resulting multi-column layout sticks after
+     the viewport settles — leaving cards narrow and misaligned.
+
+   `repeat(auto-fill, minmax(min(280px, 100%), 1fr))` avoids the problem
+   entirely:
+     • Each column wants a minimum of 280px, or 100% of available width
+       if the container is narrower than 280px (protects tiny screens).
+     • The number of columns is computed from the container's real width
+       at layout, so it is always correct — no media-query race.
+     • `min(280px, 100%)` ensures a single card never overflows on
+       viewports narrower than 280px.
+     • `min-width: 0` on the card prevents any content (long titles,
+       unbreakable words) from forcing the cell wider than its column. */
 .subject-grid {
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
     gap: 1rem;
     padding: 0.5rem;
     margin-bottom: 70px;
+
+    /* Defensive: full width, no external constraint can narrow this. */
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+
+    /* Explicit stretch — prevents any inherited align-items/justify-items
+       from leaving cards short of the cell or aligned away from the start. */
+    align-items: stretch;
+    justify-items: stretch;
 }
+
 .subject-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -269,6 +316,11 @@ main h1 {
     border-top-style: solid;
     display: flex;
     flex-direction: column;
+
+    /* Defensive sizing */
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
 }
 .subject-card:hover {
     transform: translateY(-4px);
@@ -594,16 +646,22 @@ main h1 {
     border-radius: 30px;
 }
 
+/* ---------- Shimmer grid ----------
+   Same fluid column policy as .subject-grid. Breakpoint media queries were
+   removed because the same first-install viewport race applies to the
+   skeleton layout — the skeleton must not collapse into the wrong number
+   of columns during the pre-hydration window. */
 .shimmer-grid {
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
     gap: 1rem;
     padding: 0.5rem 0;
     flex: 1;
+    width: 100%;
+    box-sizing: border-box;
+    align-items: stretch;
+    justify-items: stretch;
 }
-@media screen and (min-width: 480px)  { .shimmer-grid { grid-template-columns: repeat(2, 1fr); } }
-@media screen and (min-width: 768px)  { .shimmer-grid { grid-template-columns: repeat(3, 1fr); } }
-@media screen and (min-width: 1024px) { .shimmer-grid { grid-template-columns: repeat(4, 1fr); } }
 
 .shimmer-card {
     background: #2a2a3e;
@@ -612,6 +670,9 @@ main h1 {
     padding: 1.5rem;
     display: flex;
     flex-direction: column;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
 }
 .shimmer-icon {
     width: 64px;
@@ -677,15 +738,11 @@ main h1 {
     animation: shimmer 1.5s infinite;
 }
 
-/* ---------- Responsive grid ---------- */
+/* ---------- Responsive: card internals ----------
+   Grid column count is now handled by the fluid rule above. These media
+   queries only adjust *intra-card* density on narrow viewports — they do
+   NOT change the grid template, so no viewport-race risk remains. */
 @media screen and (min-width: 480px) {
-    .subject-grid { grid-template-columns: repeat(2, 1fr); }
     .card-actions { gap: 0.3rem; }
     .action-btn-sm { font-size: 0.7rem; padding: 0.4rem 0.2rem; }
-}
-@media screen and (min-width: 768px) {
-    .subject-grid { grid-template-columns: repeat(3, 1fr); }
-}
-@media screen and (min-width: 1024px) {
-    .subject-grid { grid-template-columns: repeat(4, 1fr); }
 }

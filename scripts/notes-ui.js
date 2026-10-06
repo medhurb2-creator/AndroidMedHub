@@ -5,12 +5,14 @@ import * as utils from './utils.js';
 import * as auth from './auth.js';
 import * as router from './router.js';
 import * as db from './db.js';
-// --- PDF engine imports ---
-import { buildNotesHTML, printDocument } from './pdf-engine.js';
 
-// Fallback – if the module system didn't deliver the function (cache issue), use the global window version
-const safePrintDocument = typeof printDocument === 'function' ? printDocument : window.printDocument;
-const safeBuildNotesHTML = typeof buildNotesHTML === 'function' ? buildNotesHTML : window.buildNotesHTML;
+// --- PDF engine imports (v7.0) ---
+import { exportDocument } from './pdf-engine.js';
+
+// Fallback – if the module system didn't deliver the function (cache issue),
+// use the global window version attached by File 1.
+const safeExportDocument =
+  typeof exportDocument === 'function' ? exportDocument : window.exportDocument;
 
 let quill = null;
 let currentNoteId = null;
@@ -298,7 +300,7 @@ function showNoteContextMenu(noteId, x, y) {
 
     const menu = document.createElement('div');
     menu.id = 'note-context-menu';
-    
+
     menu.innerHTML = `
         <div class="context-item" data-action="open">📂 Open</div>
         <div class="context-item" data-action="rename">✏️ Rename</div>
@@ -476,7 +478,20 @@ async function summarizeNoteHandler(noteId) {
     }
 }
 
-// ==================== PDF Export Handler (Browser Print) ====================
+// ==================== PDF Export Handler (v7.0 WASM Engine) ====================
+//
+// The v7.0 engine takes a document-type string plus an AST-shaped object and
+// produces a searchable, vector, offline PDF via Typst WASM. It handles
+// pagination, headers, footers, watermarks, and the end page automatically.
+//
+// Payload contract (per File 2's NOTES_SCHEMA):
+//   title    — required for display; defaults to 'Untitled Notes'
+//   subject  — tag list rendered above the metadata grid
+//   topic    — secondary tag line
+//   owner    — display name of the note's author
+//   date     — ISO date string; invalid values fall back to today
+//   id       — sanitized into a filename; random when absent
+//   content  — the note's HTML (converted to Typst via File 2's htmlToTypst)
 
 async function exportPDFHandler(noteId = null) {
     const id = noteId || currentNoteId;
@@ -484,12 +499,14 @@ async function exportPDFHandler(noteId = null) {
         ui.showToast('Save the note first to export PDF', 'error');
         return;
     }
+
+    if (typeof safeExportDocument !== 'function') {
+        ui.showToast('PDF engine unavailable — please reload the page', 'error');
+        return;
+    }
+
     try {
         ui.showLoading('Preparing PDF...');
-        // Wait for custom fonts to finish loading before measuring
-        if (document.fonts && document.fonts.ready) {
-            await document.fonts.ready;
-        }
 
         const note = await notes.getNote(id);
         if (!note) throw new Error('Note not found');
@@ -498,25 +515,47 @@ async function exportPDFHandler(noteId = null) {
         const authorName = user?.name || user?.email || 'MedVix User';
         const exportId = 'MH-' + Math.random().toString(36).substr(2, 6).toUpperCase();
 
-        // Build data object exactly as buildNotesHTML expects
+        // Build the AST payload expected by the v7.0 notes schema.
+        // Field name is `content` (not `contentHTML`) — File 2's htmlToTypst
+        // converts the HTML body into safe Typst markup.
         const pdfData = {
-            title: note.title || 'Untitled',
-            subject: note.tags?.join(', ') || 'General',
-            topic: note.tags?.[0] || '',
-            owner: authorName,
-            date: new Date(note.createdAt).toLocaleDateString('en-GB'),
-            id: exportId,
-            contentHTML: note.content || ''   // <-- the actual note HTML goes here
+            title:   note.title || 'Untitled Notes',
+            subject: Array.isArray(note.tags) && note.tags.length > 0
+                        ? note.tags.join(', ')
+                        : 'General',
+            topic:   Array.isArray(note.tags) && note.tags.length > 0
+                        ? note.tags[0]
+                        : '',
+            owner:   authorName,
+            date:    note.createdAt
+                        ? new Date(note.createdAt).toISOString().slice(0, 10)
+                        : new Date().toISOString().slice(0, 10),
+            id:      exportId,
+            content: note.content || ''
         };
 
-        const html = safeBuildNotesHTML(pdfData);
+        // Single-call export: validate → compile → render → save.
+        // On Web this triggers a silent download; on Capacitor it writes
+        // directly to DOCUMENTS via Filesystem.writeFile (no print dialog).
+        const result = await safeExportDocument('notes', pdfData);
+
         ui.hideLoading();
-        await safePrintDocument(html);   // uses the fallback if import failed
+        ui.showToast(`PDF saved — ${result.filename}`, 'success');
 
     } catch (err) {
         ui.hideLoading();
         console.error('PDF export failed:', err);
-        ui.showToast('PDF export failed: ' + err.message, 'error');
+
+        // Surface a useful message for the most common failure modes.
+        const code = err && err.code;
+        let message = 'PDF export failed';
+        if (code === 'TIMEOUT')       message = 'PDF export timed out — try a shorter note';
+        else if (code === 'STORAGE')  message = 'Could not save PDF — check storage permissions';
+        else if (code === 'VALIDATION') message = 'Note data is invalid — ' + (err.message || 'unknown error');
+        else if (code === 'COMPILE')  message = 'PDF compile error — please report this';
+        else if (err && err.message)  message = 'PDF export failed: ' + err.message;
+
+        ui.showToast(message, 'error');
     }
 }
 

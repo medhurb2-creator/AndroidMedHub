@@ -10,12 +10,25 @@ import * as subscription from '../subscription.js';
 let $;
 let cancelPoll = null;
 
+// ---------- helpers ----------
+function describeDevices(n) {
+  const count = Number(n) || 1;
+  if (count <= 1) return '1 device · 📱';
+  if (count === 2) return '2 devices · 📱 + 💻';
+  return `${count} devices`;
+}
+
+function formatKes(n) {
+  const num = Number(n) || 0;
+  return `KES ${num.toLocaleString()}`;
+}
+
+// ---------- init ----------
 export async function init(context) {
   $ = (sel) => context.root.querySelector(sel);
 
   ui.applyTheme();
 
-  // Check auth
   if (!auth.checkAuth()) {
     ui.showToast('Please log in first', 'warning');
     router.navigateTo('login');
@@ -29,67 +42,62 @@ export async function init(context) {
     return;
   }
 
-  // Fill plan details
-  $('#plan-name').textContent = plan.name;
-  $('#plan-price').textContent = `KES ${plan.price}`;
+  const devices = Number(plan.devices) || 1;
+  const priceLabel = formatKes(plan.price);
   const durationDisplay = plan.durationText || utils.formatDuration(plan.duration);
-  $('#plan-duration').textContent = durationDisplay;
+  const deviceLabel = describeDevices(devices);
+
+  const nameEl = $('#plan-name');
+  if (nameEl) nameEl.textContent = plan.name;
+
+  const devicesEl = $('#plan-devices');
+  if (devicesEl) devicesEl.textContent = deviceLabel;
+
+  const priceEl = $('#plan-price');
+  if (priceEl) priceEl.textContent = priceLabel;
+
+  const durationEl = $('#plan-duration');
+  if (durationEl) durationEl.textContent = durationDisplay;
 
   const summaryEl = $('#plan-summary');
   if (summaryEl) {
-    summaryEl.innerHTML = `<strong>${plan.name}</strong> · ${durationDisplay} · <strong>KES ${plan.price}</strong>`;
+    summaryEl.innerHTML =
+      `<strong>${plan.name}</strong> · ${deviceLabel} · ${durationDisplay} · <strong>${priceLabel}</strong>`;
   }
 
   const user = auth.getUser();
-  if (user?.phone) {
-    $('#phone').value = user.phone;
-  }
+  const phoneEl = $('#phone');
+  if (phoneEl && user?.phone) phoneEl.value = user.phone;
 
-  // Setup validation
   validation.setupLiveValidation('payment-form', {
     phone: { required: true, phone: 'KE' }
   });
 
-  // Hide shimmer, show real content
-  $('#shimmer-content').style.display = 'none';
-  $('#real-content').style.display = 'block';
+  const shimmer = $('#shimmer-content');
+  const real = $('#real-content');
+  if (shimmer) shimmer.style.display = 'none';
+  if (real) real.style.display = 'block';
 
-  // Attach event listeners
   attachEventListeners(context);
 
-  console.log('[PaymentPage] Initialized');
+  console.log('[PaymentPage] Initialized', { planId: plan.id, devices, price: plan.price });
 }
 
 function attachEventListeners(context) {
-  // Back button
   const backBtn = $('#backBtn');
-  if (backBtn) {
-    backBtn.addEventListener('click', () => router.navigateTo('subjects'));
-  }
+  if (backBtn) backBtn.addEventListener('click', () => router.navigateTo('subjects'));
 
-  // Theme toggle
   const themeToggle = $('#themeToggle');
-  if (themeToggle) {
-    themeToggle.addEventListener('click', ui.toggleTheme);
-  }
+  if (themeToggle) themeToggle.addEventListener('click', ui.toggleTheme);
 
-  // Change plan button
   const changePlanBtn = $('#changePlanBtn');
-  if (changePlanBtn) {
-    changePlanBtn.addEventListener('click', () => router.navigateTo('subscription'));
-  }
+  if (changePlanBtn) changePlanBtn.addEventListener('click', () => router.navigateTo('subscription'));
 
-  // Payment form submit
   const paymentForm = $('#payment-form');
-  if (paymentForm) {
-    paymentForm.addEventListener('submit', initiatePayment);
-  }
+  if (paymentForm) paymentForm.addEventListener('submit', initiatePayment);
 
-  // Retry button
   const retryBtn = $('#retryBtn');
-  if (retryBtn) {
-    retryBtn.addEventListener('click', retryPayment);
-  }
+  if (retryBtn) retryBtn.addEventListener('click', retryPayment);
 }
 
 // ==================== Payment Handlers ====================
@@ -97,7 +105,8 @@ function attachEventListeners(context) {
 async function initiatePayment(event) {
   event.preventDefault();
 
-  const phone = $('#phone').value.trim();
+  const phoneEl = $('#phone');
+  const phone = phoneEl ? phoneEl.value.trim() : '';
   const plan = payment.getSelectedPlan();
 
   if (!plan) {
@@ -110,6 +119,7 @@ async function initiatePayment(event) {
     return;
   }
 
+  const devices = Number(plan.devices) || 1;
   const formattedPhone = validation.formatKenyanPhone(phone);
   ui.showLoading('Initiating payment...');
 
@@ -118,73 +128,85 @@ async function initiatePayment(event) {
     cancelPoll = null;
   }
 
+  // Reset any stale status area from a previous attempt
+  const retry = $('#retryBtn');
+  if (retry) retry.style.display = 'none';
+
   try {
-    const result = await payment.initiateMPesaPayment(formattedPhone, plan.id);
+    const result = await payment.initiateMPesaPayment(formattedPhone, plan.id, devices);
     const transactionId = result.transactionId;
 
     ui.hideLoading();
     ui.showToast('Check your phone for M‑Pesa prompt', 'info');
 
     const statusEl = $('#payment-status');
-    statusEl.style.display = 'block';
-    $('#status-message').textContent = '⏳ Waiting for payment confirmation...';
-    $('#poll-attempt').textContent = '';
+    if (statusEl) statusEl.style.display = 'block';
+
+    const msgEl = $('#status-message');
+    const attemptEl = $('#poll-attempt');
+    if (msgEl) msgEl.textContent = '⏳ Waiting for payment confirmation...';
+    if (attemptEl) attemptEl.textContent = '';
 
     cancelPoll = payment.pollPaymentStatus(
       transactionId,
       {
         onUpdate: ({ status, attempt }) => {
           console.log(`[Poll ${attempt}/10] Status: ${status}`);
-          $('#poll-attempt').textContent = `Checking (${attempt}/10)...`;
-          if (status === 'pending') {
-            $('#status-message').textContent = '⏳ Waiting for M‑Pesa confirmation...';
-          } else {
-            $('#status-message').textContent = `Status: ${status}`;
+          if (attemptEl) attemptEl.textContent = `Checking (${attempt}/10)...`;
+          if (msgEl) {
+            msgEl.textContent =
+              status === 'pending'
+                ? '⏳ Waiting for M‑Pesa confirmation...'
+                : `Status: ${status}`;
           }
         },
+
         onComplete: async ({ status, timedOut }) => {
           cancelPoll = null;
+
+          // ---- Timeout ----
           if (timedOut) {
-            $('#status-message').textContent = '⏰ Payment not confirmed after 150 seconds. Please check your M‑Pesa app or try again.';
-            $('#retryBtn').style.display = 'block';
-            ui.showToast('Payment timeout. Check M‑Pesa or retry.', 'warning');
-          } else if (status === 'completed') {
-            $('#status-message').textContent = '✅ Payment successful! Updating subscription...';
-            ui.showToast('Payment successful! Updating subscription...', 'success');
-            const user = auth.getUser();
-            if (user && plan) {
-              const now = new Date();
-              let expiryDate;
-              switch (plan.id) {
-                case 'monthly':
-                  expiryDate = new Date(now.setMonth(now.getMonth() + 1));
-                  break;
-                case 'quarterly':
-                  expiryDate = new Date(now.setMonth(now.getMonth() + 3));
-                  break;
-                case 'yearly':
-                  expiryDate = new Date(now.setFullYear(now.getFullYear() + 1));
-                  break;
-                default:
-                  expiryDate = new Date(now.setHours(now.getHours() + 3));
-              }
-              const subscriptionData = {
-                userId: user.id,
-                plan: plan.id,
-                isActive: true,
-                expiryDate: expiryDate.toISOString(),
-                autoRenew: false
-              };
-              await subscription.activatePlan(subscriptionData);
-              // subscription already sets itself in app state
+            if (msgEl) {
+              msgEl.textContent =
+                '⏰ Payment not confirmed after 150 seconds. Please check your M‑Pesa app or try again.';
             }
-            setTimeout(() => router.navigateTo('subjects'), 1500);
-          } else {
-            $('#status-message').textContent = `❌ Payment ${status}. Please try again.`;
-            $('#retryBtn').style.display = 'block';
-            ui.showToast(`Payment ${status}. Please retry.`, 'error');
+            const retryBtn = $('#retryBtn');
+            if (retryBtn) retryBtn.style.display = 'block';
+            ui.showToast('Payment timeout. Check M‑Pesa or retry.', 'warning');
+            if (attemptEl) attemptEl.textContent = '';
+            return;
           }
-          $('#poll-attempt').textContent = '';
+
+          // ---- Success ----
+          // PaymentManager already:
+          //   • force-refreshed the subscription from backend
+          //   • built the receipt payload
+          //   • rendered the receipt modal (or emitted payment:completed)
+          //   • scheduled navigation to /subjects
+          // We only update the on-page status message.
+          if (status === 'completed') {
+            if (msgEl) msgEl.textContent = '✅ Payment successful! Preparing receipt…';
+            ui.showToast('Payment successful!', 'success');
+
+            // Fallback in case the receipt UI could not be presented
+            // (e.g. modal missing): still force a fresh subscription pull
+            // in the background so other pages see the new state.
+            try {
+              await subscription.refreshSubscription();
+            } catch (e) {
+              console.warn('[PaymentPage] Post-success refresh failed', e);
+            }
+
+            if (attemptEl) attemptEl.textContent = '';
+            return;
+          }
+
+          // ---- Other terminal statuses (failed / expired / unknown) ----
+          if (msgEl) msgEl.textContent = `❌ Payment ${status}. Please try again.`;
+          const retryBtn = $('#retryBtn');
+          if (retryBtn) retryBtn.style.display = 'block';
+          ui.showToast(`Payment ${status}. Please retry.`, 'error');
+          if (attemptEl) attemptEl.textContent = '';
         }
       },
       15000,
@@ -197,8 +219,10 @@ async function initiatePayment(event) {
 }
 
 function retryPayment() {
-  $('#retryBtn').style.display = 'none';
-  $('#status-message').textContent = '🔄 Retrying...';
+  const retry = $('#retryBtn');
+  if (retry) retry.style.display = 'none';
+  const msgEl = $('#status-message');
+  if (msgEl) msgEl.textContent = '🔄 Retrying...';
   initiatePayment(new Event('submit'));
 }
 
@@ -208,4 +232,9 @@ export function destroy() {
     cancelPoll();
     cancelPoll = null;
   }
+  // Clear the manager's receipt countdown / pending navigation so a
+  // mid-countdown route change doesn't fire a stray navigateTo('subjects').
+  try {
+    window.Payment?.cancelReceiptFlow?.();
+  } catch (_) { /* ignore */ }
 }

@@ -2,10 +2,19 @@
 
 /**
  * Authentication Handler – Convex Integration
- * Uses Convex backend for authentication when online.
- * Supports session management (single-device enforcement) and device tracking.
- * Includes referral code support during registration.
- * Includes Google Sign-In (web) with account-linking flow.
+ *
+ * Backend contract (auth/actions.ts):
+ *   - Every auth action expects { deviceId, deviceInfo }
+ *     where deviceId is the stable MedVix ID ("dv_…") and
+ *     deviceInfo is the normalized metadata blob from security/device.js.
+ *   - login / googleSignIn may return DEVICE_LIMIT_REACHED
+ *     (structured failure with switchToken + device list)
+ *   - removeDeviceAndContinue completes a blocked login
+ *   - listActiveDevices / removeOtherDevice / removeOtherDevices
+ *     power the Manage Devices page
+ *
+ * Password flows, Google flows, password reset, profile management,
+ * account deletion, offline caching, and referral handling are all preserved.
  */
 
 import * as ui from './ui.js';
@@ -54,25 +63,20 @@ export async function setUser(user) {
         console.warn('[Auth] setUser called with invalid user', user);
         return;
     }
-    console.log('[Auth] Setting user:', user._id);
     currentUser = user;
 
     try {
         await db.saveUser(user);
-        console.log('[Auth] User saved to IndexedDB');
     } catch (e) {
         console.warn('[Auth] IndexedDB save failed, using localStorage', e);
     }
     utils.setLocalStorage('user', user);
-    console.log('[Auth] User set and saved to both storages');
 }
 
 export async function initUser() {
-    console.log('[Auth] Initializing user...');
     let userFromDB = null;
     try {
         userFromDB = await db.getUser();
-        console.log('[Auth] User from IndexedDB:', userFromDB ? userFromDB._id : 'none');
     } catch (e) {
         console.warn('[Auth] Failed to load from IndexedDB', e);
     }
@@ -80,15 +84,11 @@ export async function initUser() {
     const userFromStorage = utils.getLocalStorage('user', null);
     if (userFromDB) {
         currentUser = userFromDB;
-        console.log('[Auth] Loaded user from IndexedDB:', currentUser);
     } else if (userFromStorage) {
         currentUser = userFromStorage;
-        if (userFromStorage) {
-            try {
-                await db.saveUser(userFromStorage);
-                console.log('[Auth] Restored user from localStorage to IndexedDB');
-            } catch (e) {}
-        }
+        try {
+            await db.saveUser(userFromStorage);
+        } catch (e) {}
     } else {
         currentUser = null;
     }
@@ -100,11 +100,9 @@ export function fallbackLoadUser() {
 }
 
 export async function clearUser() {
-    console.log('[Auth] Clearing user');
     currentUser = null;
     try {
         await db.deleteAllUsers();
-        console.log('[Auth] User deleted from IndexedDB');
     } catch (e) {
         console.warn('[Auth] IndexedDB delete failed', e);
     }
@@ -115,7 +113,6 @@ export async function clearUser() {
 export function checkAuth() {
     const token = getToken();
     const hasUser = !!currentUser;
-    console.log('[Auth] checkAuth: token exists?', !!token, 'user exists?', hasUser);
     return !!token && hasUser;
 }
 
@@ -130,34 +127,40 @@ function requireOnline() {
 // ==================== ERROR HELPERS ====================
 
 function getErrorMessage(error) {
-    if (error.data?.message) return error.data.message;
-    if (error.message) return error.message;
+    if (error?.data?.message) return error.data.message;
+    if (error?.message) return error.message;
     return 'An unknown error occurred';
 }
 
-// ==================== DEVICE HELPERS ====================
+// ==================== DEVICE IDENTITY ====================
 
 /**
- * Build a device fingerprint + device info object.
- * Prefers the stored fingerprint (so password login, Google login, and
- * account linking all share the same device identity).
+ * Build the device identity payload every auth action expects.
  *
- * @returns {{ deviceFingerprint: string, deviceInfo: object }}
+ * Delegates to security.js so deviceId is derived once (cross-platform)
+ * and reused across password login, register, Google flows, and
+ * device management.
+ *
+ * @returns {Promise<{ deviceId: string, deviceInfo: object }>}
  */
-function buildDeviceIdentity() {
-    const deviceFingerprint =
-        (typeof security.getDeviceFingerprint === 'function' && security.getDeviceFingerprint()) ||
-        (typeof security.generateDeviceFingerprint === 'function' && security.generateDeviceFingerprint()) ||
+async function buildDeviceIdentity() {
+    if (typeof security.buildDeviceIdentity === 'function') {
+        return await security.buildDeviceIdentity();
+    }
+
+    // Fallback for older security.js builds
+    const deviceId =
+        (typeof security.getDeviceId === 'function' && (await security.getDeviceId())) ||
+        (typeof security.getDeviceFingerprint === 'function' && (await security.getDeviceFingerprint())) ||
         'unknown';
 
-    const deviceInfo = {
-        platform: navigator.platform || 'web',
-        userAgent: navigator.userAgent || '',
-        screen: `${screen.width}x${screen.height}`,
-        timezone: new Date().getTimezoneOffset()
-    };
+    const deviceInfo =
+        (typeof security.getDeviceInfo === 'function' && (await security.getDeviceInfo())) || {
+            platform: navigator.platform || 'web',
+            userAgent: navigator.userAgent || '',
+        };
 
-    return { deviceFingerprint, deviceInfo };
+    return { deviceId, deviceInfo };
 }
 
 // ==================== USER SHAPE NORMALIZER ====================
@@ -166,23 +169,14 @@ function buildDeviceIdentity() {
  * Normalize the flat user shape returned by every auth action into the
  * { _id, name, email, ... } object the rest of the app expects.
  *
- * The backend returns user fields FLAT inside `result.data`, e.g.:
- *   { token, userId, name, email, username, displayName, sessionId }
- *
- * Some legacy paths may nest them under `data.user`. This helper handles both.
- *
- * @param {Object} data - the `result.data` from any auth action
- * @returns {Object|null} normalized user or null if neither shape matched
+ * Backend returns user fields FLAT inside result.data, e.g.:
+ *   { token, userId, name, email, username, displayName, sessionId, deviceId }
  */
 function normalizeUser(data) {
     if (!data) return null;
 
-    // Nested shape (some actions may still return { user: {...} })
-    if (data.user && data.user._id) {
-        return data.user;
-    }
+    if (data.user && data.user._id) return data.user;
 
-    // Flat shape — the current backend's contract
     if (data.userId) {
         return {
             _id: data.userId,
@@ -190,8 +184,10 @@ function normalizeUser(data) {
             email: data.email,
             username: data.username,
             displayName: data.displayName,
+            role: data.role,
             isAgent: data.isAgent,
-            referralCode: data.referralCode
+            referralCode: data.referralCode,
+            deviceId: data.deviceId,
         };
     }
 
@@ -203,36 +199,30 @@ function normalizeUser(data) {
 async function handleTokenError(error) {
     const message = error?.message || error?.toString() || '';
 
+    // Tight check — avoid false positives from the word "token" appearing
+    // in an unrelated validation message.
     const isTokenError =
         message.includes('invalid_token') ||
         message.includes('session_expired') ||
+        message.includes('session_revoked') ||
         message.includes('verify authentication token') ||
         message.includes('Failed to verify authentication token') ||
         message.includes('Unauthorized') ||
         message.includes('authentication failed') ||
-        message.includes('token') ||
         message.includes('JWT verification error') ||
         message.includes('jwt expired') ||
         message.includes('TokenExpiredError');
 
-    if (!isTokenError) {
-        return false;
-    }
+    if (!isTokenError) return false;
 
     if (!navigator.onLine) {
         console.warn('[Auth] Token expired while offline. Keeping local session.');
         return true;
     }
 
-    console.warn('[Auth] Access token invalid/expired. Attempting refresh...');
     const refreshed = await refreshSession();
+    if (refreshed) return true;
 
-    if (refreshed) {
-        console.log('[Auth] Token refreshed successfully.');
-        return true;
-    }
-
-    console.warn('[Auth] Persistent session could not be refreshed.');
     clearToken();
     utils.removeLocalStorage('sessionId');
 
@@ -240,7 +230,6 @@ async function handleTokenError(error) {
         'Your session could not be restored. Please login again when online.',
         'warning'
     );
-
     return true;
 }
 
@@ -256,32 +245,30 @@ function clearStoredReferralCode() {
 
 // ==================== SESSION REFRESH ====================
 
+/**
+ * Refresh the JWT using the backend's refreshSession action.
+ *
+ * The backend accepts the stored sessionId (embedded in the JWT at login
+ * time) and, if still valid, issues a fresh 30-day JWT. Device identity
+ * is preserved via the deviceId stored in the sessions row.
+ */
 export async function refreshSession() {
-    if (!navigator.onLine) {
-        console.log('[Auth] Offline — cannot refresh token.');
-        return false;
-    }
+    if (!navigator.onLine) return false;
 
     const sessionId = utils.getLocalStorage('sessionId');
-
-    if (!sessionId) {
-        console.warn('[Auth] No sessionId available for refresh.');
-        return false;
-    }
+    if (!sessionId) return false;
 
     try {
         const result = await convexHttpClient.action(
-            "auth/actions:refreshSession",
+            'auth/actions:refreshSession',
             { sessionId }
         );
 
-        if (!result || !result.success || !result.data?.token) {
-            console.warn('[Auth] Session refresh failed:', result?.message);
+        if (!result?.success || !result.data?.token) {
             return false;
         }
 
         setToken(result.data.token);
-        console.log('[Auth] JWT silently refreshed.');
         return true;
     } catch (error) {
         console.warn('[Auth] Session refresh error:', error);
@@ -289,123 +276,194 @@ export async function refreshSession() {
     }
 }
 
-// ==================== LOGIN (Email / Phone + Password) ====================
+// ==================== LOGIN ====================
 
-export async function login(identifier, password, deviceInfo) {
-    console.log('[Auth] Login attempt:', identifier);
+/**
+ * Login with email/phone + password.
+ *
+ * Outcomes:
+ *   1. Success → returns the user object.
+ *   2. DEVICE_LIMIT_REACHED → throws an error with:
+ *        .code = "DEVICE_LIMIT_REACHED"
+ *        .deviceLimitPayload = { devices, maxDevices, devicesUsed, switchToken, newDevice, via }
+ *      The caller should show the "which device to remove?" modal and then
+ *      call removeDeviceAndContinue(switchToken, deviceToRemoveId).
+ */
+export async function login(identifier, password) {
     requireOnline();
 
-    try {
-        const deviceInfoObj = typeof deviceInfo === 'object' && deviceInfo !== null
-            ? deviceInfo
-            : { platform: deviceInfo || 'web' };
+    const { deviceId, deviceInfo } = await buildDeviceIdentity();
 
-        const result = await convexHttpClient.action("auth/actions:login", {
-            identifier,
-            password,
-            deviceFingerprint: deviceInfoObj.deviceFingerprint,
-            deviceInfo: {
-                platform: deviceInfoObj.platform || 'web',
-                lastIp: deviceInfoObj.lastIp
-            }
-        });
+    const result = await convexHttpClient.action('auth/actions:login', {
+        identifier,
+        password,
+        deviceId,
+        deviceInfo,
+    });
 
-        if (!result.success) {
-            throw new Error(result.message);
-        }
-
-        const { token, userId, name, email, sessionId, isNewDevice } = result.data;
-        setToken(token);
-        await setUser({ _id: userId, name, email });
-        security.setDeviceFingerprint(deviceInfoObj.deviceFingerprint);
-
-        if (sessionId) {
-            utils.setLocalStorage('sessionId', sessionId);
-        }
-
-        if (isNewDevice) {
-            ui.showToast('New device detected. You are now logged in on this device.', 'info', 4000);
-        }
-
-        await sync.syncUserData();
-
-        try {
-            await subscription.refreshSubscription();
-            console.log('[Auth] Subscription refreshed after login.');
-        } catch (subErr) {
-            console.warn('[Auth] Could not refresh subscription after login:', subErr);
-        }
-
-        console.log('[Auth] Login successful:', email);
-        return { _id: userId, name, email };
-    } catch (error) {
-        console.error('[Auth] Login failed', error);
-        const msg = getErrorMessage(error);
-        throw new Error(msg);
+    // ---- DEVICE_LIMIT_REACHED ----
+    if (result && result.status === 'DEVICE_LIMIT_REACHED') {
+        const err = new Error(result.message || 'Device limit reached.');
+        err.code = 'DEVICE_LIMIT_REACHED';
+        err.deviceLimitPayload = result.data || {};
+        throw err;
     }
+
+    if (!result || !result.success) {
+        throw new Error(result?.message || 'Login failed');
+    }
+
+    const data = result.data || {};
+    const {
+        token,
+        userId,
+        name,
+        email,
+        sessionId,
+        isNewDevice,
+        role,
+        deviceId: serverDeviceId,
+    } = data;
+
+    setToken(token);
+    await setUser({
+        _id: userId,
+        name,
+        email,
+        role,
+        deviceId: serverDeviceId || deviceId,
+    });
+
+    if (sessionId) utils.setLocalStorage('sessionId', sessionId);
+    if (deviceId) security.setDeviceFingerprint(deviceId);
+
+    if (isNewDevice) {
+        ui.showToast('New device detected. You are now logged in on this device.', 'info', 4000);
+    }
+
+    await sync.syncUserData();
+
+    try {
+        await subscription.refreshSubscription();
+    } catch (subErr) {
+        console.warn('[Auth] Could not refresh subscription after login:', subErr);
+    }
+
+    return { _id: userId, name, email };
 }
 
-// ==================== REGISTER (Email / Phone + Password) ====================
+// ==================== REMOVE DEVICE AND CONTINUE ====================
 
-export async function register(userData) {
-    console.log('[Auth] Register attempt:', userData.email);
+/**
+ * Complete a login that was blocked by the device limit.
+ *
+ * Called after the user picks a device to remove from the
+ * DEVICE_LIMIT_REACHED modal. The switchToken proves identity —
+ * no password needed.
+ */
+export async function removeDeviceAndContinue(switchToken, deviceToRemoveId) {
     requireOnline();
 
-    try {
-        let referralCode = userData.referralCode || getStoredReferralCode();
-        const isAgent = userData.isAgent || false;
-        const agentVerified = userData.agentVerified || false;
+    const result = await convexHttpClient.action(
+        'auth/actions:removeDeviceAndContinue',
+        { switchToken, deviceToRemoveId }
+    );
 
-        const deviceInfoObj = typeof userData.deviceInfo === 'object' && userData.deviceInfo !== null
-            ? userData.deviceInfo
-            : { platform: userData.deviceInfo || 'web' };
-
-        const result = await convexHttpClient.action("auth/actions:register", {
-            name: userData.name,
-            email: userData.email.toLowerCase(),
-            phone: userData.phone,
-            password: userData.password,
-            securityQuestions: userData.securityQuestions.map(q => ({
-                question: q.question,
-                answer: q.answer
-            })),
-            deviceFingerprint: userData.deviceFingerprint,
-            deviceInfo: {
-                platform: deviceInfoObj.platform || 'web',
-                lastIp: deviceInfoObj.lastIp
-            },
-            referralCode: referralCode || undefined,
-            isAgent: isAgent,
-            agentVerified: agentVerified
-        });
-
-        if (!result.success) {
-            throw new Error(result.message);
-        }
-
-        const { token, userId, name, email, referralCode: userReferralCode, isAgent: userIsAgent } = result.data;
-        setToken(token);
-        await setUser({ _id: userId, name, email, referralCode: userReferralCode, isAgent: userIsAgent });
-        security.setDeviceFingerprint(userData.deviceFingerprint);
-
-        clearStoredReferralCode();
-
-        await sync.syncUserData();
-
-        try {
-            await subscription.refreshSubscription();
-            console.log('[Auth] Subscription refreshed after registration.');
-        } catch (subErr) {
-            console.warn('[Auth] Could not refresh subscription after registration:', subErr);
-        }
-
-        console.log('[Auth] Registration successful:', email);
-        return { _id: userId, name, email, referralCode: userReferralCode, isAgent: userIsAgent };
-    } catch (error) {
-        console.error('[Auth] Registration failed', error);
-        const msg = getErrorMessage(error);
-        throw new Error(msg);
+    if (!result || !result.success) {
+        throw new Error(result?.message || 'Could not complete login after removing device');
     }
+
+    const data = result.data || {};
+    const { token, userId, name, email, sessionId, role, deviceId } = data;
+
+    setToken(token);
+    await setUser({ _id: userId, name, email, role, deviceId });
+
+    if (sessionId) utils.setLocalStorage('sessionId', sessionId);
+
+    await sync.syncUserData();
+
+    try {
+        await subscription.refreshSubscription();
+    } catch (subErr) {
+        console.warn('[Auth] Could not refresh subscription after device removal:', subErr);
+    }
+
+    return { _id: userId, name, email };
+}
+
+// ==================== REGISTER ====================
+
+export async function register(userData) {
+    requireOnline();
+
+    let referralCode = userData.referralCode || getStoredReferralCode();
+    const isAgent = userData.isAgent || false;
+    const agentVerified = userData.agentVerified || false;
+
+    const { deviceId, deviceInfo } = await buildDeviceIdentity();
+
+    const result = await convexHttpClient.action('auth/actions:register', {
+        name: userData.name,
+        email: userData.email.toLowerCase(),
+        phone: userData.phone,
+        password: userData.password,
+        securityQuestions: userData.securityQuestions.map((q) => ({
+            question: q.question,
+            answer: q.answer,
+        })),
+        deviceId,
+        deviceInfo,
+        referralCode: referralCode || undefined,
+        isAgent,
+        agentVerified,
+    });
+
+    if (!result || !result.success) {
+        throw new Error(result?.message || 'Registration failed');
+    }
+
+    const data = result.data || {};
+    const {
+        token,
+        userId,
+        name,
+        email,
+        sessionId,
+        referralCode: userReferralCode,
+        isAgent: userIsAgent,
+    } = data;
+
+    setToken(token);
+    await setUser({
+        _id: userId,
+        name,
+        email,
+        referralCode: userReferralCode,
+        isAgent: userIsAgent,
+        deviceId,
+    });
+
+    if (sessionId) utils.setLocalStorage('sessionId', sessionId);
+    if (deviceId) security.setDeviceFingerprint(deviceId);
+
+    clearStoredReferralCode();
+
+    await sync.syncUserData();
+
+    try {
+        await subscription.refreshSubscription();
+    } catch (subErr) {
+        console.warn('[Auth] Could not refresh subscription after registration:', subErr);
+    }
+
+    return {
+        _id: userId,
+        name,
+        email,
+        referralCode: userReferralCode,
+        isAgent: userIsAgent,
+    };
 }
 
 // ==================== LOGOUT ====================
@@ -424,39 +482,24 @@ export async function logout() {
 
 export async function getSecurityQuestions(identifier) {
     requireOnline();
-    try {
-        const result = await convexHttpClient.query("auth/queries:getSecurityQuestions", { identifier });
-        if (!result.success) {
-            throw new Error(result.message);
-        }
-        return result.data.questions;
-    } catch (error) {
-        console.error('[Auth] Failed to get security questions', error);
-        const msg = getErrorMessage(error);
-        if (msg.includes('User not found')) {
-            throw new Error('User not found');
-        }
-        throw new Error(msg || 'Failed to retrieve security questions');
+    const result = await convexHttpClient.query('auth/queries:getSecurityQuestions', { identifier });
+    if (!result || !result.success) {
+        throw new Error(result?.message || 'Failed to retrieve security questions');
     }
+    return result.data.questions;
 }
 
 export async function verifySecurityAnswers(identifier, answers) {
     requireOnline();
-    try {
-        const result = await convexHttpClient.action("auth/actions:verifySecurityAnswers", {
-            identifier,
-            answers
-        });
-        if (!result.success) {
-            throw new Error(result.message);
-        }
-        sessionStorage.setItem('resetToken', result.data.resetToken);
-        return result.data.resetToken;
-    } catch (error) {
-        console.error('[Auth] Verify answers failed', error);
-        const msg = getErrorMessage(error);
-        throw new Error(msg);
+    const result = await convexHttpClient.action('auth/actions:verifySecurityAnswers', {
+        identifier,
+        answers,
+    });
+    if (!result || !result.success) {
+        throw new Error(result?.message || 'Verification failed');
     }
+    sessionStorage.setItem('resetToken', result.data.resetToken);
+    return result.data.resetToken;
 }
 
 export async function resetPassword(identifier, newPassword) {
@@ -464,24 +507,17 @@ export async function resetPassword(identifier, newPassword) {
     if (!resetToken) throw new Error('No reset token. Please restart the process.');
 
     requireOnline();
-    try {
-        const result = await convexHttpClient.action("auth/actions:resetPassword", {
-            identifier,
-            newPassword,
-            resetToken
-        });
-        if (!result.success) {
-            throw new Error(result.message);
-        }
-        sessionStorage.removeItem('resetToken');
-        ui.showToast('Password reset successfully. Please login.', 'success');
-        setTimeout(() => {
-            navigateTo('login');
-        }, 2000);
-    } catch (error) {
-        console.error('[Auth] Reset password failed', error);
-        throw new Error(getErrorMessage(error) || 'Password reset failed');
+    const result = await convexHttpClient.action('auth/actions:resetPassword', {
+        identifier,
+        newPassword,
+        resetToken,
+    });
+    if (!result || !result.success) {
+        throw new Error(result?.message || 'Password reset failed');
     }
+    sessionStorage.removeItem('resetToken');
+    ui.showToast('Password reset successfully. Please login.', 'success');
+    setTimeout(() => navigateTo('login'), 2000);
 }
 
 // ==================== PROFILE MANAGEMENT ====================
@@ -491,25 +527,19 @@ export async function updateProfile(updates) {
     const user = getUser();
     if (!user) throw new Error('Not authenticated');
 
-    try {
-        const result = await convexHttpClient.action("users/mutations:updateProfile", {
-            token: getToken(),
-            ...updates
-        });
-        if (!result.success) {
-            if (result.error === 'invalid_token' || result.message?.includes('token')) {
-                await handleTokenError(new Error(result.message));
-                return;
-            }
-            throw new Error(result.message);
+    const result = await convexHttpClient.action('users/mutations:updateProfile', {
+        token: getToken(),
+        ...updates,
+    });
+    if (!result || !result.success) {
+        if (result?.error === 'invalid_token' || result?.message?.includes('token')) {
+            await handleTokenError(new Error(result.message));
+            return;
         }
-        await setUser(result.data.user);
-        return result.data.user;
-    } catch (error) {
-        console.error('[Auth] Update profile failed', error);
-        if (await handleTokenError(error)) return;
-        throw new Error(getErrorMessage(error) || 'Update failed');
+        throw new Error(result?.message || 'Update failed');
     }
+    await setUser(result.data.user);
+    return result.data.user;
 }
 
 export async function changePassword({ currentPassword, newPassword }) {
@@ -517,25 +547,22 @@ export async function changePassword({ currentPassword, newPassword }) {
     const user = getUser();
     if (!user) throw new Error('Not authenticated');
 
-    try {
-        const result = await convexHttpClient.action("auth/actions:changePassword", {
-            token: getToken(),
-            currentPassword,
-            newPassword
-        });
-        if (!result.success) {
-            if (result.error === 'invalid_token' || result.message?.includes('token')) {
-                await handleTokenError(new Error(result.message));
-                return;
-            }
-            throw new Error(result.message);
+    const result = await convexHttpClient.action('auth/actions:changePassword', {
+        token: getToken(),
+        currentPassword,
+        newPassword,
+    });
+    if (!result || !result.success) {
+        if (result?.error === 'invalid_token' || result?.message?.includes('token')) {
+            await handleTokenError(new Error(result.message));
+            return;
         }
-        ui.showToast('Password changed successfully. You have been logged out from other devices.', 'success');
-    } catch (error) {
-        console.error('[Auth] Change password failed', error);
-        if (await handleTokenError(error)) return;
-        throw new Error(getErrorMessage(error) || 'Password change failed');
+        throw new Error(result?.message || 'Password change failed');
     }
+    ui.showToast(
+        'Password changed successfully. You have been logged out from other devices.',
+        'success'
+    );
 }
 
 export async function updatePreferences(preferences) {
@@ -543,24 +570,18 @@ export async function updatePreferences(preferences) {
     const user = getUser();
     if (!user) throw new Error('Not authenticated');
 
-    try {
-        const result = await convexHttpClient.action("users/mutations:updatePreferences", {
-            token: getToken(),
-            ...preferences
-        });
-        if (!result.success) {
-            if (result.error === 'invalid_token' || result.message?.includes('token')) {
-                await handleTokenError(new Error(result.message));
-                return;
-            }
-            throw new Error(result.message);
+    const result = await convexHttpClient.action('users/mutations:updatePreferences', {
+        token: getToken(),
+        ...preferences,
+    });
+    if (!result || !result.success) {
+        if (result?.error === 'invalid_token' || result?.message?.includes('token')) {
+            await handleTokenError(new Error(result.message));
+            return;
         }
-        await setUser(result.data.user);
-    } catch (error) {
-        console.error('[Auth] Update preferences failed', error);
-        if (await handleTokenError(error)) return;
-        throw new Error(getErrorMessage(error) || 'Update preferences failed');
+        throw new Error(result?.message || 'Update preferences failed');
     }
+    await setUser(result.data.user);
 }
 
 export async function exportData() {
@@ -568,96 +589,57 @@ export async function exportData() {
     const user = getUser();
     if (!user) throw new Error('Not authenticated');
 
-    try {
-        const result = await convexHttpClient.action("users/actions:exportData", {
-            token: getToken()
-        });
-        if (!result.success) {
-            if (result.error === 'invalid_token' || result.message?.includes('token')) {
-                await handleTokenError(new Error(result.message));
-                return;
-            }
-            throw new Error(result.message);
+    const result = await convexHttpClient.action('users/actions:exportData', {
+        token: getToken(),
+    });
+    if (!result || !result.success) {
+        if (result?.error === 'invalid_token' || result?.message?.includes('token')) {
+            await handleTokenError(new Error(result.message));
+            return;
         }
-        const { downloadUrl, fileName } = result.data;
-        const a = document.createElement('a');
-        a.href = downloadUrl;
-        a.download = fileName || `medical-exam-data-${new Date().toISOString().split('T')[0]}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        ui.showToast('Export started', 'success');
-    } catch (error) {
-        console.error('[Auth] Export data failed', error);
-        if (await handleTokenError(error)) return;
-        throw new Error(getErrorMessage(error) || 'Export failed');
+        throw new Error(result?.message || 'Export failed');
     }
+    const { downloadUrl, fileName } = result.data;
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = fileName || `medical-exam-data-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    ui.showToast('Export started', 'success');
 }
 
 // ==================== CLEAR ALL LOCAL DATA ====================
 
 async function clearAllLocalData() {
-    console.log('[Auth] Clearing all local data...');
-
     try {
         if (typeof db.clearDatabase === 'function') {
             await db.clearDatabase();
-            console.log('[Auth] IndexedDB cleared.');
-        } else {
-            console.warn('[Auth] db.clearDatabase not available; skipping IndexedDB wipe.');
         }
     } catch (e) {
         console.warn('[Auth] Failed to clear IndexedDB:', e);
     }
 
     const localStorageKeys = [
-        'accessToken',
-        'sessionId',
-        'user',
-        'subscription',
-        'ai_chats',
-        'ai_usage_count',
-        'referral_code',
-        'sync_state',
-        'sync_timer',
-        'deviceFingerprint',
-        'examConfig',
-        'examState',
-        'selectedPlan',
-        'currentTransaction',
-        'rememberedEmail',
-        'appSettings',
-        'favorite_resources',
-        'lastExam',
-        'downloadedExams',
-        'securityViolations',
-        'lockStatus',
-        'userStats',
-        'notes_fallback',
-        'conversations_fallback',
-        'chatHistory_fallback',
-        'notifications_fallback',
+        'accessToken', 'sessionId', 'user', 'subscription',
+        'ai_chats', 'ai_usage_count', 'referral_code',
+        'sync_state', 'sync_timer', 'deviceFingerprint',
+        'examConfig', 'examState', 'selectedPlan',
+        'currentTransaction', 'rememberedEmail', 'appSettings',
+        'favorite_resources', 'lastExam', 'downloadedExams',
+        'securityViolations', 'lockStatus', 'userStats',
+        'notes_fallback', 'conversations_fallback',
+        'chatHistory_fallback', 'notifications_fallback',
         'publicAssetVersions',
-        'referral_cache_referral',
-        'referral_cache_agent',
-        'convex_session'
+        'referral_cache_referral', 'referral_cache_agent',
+        'convex_session',
     ];
 
     for (const key of localStorageKeys) {
-        try {
-            localStorage.removeItem(key);
-        } catch (e) {
-            // ignore
-        }
+        try { localStorage.removeItem(key); } catch (e) {}
     }
-    console.log('[Auth] localStorage cleared.');
 
-    try {
-        sessionStorage.clear();
-        console.log('[Auth] sessionStorage cleared.');
-    } catch (e) {
-        // ignore
-    }
+    try { sessionStorage.clear(); } catch (e) {}
 }
 
 // ==================== ACCOUNT DELETION ====================
@@ -666,51 +648,38 @@ export async function deleteAccount(password) {
     requireOnline();
 
     const token = getToken();
-    if (!token) {
-        throw new Error('Not authenticated. Please log in again.');
-    }
+    if (!token) throw new Error('Not authenticated. Please log in again.');
 
     const user = getUser();
-    if (!user) {
-        throw new Error('User data not found. Please log in again.');
-    }
+    if (!user) throw new Error('User data not found. Please log in again.');
 
-    try {
-        const result = await convexHttpClient.action("users/mutations:deleteAccount", {
-            token,
-            password
-        });
+    const result = await convexHttpClient.action('users/mutations:deleteAccount', {
+        token,
+        password,
+    });
 
-        if (!result.success) {
-            if (result.error === 'invalid_token' || result.message?.includes('token')) {
-                await handleTokenError(new Error(result.message));
-                return;
-            }
-            throw new Error(result.message);
+    if (!result || !result.success) {
+        if (result?.error === 'invalid_token' || result?.message?.includes('token')) {
+            await handleTokenError(new Error(result.message));
+            return;
         }
-
-        await clearAllLocalData();
-
-        currentUser = null;
-        clearToken();
-        utils.removeLocalStorage('sessionId');
-        await subscription.clearSubscription();
-        examEngine.clearExamConfig();
-        examEngine.clearExamState();
-
-        ui.showToast('Account permanently deleted.', 'success');
-        navigateTo('welcome.html');
-
-    } catch (error) {
-        console.error('[Auth] Delete account failed', error);
-        if (await handleTokenError(error)) return;
-
-        const msg = getErrorMessage(error);
-        if (msg.includes('Invalid password') || msg.toLowerCase().includes('password')) {
+        const msg = result?.message || 'Account deletion failed';
+        if (msg.toLowerCase().includes('password')) {
             throw new Error('The password you entered is incorrect. Please try again.');
         }
-        throw new Error(msg || 'Account deletion failed. Please try again later.');
+        throw new Error(msg);
     }
+
+    await clearAllLocalData();
+    currentUser = null;
+    clearToken();
+    utils.removeLocalStorage('sessionId');
+    await subscription.clearSubscription();
+    examEngine.clearExamConfig();
+    examEngine.clearExamState();
+
+    ui.showToast('Account permanently deleted.', 'success');
+    navigateTo('welcome.html');
 }
 
 // ==================== SESSION MANAGEMENT ====================
@@ -725,177 +694,190 @@ export function extendSession() {
 
 // ==================== DEVICE MANAGEMENT ====================
 
-export async function getDevices() {
+/**
+ * Get the list of active devices for the current user.
+ * Returns { devices, maxDevices, devicesUsed, overLimit }.
+ *
+ * Old name: getDevices()  (kept as alias below)
+ */
+export async function listActiveDevices() {
     const token = getToken();
     if (!token) throw new Error('Not authenticated');
-    try {
-        const result = await convexHttpClient.query("users/queries:getDevices", { token });
-        if (!result.success) {
-            throw new Error(result.message);
+
+    const currentDeviceId = await security.getDeviceId();
+
+    const result = await convexHttpClient.action('auth/actions:listActiveDevices', {
+        token,
+        currentDeviceId,
+    });
+
+    if (!result || !result.success) {
+        if (result?.error === 'invalid_token' || result?.message?.includes('token')) {
+            await handleTokenError(new Error(result.message));
+            return { devices: [], maxDevices: 1, devicesUsed: 0, overLimit: false };
         }
-        return result.data.devices;
-    } catch (error) {
-        console.error('[Auth] Failed to fetch devices', error);
-        throw new Error(getErrorMessage(error) || 'Failed to fetch devices');
+        throw new Error(result?.message || 'Failed to fetch devices');
     }
+
+    return result.data;
 }
 
-export async function logoutDevice(fingerprint) {
+/**
+ * Remove a specific device from the current user's account.
+ * Cannot remove the current device (backend rejects that).
+ *
+ * Old name: logoutDevice(fingerprint)  (kept as alias below)
+ */
+export async function removeOtherDevice(deviceId) {
     const token = getToken();
     if (!token) throw new Error('Not authenticated');
-    try {
-        const result = await convexHttpClient.action("users/mutations:logoutDevice", {
-            token,
-            fingerprint
-        });
-        if (!result.success) {
-            if (result.error === 'invalid_token' || result.message?.includes('token')) {
-                await handleTokenError(new Error(result.message));
-                return;
-            }
-            throw new Error(result.message);
+
+    const currentDeviceId = await security.getDeviceId();
+
+    const result = await convexHttpClient.action('auth/actions:removeOtherDevice', {
+        token,
+        deviceId,
+        currentDeviceId,
+    });
+
+    if (!result || !result.success) {
+        if (result?.error === 'invalid_token' || result?.message?.includes('token')) {
+            await handleTokenError(new Error(result.message));
+            return;
         }
-        ui.showToast('Device logged out', 'success');
-    } catch (error) {
-        console.error('[Auth] Logout device failed', error);
-        if (await handleTokenError(error)) return;
-        throw new Error(getErrorMessage(error) || 'Failed to logout device');
+        throw new Error(result?.message || 'Failed to remove device');
     }
+
+    ui.showToast('Device removed', 'success');
+    return result.data;
+}
+
+/**
+ * Log out from all other devices except the current one.
+ *
+ * Old name: logoutAllDevices()  (kept as alias below)
+ */
+export async function removeOtherDevices() {
+    const token = getToken();
+    if (!token) throw new Error('Not authenticated');
+
+    const currentSessionId = utils.getLocalStorage('sessionId');
+    if (!currentSessionId) throw new Error('No active session');
+
+    const result = await convexHttpClient.action('auth/actions:removeOtherDevices', {
+        token,
+        currentSessionId,
+    });
+
+    if (!result || !result.success) {
+        if (result?.error === 'invalid_token' || result?.message?.includes('token')) {
+            await handleTokenError(new Error(result.message));
+            return;
+        }
+        throw new Error(result?.message || 'Failed to log out other devices');
+    }
+
+    ui.showToast(result.data.message || 'Other devices logged out', 'success');
+    return result.data;
+}
+
+// ---- Deprecated aliases (kept so any old callers keep working) ----
+
+export async function getDevices() {
+    const result = await listActiveDevices();
+    return result.devices;
+}
+
+export async function logoutDevice(deviceId) {
+    return removeOtherDevice(deviceId);
 }
 
 export async function logoutAllDevices() {
-    const token = getToken();
-    if (!token) throw new Error('Not authenticated');
-    try {
-        const result = await convexHttpClient.action("users/mutations:logoutAllDevices", { token });
-        if (!result.success) {
-            if (result.error === 'invalid_token' || result.message?.includes('token')) {
-                await handleTokenError(new Error(result.message));
-                return;
-            }
-            throw new Error(result.message);
-        }
-        ui.showToast('All other devices logged out', 'success');
-    } catch (error) {
-        console.error('[Auth] Logout all devices failed', error);
-        if (await handleTokenError(error)) return;
-        throw new Error(getErrorMessage(error) || 'Failed to logout all devices');
-    }
+    return removeOtherDevices();
 }
 
 // ==================== GOOGLE SIGN-IN ====================
 
 /**
- * Send the Google ID token to the backend for verification and identity resolution.
+ * Send the Google ID token to the backend for verification.
  *
- * Backend response shapes (verified field-by-field):
- *
- *   1. SUCCESS (existing Google identity) — flat user fields:
- *      { success: true, status: "SUCCESS",
+ * Backend response shapes:
+ *   1. { success: true,  status: "SUCCESS",
  *        data: { token, userId, name, email, username, displayName,
- *                sessionId, isNewDevice } }
- *
- *   2. NEW_ACCOUNT — flat user fields:
- *      { success: true, status: "NEW_ACCOUNT",
- *        data: { token, userId, name, email, username, displayName,
- *                sessionId, isNewDevice: true } }
- *
- *   3. EXISTING_ACCOUNT_REQUIRES_LINK:
- *      { success: false, status: "EXISTING_ACCOUNT_REQUIRES_LINK",
+ *                sessionId, deviceId, isNewDevice } }
+ *   2. { success: true,  status: "NEW_ACCOUNT",  data: { token, ... } }
+ *   3. { success: false, status: "DEVICE_LIMIT_REACHED",
+ *        data: { devices, maxDevices, switchToken, newDevice, via } }
+ *   4. { success: false, status: "EXISTING_ACCOUNT_REQUIRES_LINK",
  *        data: { linkToken, email } }
- *
- *   4. Any other failure:
- *      { success: false, message: "..." }
- *
- * @param {string} idToken - The Google ID token (JWT) returned by Google Identity Services.
- * @returns {Promise<Object>} Result with `ok: true` (success) or `requiresLink: true`.
+ *   5. { success: false, message: "..." }  for any other error
  */
-export async function loginWithGoogle(idToken) {
+export async function loginWithGoogle(idToken, referralCode) {
     if (!idToken) throw new Error('Missing Google ID token');
     requireOnline();
 
-    // Build device identity (same source used by password login)
-    const { deviceFingerprint, deviceInfo } = buildDeviceIdentity();
+    const { deviceId, deviceInfo } = await buildDeviceIdentity();
 
-    const result = await convexHttpClient.action(
-        'auth/actions:googleSignIn',
-        {
-            idToken,
-            deviceFingerprint,
-            deviceInfo
-        }
-    );
+    const effectiveReferralCode = referralCode || getStoredReferralCode() || undefined;
 
-    if (!result) {
-        throw new Error('Google sign-in failed: empty response');
+    const result = await convexHttpClient.action('auth/actions:googleSignIn', {
+        idToken,
+        deviceId,
+        deviceInfo,
+        referralCode: effectiveReferralCode,
+    });
+
+    if (!result) throw new Error('Google sign-in failed: empty response');
+
+    const status = result.status || result.data?.status;
+
+    // ---- DEVICE LIMIT REACHED ----
+    if (status === 'DEVICE_LIMIT_REACHED') {
+        const err = new Error(result.message || 'Device limit reached.');
+        err.code = 'DEVICE_LIMIT_REACHED';
+        err.deviceLimitPayload = result.data || {};
+        throw err;
     }
 
-    // ------------------------------------------------------------
-    // 1. LINKING REQUIRED — check BEFORE throwing on `!success`
-    //    because the backend uses success:false for this case.
-    // ------------------------------------------------------------
-    const linkStatus =
-        result.status ||
-        result.data?.status;
-
-    if (linkStatus === 'EXISTING_ACCOUNT_REQUIRES_LINK') {
+    // ---- LINK REQUIRED ----
+    if (status === 'EXISTING_ACCOUNT_REQUIRES_LINK') {
         return {
             ok: false,
             requiresLink: true,
             email: result.data?.email || '',
             linkToken: result.data?.linkToken || null,
             idToken,
-            deviceFingerprint,
-            deviceInfo
+            deviceId,
+            deviceInfo,
+            referralCode: effectiveReferralCode,
         };
     }
 
-    // ------------------------------------------------------------
-    // 2. OTHER FAILURES
-    // ------------------------------------------------------------
+    // ---- OTHER FAILURES ----
     if (!result.success) {
-        throw new Error(result.reason || result.message || 'Google sign-in failed');
+        throw new Error(result.message || 'Google sign-in failed');
     }
 
-    // ------------------------------------------------------------
-    // 3. SUCCESS — normalize the flat response
-    // ------------------------------------------------------------
+    // ---- SUCCESS ----
     const data = result.data || {};
-    const status = data.status || 'SUCCESS';
+    const successStatus = data.status || 'SUCCESS';
 
-    if (status === 'SUCCESS' || status === 'NEW_ACCOUNT') {
+    if (successStatus === 'SUCCESS' || successStatus === 'NEW_ACCOUNT') {
         const user = normalizeUser(data);
-
         setToken(data.token);
-        if (data.sessionId) {
-            utils.setLocalStorage('sessionId', data.sessionId);
-        }
+        if (data.sessionId) utils.setLocalStorage('sessionId', data.sessionId);
+        if (user) await setUser(user);
+        if (deviceId) security.setDeviceFingerprint(deviceId);
 
-        if (user) {
-            await setUser(user);
-        } else {
-            console.error('[Auth] Google login succeeded but no user data found.', data);
-        }
+        clearStoredReferralCode();
 
-        // Persist the fingerprint so future requests share the same device identity
-        if (deviceFingerprint) {
-            security.setDeviceFingerprint(deviceFingerprint);
-        }
-
-        // Sync profile + subscription exactly like password login
         await sync.syncUserData();
-
-        try {
-            await subscription.refreshSubscription();
-            console.log('[Auth] Subscription refreshed after Google login.');
-        } catch (subErr) {
-            console.warn('[Auth] Could not refresh subscription after Google login:', subErr);
-        }
+        try { await subscription.refreshSubscription(); } catch (e) {}
 
         return {
             ok: true,
-            isNewUser: status === 'NEW_ACCOUNT',
-            user
+            isNewUser: successStatus === 'NEW_ACCOUNT',
+            user,
         };
     }
 
@@ -905,107 +887,50 @@ export async function loginWithGoogle(idToken) {
 /**
  * Complete the account-linking flow.
  *
- * Strict backend validator:
- *   v.object({
- *     linkToken:         v.string(),
- *     password:          v.string(),
- *     deviceFingerprint: v.string(),
- *     deviceInfo:        v.optional(v.any()),
- *   })
- *
- * Extra params passed by page callers (identifier, idToken, googleSub) are
- * intentionally ignored and never forwarded to the backend.
- *
- * Success response (flat user fields):
- *   { success: true, status: "ACCOUNT_LINKED",
- *     data: { token, userId, name, email, username, displayName, sessionId } }
- *
- * @param {Object} params
- * @param {string}  params.linkToken          - Opaque token from googleSignIn.
- * @param {string}  params.password           - Password for the existing account.
- * @param {string} [params.deviceFingerprint] - Reused from loginWithGoogle.
- * @param {Object} [params.deviceInfo]        - Reused from loginWithGoogle.
- * @returns {Promise<Object>} Result with `ok: true` and `user`.
+ * Backend expects: { linkToken, password, deviceId, deviceInfo }
  */
 export async function linkGoogleAccount({
     linkToken,
     password,
-    deviceFingerprint,
-    deviceInfo
-    // Extra params passed by callers (identifier, idToken, googleSub, …)
-    // are intentionally ignored and never forwarded to the backend.
+    deviceId,
+    deviceInfo,
 }) {
     requireOnline();
 
-    if (!password) {
-        throw new Error('Password is required to link your account.');
-    }
-    if (!linkToken) {
-        console.error('[Auth] linkGoogleAccount called without linkToken');
-        throw new Error('Missing link token. Please sign in with Google again.');
-    }
+    if (!password) throw new Error('Password is required to link your account.');
+    if (!linkToken) throw new Error('Missing link token. Please sign in with Google again.');
 
-    // Resolve device identity — prefers the caller-supplied fingerprint,
-    // falls back to the stored one, then to a freshly generated one.
-    const fallback = buildDeviceIdentity();
-    const fingerprint = (deviceFingerprint && String(deviceFingerprint).trim().length > 0)
-        ? deviceFingerprint
-        : fallback.deviceFingerprint;
-
+    const fallback = await buildDeviceIdentity();
+    const effectiveDeviceId = deviceId || fallback.deviceId;
     const info = (deviceInfo && typeof deviceInfo === 'object')
-        ? { platform: deviceInfo.platform || 'web' }
-        : { platform: 'web' };
+        ? deviceInfo
+        : fallback.deviceInfo;
 
-    // ------------------------------------------------------------
-    // STRICT PAYLOAD — only the four fields the backend accepts.
-    // ------------------------------------------------------------
     const payload = {
         linkToken,
         password,
-        deviceFingerprint: fingerprint,
-        deviceInfo: info
+        deviceId: effectiveDeviceId,
+        deviceInfo: info,
     };
 
-    console.log('[Auth] linkGoogleAccount → sending payload keys:', Object.keys(payload));
-
-    const result = await convexHttpClient.action(
-        'auth/actions:linkGoogleAccount',
-        payload
-    );
+    const result = await convexHttpClient.action('auth/actions:linkGoogleAccount', payload);
 
     if (!result || !result.success) {
-        throw new Error(result?.reason || result?.message || 'Account linking failed');
+        throw new Error(result?.message || 'Account linking failed');
     }
 
     const data = result.data || {};
-
-    // Normalize the flat response
     const user = normalizeUser(data);
 
     setToken(data.token);
-    if (data.sessionId) {
-        utils.setLocalStorage('sessionId', data.sessionId);
-    }
+    if (data.sessionId) utils.setLocalStorage('sessionId', data.sessionId);
+    if (user) await setUser(user);
+    if (effectiveDeviceId) security.setDeviceFingerprint(effectiveDeviceId);
 
-    if (user) {
-        await setUser(user);
-    } else {
-        console.error('[Auth] Account linking succeeded but no user data found.', data);
-    }
-
-    // Persist the fingerprint so future requests share the same device identity
-    if (fingerprint) {
-        security.setDeviceFingerprint(fingerprint);
-    }
+    clearStoredReferralCode();
 
     await sync.syncUserData();
-
-    try {
-        await subscription.refreshSubscription();
-        console.log('[Auth] Subscription refreshed after Google account linking.');
-    } catch (subErr) {
-        console.warn('[Auth] Could not refresh subscription after Google account linking:', subErr);
-    }
+    try { await subscription.refreshSubscription(); } catch (e) {}
 
     return { ok: true, user };
 }
@@ -1030,6 +955,14 @@ window.auth = {
     extendSession,
     getToken,
     isTokenValid,
+
+    // ---- Device management (new names) ----
+    listActiveDevices,
+    removeOtherDevice,
+    removeOtherDevices,
+    removeDeviceAndContinue,
+
+    // ---- Device management (deprecated aliases) ----
     getDevices,
     logoutDevice,
     logoutAllDevices,
@@ -1038,7 +971,7 @@ window.auth = {
     loginWithGoogle,
     linkGoogleAccount,
 
-    // ---- Token / User (used by app.js and other modules) ----
+    // ---- Token / User ----
     setToken,
     clearToken,
     getUser,
@@ -1046,5 +979,5 @@ window.auth = {
     initUser,
     fallbackLoadUser,
     clearUser,
-    checkAuth
+    checkAuth,
 };

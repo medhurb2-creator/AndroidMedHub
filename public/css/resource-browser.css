@@ -28,6 +28,13 @@
     --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
     --radius: 12px;
     --header-height: 130px;   /* 3 header rows */
+
+    /* Safe-area insets — resolved to real values on Android/iOS with
+       viewport-fit=cover, zero elsewhere. */
+    --safe-top:    env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left:   env(safe-area-inset-left, 0px);
+    --safe-right:  env(safe-area-inset-right, 0px);
 }
 
 body.dark-theme {
@@ -48,7 +55,7 @@ body {
 }
 
 /* ============================================================
-   FIXED HEADER (3 rows)
+   FIXED HEADER (3 rows) — resource browser
    ============================================================ */
 .fixed-header {
     position: fixed;
@@ -59,14 +66,13 @@ body {
     background: var(--bg-card);
     border-bottom: 1px solid var(--border);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-    padding: 0.3rem 0.8rem;
+    padding: calc(0.3rem + var(--safe-top)) calc(0.8rem + var(--safe-right))
+             0.3rem calc(0.8rem + var(--safe-left));
     transition: background 0.2s;
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
 }
 
-/* Common's .header-row provides display:flex + justify-content:space-between
-   + align-items:center. Page adds padding + min-height. */
 .header-row {
     padding: 0.2rem 0;
     min-height: 36px;
@@ -142,7 +148,6 @@ body {
     outline: none;
     transition: border-color 0.2s;
 }
-/* Block common's input:focus blue ring — page only wants border color change. */
 .search-filter-row input[type="text"]:focus {
     border-color: var(--accent);
     box-shadow: none;
@@ -206,9 +211,10 @@ body {
    MAIN CONTENT (offset for fixed header)
    ============================================================ */
 .main-with-header {
-    padding-top: calc(var(--header-height) + 0.5rem);
-    padding-left: 0.5rem;
-    padding-right: 0.5rem;
+    padding-top: calc(var(--header-height) + 0.5rem + var(--safe-top));
+    padding-left: calc(0.5rem + var(--safe-left));
+    padding-right: calc(0.5rem + var(--safe-right));
+    padding-bottom: calc(0.5rem + var(--safe-bottom));
     max-width: 1400px;
     margin: 0 auto;
 }
@@ -489,7 +495,6 @@ body {
 /* ============================================================
    NO DATA / LOAD MORE
    ============================================================ */
-/* Override common's .no-data padding (2rem 1rem → 2rem) */
 .no-data {
     padding: 2rem;
     grid-column: 1 / -1;
@@ -538,28 +543,52 @@ body {
     .resource-grid { grid-template-columns: repeat(5, 1fr); gap: 1.2rem; }
 }
 
-/* ============================================================
+/* ==========================================================================
    EMBEDDED VIEWER — scoped to #viewer
-   ============================================================ */
+   ==========================================================================
+   Boundary rules this section implements:
+     • The page canvas is the PAGE. Nothing clips it, nothing constrains it.
+       The wrapper is a transparent positioning context only.
+     • #viewer-main scrolls on BOTH axes so zoomed / landscape pages are
+       fully reachable (360° pan in scroll mode; PanManager handles page mode).
+     • The outline drawer is a full-height sidebar overlaying the main area
+       (below the header, above the footer) with a dimmed scrim behind it.
+     • Safe-area insets keep chrome clear of notches, punch-holes, and the
+       Android gesture bar.
+   ========================================================================== */
+
+#viewer {
+    position: relative;
+}
+
 #viewer .viewer-container {
-    display: flex;
-    flex-direction: column;
+    /* Grid: header / main / footer rows. Drawer + scrim share the main
+       cell via grid-area so they inherit the exact same vertical bounds. */
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas:
+        "header"
+        "main"
+        "footer";
     height: 100vh;
     width: 100vw;
     background: var(--bg-primary);
     position: relative;
+    overflow: hidden;
 }
 
 /* ---------- Header ---------- */
 #viewer .viewer-header {
+    grid-area: header;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0.5rem 0.8rem;
+    padding: calc(0.5rem + var(--safe-top)) calc(0.8rem + var(--safe-right))
+             0.5rem calc(0.8rem + var(--safe-left));
     background: var(--bg-card);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
-    z-index: 10;
+    z-index: 20;
     gap: 0.3rem;
 }
 #viewer .viewer-header .left-group {
@@ -591,14 +620,19 @@ body {
     font-size: 1.2rem;
     cursor: pointer;
     padding: 0.2rem 0.4rem;
-    min-height: 36px;
+    min-height: 40px;
+    min-width: 40px;
     display: flex;
     align-items: center;
     justify-content: center;
+    border-radius: 6px;
+    transition: background 0.15s;
 }
 #viewer .btn-icon:hover {
     background: var(--bg-secondary);
-    border-radius: 4px;
+}
+#viewer .btn-icon:active {
+    background: var(--border);
 }
 #viewer .btn-back {
     display: inline-flex;
@@ -611,76 +645,102 @@ body {
     padding: 0.2rem 0.6rem;
     border-radius: 20px;
     cursor: pointer;
-    min-height: 32px;
+    min-height: 36px;
     white-space: nowrap;
 }
 #viewer .btn-back:hover {
-    background: var(--bg-hover, #3a3a4e);
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
 }
 
-/* ---------- Main viewing area ---------- */
+/* ---------- Main viewing area ----------
+   360° scroll: both axes scrollable. touch-action: pan-x pan-y lets the
+   browser handle touch scrolling natively — no preventDefault needed for
+   simple scrolls. Pinch zoom is handled by GestureManager and calls
+   preventDefault only on the two-finger touchmove path. */
 #viewer .viewer-main {
-    flex: 1;
+    grid-area: main;
     overflow: auto;
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
-    padding: 0.5rem;
+    overflow-x: auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    display: block;                 /* NOT flex — centered content clips under overflow */
+    padding: calc(0.5rem + var(--safe-top) * 0)
+             calc(0.5rem + var(--safe-right))
+             calc(0.5rem + var(--safe-bottom))
+             calc(0.5rem + var(--safe-left));
     background: var(--bg-primary);
     position: relative;
-    touch-action: none;
+    box-sizing: border-box;
+    touch-action: pan-x pan-y;
+    overscroll-behavior: contain;
+    /* Suppress native long-press callout so it doesn't fight gestures.
+       Text selection is re-enabled when a text layer is present. */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
 }
-#viewer .viewer-main.scroll-view {
-    overflow-y: auto;
-    overflow-x: hidden;
-    align-items: flex-start;
-    touch-action: pan-y;
-}
-#viewer .viewer-main.page-view {
-    overflow: hidden;
-    align-items: center;
-    justify-content: center;
-    touch-action: none;
+/* Text layer (when present) re-enables selection. */
+#viewer .viewer-main .textLayer,
+#viewer .viewer-main .textLayer * {
+    -webkit-user-select: text;
+    user-select: text;
 }
 
-/* ---------- Page container & canvas wrappers ----------
-   Block common's `.page-container { max-width: 1200px; margin: 0 auto;
-   padding: 0 1.5rem }` which would otherwise constrain JS-injected PDF
-   page containers inside the viewer. */
+/* ---------- Page container ----------
+   Vertical stack of pages, centered horizontally when there is room,
+   growing past the viewport when zoomed. min-content lets the container
+   widen to fit the widest page so #viewer-main's horizontal scrollbar
+   appears when needed. */
 #viewer .page-container {
     display: flex;
     flex-direction: column;
     align-items: center;
-    width: auto;
-    min-width: 0;
-    gap: 0.5rem;
-    transform-origin: 0 0;
-    will-change: transform;
+    gap: 0.75rem;
+    margin: 0 auto;
+    width: fit-content;
+    min-width: min-content;
+    min-height: min-content;
+    /* No transform-origin, no will-change. Transform-based zoom was removed:
+       the wrapper now sizes itself to the canvas, and #viewer-main scrolls. */
     max-width: none;
-    margin: 0;
     padding: 0;
 }
+
+/* ---------- Canvas wrapper ----------
+   THE most important rule in this file.
+   NO content-visibility. NO contain. NO overflow: hidden. NO fixed
+   dimensions. Any of those turn the page into a fixed window that clips a
+   zoomed canvas — which was the original bug.
+   The wrapper's size is driven by the canvas inside it (set in
+   core.js::_onRenderComplete). It exists only to:
+     1. Reserve space before the first render completes.
+     2. Provide a positioning context for search-highlight overlays. */
 #viewer .page-container .canvas-wrapper {
-    background: white;
+    background: #ffffff;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     border-radius: 4px;
-    overflow: visible;
-    width: fit-content;
-    max-width: none;
+    /* Deliberately NOT setting width/height/overflow/contain here.
+       The wrapper's size is inline-written by core.js. */
     position: relative;
+    max-width: none;
+    /* Block Android long-press callout on the page itself. */
+    -webkit-touch-callout: none;
 }
+
 #viewer .page-container canvas {
     display: block;
     max-width: none;
     height: auto;
 }
+
 #viewer .viewer-main img {
     max-width: none;
     max-height: none;
     object-fit: contain;
     transform-origin: center center;
-    touch-action: none;
-    will-change: transform;
+    touch-action: pan-x pan-y;
 }
 
 /* ---------- Text layer & search highlight ---------- */
@@ -713,15 +773,19 @@ body {
 
 /* ---------- Footer ---------- */
 #viewer .viewer-footer {
+    grid-area: footer;
     background: var(--bg-card);
     border-top: 1px solid var(--border);
-    padding: 0.4rem 1rem;
+    padding: 0.4rem calc(1rem + var(--safe-right))
+             calc(0.4rem + var(--safe-bottom))
+             calc(1rem + var(--safe-left));
     display: flex;
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
     gap: 0.5rem;
     flex-shrink: 0;
+    z-index: 20;
 }
 #viewer .page-nav {
     display: flex;
@@ -736,7 +800,8 @@ body {
     padding: 0.2rem 0.7rem;
     border-radius: 20px;
     cursor: pointer;
-    min-height: 32px;
+    min-height: 36px;
+    min-width: 36px;
 }
 #viewer .page-nav button:disabled {
     opacity: 0.4;
@@ -752,7 +817,195 @@ body {
     text-align: center;
 }
 
-/* ---------- Search bar ---------- */
+/* ── Search panel (inside the drawer) ─────────────────────────────── */
+#viewer .outline-drawer[data-panel="search"] {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+#viewer .search-panel-header {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+#viewer .search-panel-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  outline: none;
+}
+#viewer .search-panel-input:focus {
+  border-color: var(--accent);
+}
+#viewer .search-panel-options {
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+#viewer .search-panel-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  cursor: pointer;
+}
+#viewer .search-panel-count {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+#viewer .search-panel-results {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem 0;
+}
+#viewer .search-panel-empty {
+  padding: 1.5rem 1rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-align: center;
+}
+#viewer .search-panel-group {
+  margin-bottom: 0.5rem;
+}
+#viewer .search-panel-group-header {
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+#viewer .search-panel-result {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.15s;
+  line-height: 1.35;
+}
+#viewer .search-panel-result:hover {
+  background: var(--bg-secondary);
+}
+#viewer .search-panel-result.active {
+  background: var(--accent);
+  color: #fff;
+}
+#viewer .search-panel-snippet {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── More panel (inside the drawer) ───────────────────────────────── */
+#viewer .outline-drawer[data-panel="more"] {
+  padding: 1rem;
+}
+#viewer .more-section {
+  margin-bottom: 1.5rem;
+}
+#viewer .more-section h4 {
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+#viewer .more-info-list {
+  margin: 0;
+  font-size: 0.85rem;
+}
+#viewer .more-info-list dt {
+  color: var(--text-muted);
+  margin-top: 0.5rem;
+  font-weight: 500;
+}
+#viewer .more-info-list dt:first-child {
+  margin-top: 0;
+}
+#viewer .more-info-list dd {
+  margin: 0.15rem 0 0;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+#viewer .more-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+#viewer .more-action-btn {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, border-color 0.15s;
+}
+#viewer .more-action-btn:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+#viewer .more-hint {
+  padding: 0.6rem 0.75rem;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+/* ── Outline links ────────────────────────────────────────────────── */
+#viewer .outline-root {
+  padding: 0.5rem 0;
+}
+#viewer .outline-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+#viewer .outline-list .outline-list {
+  padding-left: 1rem;
+}
+#viewer .outline-item {
+  margin: 0;
+}
+#viewer .outline-link {
+  display: block;
+  padding: 0.5rem 0.75rem;
+  color: var(--text-primary);
+  text-decoration: none;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+#viewer .outline-link:hover {
+  background: var(--bg-secondary);
+}
+#viewer .outline-item.level-1 > .outline-link { padding-left: 1rem; }
+#viewer .outline-item.level-2 > .outline-link { padding-left: 2rem; }
+#viewer .outline-item.level-3 > .outline-link { padding-left: 3rem; }
+/* ---------- Search bar (inline in the header) ---------- */
 #viewer .search-bar {
     display: none;
     align-items: center;
@@ -778,34 +1031,95 @@ body {
     min-width: 40px;
 }
 
-/* ---------- Outline drawer ---------- */
+/* ---------- Outline / Search / More DRAWER ----------
+   Full-height sidebar overlaying the page area (below header, above
+   footer) thanks to grid-area: main. Closed state pushes it fully off the
+   left edge; open state slides it in.
+   Width: 80vw on narrow phones, capped at 320px on wide screens — matches
+   Material Design's navigation drawer spec. */
 #viewer .outline-drawer {
-    position: absolute;
-    top: 100%;
-    left: 0;
+    grid-area: main;
+    z-index: 40;
+    width: 80vw;
+    max-width: 320px;
+    min-width: 240px;
     background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 0 0 8px 8px;
-    box-shadow: var(--shadow);
-    max-height: 60vh;
+    border-right: 1px solid var(--border);
+    box-shadow: 2px 0 12px rgba(0, 0, 0, 0.12);
+    transform: translateX(-100%);
+    transition: transform 250ms cubic-bezier(0.4, 0.0, 0.2, 1);
     overflow-y: auto;
-    min-width: 200px;
-    z-index: 20;
-    display: none;
-    padding: 0.3rem 0;
+    overflow-x: hidden;
+    pointer-events: none;
+    box-sizing: border-box;
+    padding: 0.5rem 0;
+    will-change: transform;
 }
-#viewer .outline-drawer.open { display: block; }
+#viewer .outline-drawer.open {
+    transform: translateX(0);
+    pointer-events: auto;
+}
+/* When the drawer opens, prevent body scroll if it ever appears on the
+   page container (defensive; usually not needed since drawer is grid item). */
+#viewer .outline-drawer.open ~ .viewer-main { overflow: hidden; }
+
+/* Drawer content: outline items */
 #viewer .outline-drawer .outline-item {
-    padding: 0.4rem 1rem;
+    display: block;
+    padding: 0.6rem 1rem;
     cursor: pointer;
-    font-size: 0.85rem;
+    font-size: 0.9rem;
     color: var(--text-primary);
     border-bottom: 1px solid var(--border-light);
+    text-decoration: none;
+    line-height: 1.35;
 }
 #viewer .outline-drawer .outline-item:hover { background: var(--bg-secondary); }
-#viewer .outline-drawer .outline-item .level-1 { padding-left: 0.5rem; }
-#viewer .outline-drawer .outline-item .level-2 { padding-left: 1.5rem; }
-#viewer .outline-drawer .outline-item .level-3 { padding-left: 2.5rem; }
+#viewer .outline-drawer .outline-list { list-style: none; margin: 0; padding: 0; }
+#viewer .outline-drawer .outline-list .outline-list { padding-left: 1rem; }
+#viewer .outline-drawer .outline-empty {
+    padding: 1.5rem 1rem;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+/* Drawer panel variants — same shell, different content. */
+#viewer .outline-drawer[data-panel="search"] {
+    padding: 0.75rem;
+}
+#viewer .outline-drawer[data-panel="search"] input {
+    width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+}
+#viewer .outline-drawer[data-panel="search"] .search-results {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-top: 0.5rem;
+}
+
+/* ---------- Scrim (dimmed backdrop behind an open drawer) ----------
+   Same grid cell as the drawer, one layer below it. Tap anywhere on it
+   closes the drawer. Handled by ui-internal.js. */
+#viewer-drawer-scrim {
+    grid-area: main;
+    z-index: 35;
+    background: rgba(0, 0, 0, 0.4);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 250ms ease;
+}
+#viewer-drawer-scrim.open {
+    opacity: 1;
+    pointer-events: auto;
+}
 
 /* ---------- Loading ---------- */
 #viewer .loading-container {
@@ -820,6 +1134,26 @@ body {
     border-radius: 50%;
     animation: spin 1s linear infinite;
     margin: 0 auto 1rem;
+}
+#viewer .viewer-loading-dots {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    font-size: 2rem;
+    color: var(--text-secondary, #888);
+    gap: 0.25rem;
+}
+#viewer .viewer-loading-dots span {
+    animation: viewer-dot-bounce 1.4s infinite ease-in-out both;
+    display: inline-block;
+}
+#viewer .viewer-loading-dots span:nth-child(1) { animation-delay: 0s; }
+#viewer .viewer-loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+#viewer .viewer-loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes viewer-dot-bounce {
+    0%, 80%, 100% { transform: translateY(0); }
+    40% { transform: translateY(-0.5em); }
 }
 
 /* ---------- Error / unsupported ---------- */
@@ -847,7 +1181,7 @@ body {
     color: var(--text-muted);
 }
 #viewer .page-counter input[type="number"] {
-    width: 44px;
+    width: 48px;
     text-align: center;
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -855,8 +1189,8 @@ body {
     color: var(--text-primary);
     padding: 0.2rem 0;
     font-size: 0.85rem;
-    min-height: 28px;
-    -moz-appearance: textfield;      /* Firefox */
+    min-height: 32px;
+    -moz-appearance: textfield;
 }
 #viewer .page-counter input[type="number"]::-webkit-inner-spin-button,
 #viewer .page-counter input[type="number"]::-webkit-outer-spin-button {
@@ -868,4 +1202,128 @@ body {
     color: var(--text-muted);
     margin: 0;
     cursor: default;
+}
+
+/* ---------- Preview-mode CTA card ---------- */
+#viewer .viewer-preview-cta {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 3rem 1.5rem 5rem;
+    box-sizing: border-box;
+    width: 100%;
+}
+#viewer .viewer-preview-cta-inner {
+    max-width: 420px;
+    width: 100%;
+    text-align: center;
+    padding: 2rem 1.75rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+#viewer .viewer-preview-cta-icon {
+    font-size: 2.25rem;
+    line-height: 1;
+    margin-bottom: 0.5rem;
+}
+#viewer .viewer-preview-cta-title {
+    margin: 0 0 0.75rem;
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+#viewer .viewer-preview-cta-body {
+    margin: 0 0 1.25rem;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+#viewer .viewer-preview-cta-btn {
+    display: inline-block;
+    padding: 0.6rem 1.25rem;
+    border: none;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: filter 0.15s ease, transform 0.05s ease;
+}
+#viewer .viewer-preview-cta-btn:hover { filter: brightness(1.08); }
+#viewer .viewer-preview-cta-btn:active { transform: translateY(1px); }
+#viewer .viewer-preview-cta-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* ==========================================================================
+   MOBILE / TABLET ADJUSTMENTS
+   ========================================================================== */
+@media (max-width: 639px) {
+    #viewer .viewer-header {
+        padding-left: calc(0.4rem + var(--safe-left));
+        padding-right: calc(0.4rem + var(--safe-right));
+    }
+    #viewer .viewer-title { max-width: 45%; font-size: 0.85rem; }
+    #viewer .btn-icon { min-height: 44px; min-width: 44px; font-size: 1.3rem; }
+    #viewer .btn-back { min-height: 40px; font-size: 0.85rem; }
+
+    #viewer .viewer-main {
+        padding-left: calc(0.25rem + var(--safe-left));
+        padding-right: calc(0.25rem + var(--safe-right));
+        padding-bottom: calc(0.25rem + var(--safe-bottom));
+    }
+    #viewer .page-container { gap: 0.5rem; }
+    #viewer .page-container .canvas-wrapper { border-radius: 2px; 
+    content-visibility: auto;
+  contain-intrinsic-size: auto 800px;
+}
+
+    #viewer .viewer-footer {
+        padding-left: calc(0.6rem + var(--safe-left));
+        padding-right: calc(0.6rem + var(--safe-right));
+        font-size: 0.85rem;
+    }
+    #viewer .page-nav { gap: 0.6rem; }
+    #viewer .page-nav button,
+    #viewer .zoom-controls button {
+        min-height: 40px;
+        min-width: 40px;
+    }
+    #viewer #viewer-zoom-level { min-width: 44px; font-size: 0.85rem; }
+
+    #viewer .search-bar input { width: 90px; font-size: 0.85rem; }
+}
+
+/* Tablets — keep footer compact, allow drawer a bit wider. */
+@media (min-width: 640px) and (max-width: 1023px) {
+    #viewer .outline-drawer { width: 340px; max-width: 40vw; }
+}
+
+/* ==========================================================================
+   ACCESSIBILITY — reduced motion
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+    #viewer .outline-drawer,
+    #viewer-drawer-scrim,
+    #viewer .viewer-header,
+    #viewer .viewer-footer {
+        transition: none;
+    }
+}
+
+/* ==========================================================================
+   ORIENTATION — portrait vs landscape
+   ========================================================================== */
+@media (orientation: landscape) and (max-height: 500px) {
+    /* Short landscape: shrink the header so more page fits. */
+    #viewer .viewer-header {
+        padding-top: calc(0.3rem + var(--safe-top));
+        padding-bottom: 0.3rem;
+    }
+    #viewer .btn-icon { min-height: 36px; min-width: 36px; }
+    #viewer .viewer-footer { padding-top: 0.25rem; padding-bottom: 0.25rem; }
 }

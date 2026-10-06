@@ -1,13 +1,5 @@
-<section
-  class="page login-page"
-  data-page="login"
-  data-script="/scripts/pages/login.js"
-  data-style="/css/login.css"
-  data-title="Login"
-  data-auth="none"
-  data-cache="true"
-  data-transition="fade"
->
+<section class="page login-page" data-page="login" data-script="/scripts/pages/login.js" data-style="/css/login.css"
+  data-title="Login" data-auth="none" data-cache="true" data-transition="fade">
   <!-- ===== HEADER ===== -->
   <header>
     <div class="logo">
@@ -30,16 +22,15 @@
       <form id="login-form">
         <div class="form-group">
           <label for="email">Email or Phone (254...)</label>
-          <input type="text" id="email" name="email"
-            placeholder="e.g., 254712345678 or student@example.com"
+          <input type="text" id="email" name="email" placeholder="e.g., 254712345678 or student@example.com"
             autocomplete="username" required />
           <div class="error-message" data-for="email"></div>
         </div>
 
         <div class="form-group">
           <label for="password">Password</label>
-          <input type="password" id="password" name="password"
-            placeholder="••••••••" autocomplete="current-password" required />
+          <input type="password" id="password" name="password" placeholder="••••••••" autocomplete="current-password"
+            required />
           <button type="button" id="togglePassword" class="reveal-btn" aria-label="Toggle password visibility">
             👁️
           </button>
@@ -71,7 +62,32 @@
   <footer>
     <button id="backBtn" class="btn-text">← Back</button>
   </footer>
+  <!-- Device Limit Modal -->
+  <div id="device-limit-modal" class="modal-overlay" style="display: none;">
+    <div class="modal">
+      <h3 id="device-limit-title">Device limit reached</h3>
 
+      <div id="device-limit-message" class="device-limit-message"></div>
+
+      <!-- Path A: Remove a device (always shown) -->
+      <ul id="device-limit-list" class="device-limit-list"></ul>
+
+      <div id="device-limit-upgrade-section" class="device-limit-upgrade-section" style="display: none;">
+        <div class="device-limit-divider"><span>Or</span></div>
+        <p class="device-limit-upgrade-note">
+          Upgrade to the 2-device plan to stay signed in on both devices at the same time.
+        </p>
+        <button id="device-limit-upgrade" class="btn-primary">
+          Upgrade to 2-device plan
+        </button>
+      </div>
+
+      <div class="modal-actions">
+        <button id="device-limit-cancel" class="btn-secondary" style="display:none;">Cancel</button>
+        <button id="device-limit-close" class="btn-secondary" style="display:none;">Close</button>
+      </div>
+    </div>
+  </div>
   <!-- ============================================================
        Google account-linking modal
        (shown when the Google email already belongs to an existing account)
@@ -91,8 +107,7 @@
 
         <div class="form-group">
           <label for="google-link-password">MedVix password</label>
-          <input type="password" id="google-link-password"
-                 placeholder="••••••••" autocomplete="current-password" />
+          <input type="password" id="google-link-password" placeholder="••••••••" autocomplete="current-password" />
           <div class="error-message" data-for="google-link-password"></div>
         </div>
       </div>

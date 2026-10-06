@@ -2,8 +2,29 @@
 
 /**
  * Payment processing – Convex integration
- * Handles STK push initiation, status polling (with max attempts), manual claim,
- * and payment history management.
+ *
+ * Backend contract (unchanged):
+ *   • purchaseSubscription        → action  { token, planId, phoneNumber, deviceId,
+ *                                             deviceInfo, deviceCount, customAmount? }
+ *   • checkPaymentStatus          → ACTION  { token, transactionId }
+ *   • getPendingPaymentsByPhone   → ACTION  { token, phoneNumber }
+ *   • claimManualPayment          → action  { token, mpesaCode?, phoneNumber? }
+ *
+ * NEW: on a `completed` status, this module now:
+ *   1. Force-refreshes the subscription from the backend
+ *      (subscription.refreshSubscription()) so the cached expiry is
+ *      authoritative, not the locally-computed one.
+ *   2. Builds a receipt payload.
+ *   3. Emits it via:
+ *        a) a `payment:completed` CustomEvent on `window`
+ *        b) any callbacks registered via `Payment.onSuccess(cb)`
+ *        c) built-in DOM fallback: fills the `#receipt-modal` element if
+ *           present, wires its Continue button, and auto-navigates to
+ *           `subjects` after 10s.
+ *
+ * Pages that want to override the receipt UI should register a callback
+ * via `Payment.onSuccess(cb)` that returns a truthy value — the DOM
+ * fallback is then skipped.
  */
 
 import { convexHttpClient } from './convex-client.js';
@@ -11,6 +32,9 @@ import * as auth from './auth.js';
 import * as security from './security.js';
 import * as ui from './ui.js';
 import * as subscription from './subscription.js';
+import { navigateTo } from './router.js';
+
+const RECEIPT_AUTO_NAV_SECONDS = 10;
 
 // ==================== PLAN SELECTION ====================
 
@@ -57,6 +81,12 @@ class PaymentManager {
         this.paymentHistory = [];
         this.activePoll = null;
         this.isPolling = false;
+
+        // Receipt / success flow state
+        this.successCallbacks = [];
+        this._receiptCountdownTimer = null;
+        this._receiptNavTimeout = null;
+
         this.init();
     }
 
@@ -111,17 +141,26 @@ class PaymentManager {
             const token = auth.getToken();
             if (!token) throw new Error('Not authenticated');
 
-            const deviceFingerprint = security.getDeviceFingerprint();
-            const normalizedPhone = this.validatePhoneNumber(paymentData.phoneNumber) || paymentData.phoneNumber;
+            const { deviceId, deviceInfo } = await security.buildDeviceIdentity();
+            const normalizedPhone =
+                this.validatePhoneNumber(paymentData.phoneNumber) || paymentData.phoneNumber;
+
+            const planId = paymentData.planId || paymentData.plan;
+            const deviceCount = Math.max(1, Math.min(paymentData.deviceCount ?? 1, 2));
+            const isCustom = planId === 'custom';
 
             const actionArgs = {
                 token,
-                planName: paymentData.plan,
-                deviceFingerprint,
+                planId,
                 phoneNumber: normalizedPhone,
+                deviceId,
+                deviceInfo,
+                deviceCount,
             };
-
-            if (paymentData.plan === 'custom') {
+            if (isCustom) {
+                if (!paymentData.amount || paymentData.amount < 50) {
+                    throw new Error('Custom amount must be at least KES 50');
+                }
                 actionArgs.customAmount = paymentData.amount;
             }
 
@@ -132,22 +171,42 @@ class PaymentManager {
 
             if (!result.success) throw new Error(result.message);
 
-            const { paymentId, transactionId, status, message } = result.data;
+            const {
+                paymentId,
+                transactionId,
+                amount,
+                deviceCount: returnedCount,
+                status,
+                message,
+            } = result.data;
 
             const record = {
                 id: transactionId,
                 paymentId,
                 phoneNumber: paymentData.phoneNumber,
-                amount: paymentData.amount,
-                plan: paymentData.plan,
-                description: paymentData.description || `Subscription: ${paymentData.plan}`,
+                amount: amount ?? paymentData.amount,
+                plan: planId,
+                planName: paymentData.planName || this._humanPlan(planId),
+                durationText: paymentData.durationText || null,
+                deviceCount: returnedCount ?? deviceCount,
+                description:
+                    paymentData.description ||
+                    `Subscription: ${planId}`,
                 status: 'pending',
                 initiatedAt: new Date().toISOString(),
                 completedAt: null,
+                expiryDate: null,
                 mpesaReceipt: null,
-                userId: paymentData.userId || 'demo_user',
+                userId: auth.getUser()?._id || null,
+                // internal flags
+                _receiptHandled: false,
+                _receiptPayload: null,
             };
-            this.paymentStatus[transactionId] = { ...record, lastChecked: Date.now(), checkCount: 0 };
+            this.paymentStatus[transactionId] = {
+                ...record,
+                lastChecked: Date.now(),
+                checkCount: 0,
+            };
             this.paymentHistory.unshift(record);
             this.savePaymentHistory();
 
@@ -183,31 +242,50 @@ class PaymentManager {
                 { token, transactionId }
             );
 
-            if (!result.success) {
-                if (result.error === 'invalid_token' || result.message?.toLowerCase().includes('token')) {
+            if (!result?.success) {
+                if (
+                    result?.error === 'invalid_token' ||
+                    result?.message?.toLowerCase().includes('token')
+                ) {
                     console.warn('[Payment] Invalid token, logging out');
                     await auth.logout();
                     window.location.href = '/pages/login.html';
                     return { success: false, status: 'expired' };
                 }
-                throw new Error(result.message);
+                throw new Error(result?.message || 'Status check failed');
             }
 
             const { status, receipt, amount, updatedAt } = result.data;
 
-            if (this.paymentStatus[transactionId]) {
-                this.paymentStatus[transactionId].status = status;
-                this.paymentStatus[transactionId].mpesaReceipt = receipt;
-                this.paymentStatus[transactionId].updatedAt = updatedAt;
+            const record = this.paymentStatus[transactionId];
+            if (record) {
+                const prevStatus = record.status;
+                record.status = status;
+                record.mpesaReceipt = receipt;
+                record.updatedAt = updatedAt;
                 if (['completed', 'failed', 'expired'].includes(status)) {
-                    this.paymentStatus[transactionId].completedAt = new Date().toISOString();
+                    record.completedAt = record.completedAt || new Date().toISOString();
                 }
-                this.paymentStatus[transactionId].lastChecked = Date.now();
-                this.paymentStatus[transactionId].checkCount++;
-                const idx = this.paymentHistory.findIndex(p => p.id === transactionId);
+                record.lastChecked = Date.now();
+                record.checkCount++;
+
+                const idx = this.paymentHistory.findIndex((p) => p.id === transactionId);
                 if (idx !== -1) {
-                    this.paymentHistory[idx] = { ...this.paymentStatus[transactionId] };
+                    this.paymentHistory[idx] = { ...record };
                     this.savePaymentHistory();
+                }
+
+                // 🔔 Terminal success → kick off refresh + receipt (once)
+                if (
+                    status === 'completed' &&
+                    prevStatus !== 'completed' &&
+                    !record._receiptHandled
+                ) {
+                    // Fire-and-forget — the poll returns immediately with
+                    // the status; the receipt flow completes asynchronously.
+                    this._handleSuccessfulPayment(transactionId).catch((e) =>
+                        console.warn('[Payment] Post-success handler failed', e)
+                    );
                 }
             }
 
@@ -239,7 +317,6 @@ class PaymentManager {
         let attempts = 0;
         let timedOut = false;
         let cancelled = false;
-        let finalStatus = 'pending';
 
         const poll = async () => {
             if (cancelled) return;
@@ -255,7 +332,6 @@ class PaymentManager {
             }
 
             if (['completed', 'failed', 'expired'].includes(status)) {
-                finalStatus = status;
                 this.isPolling = false;
                 if (callbacks.onComplete) {
                     callbacks.onComplete({ status, payment, attempts, timedOut: false });
@@ -271,7 +347,10 @@ class PaymentManager {
                 if (callbacks.onComplete) {
                     callbacks.onComplete({ status, payment, attempts, timedOut: true });
                 }
-                ui.showToast('Payment status not confirmed after 150 seconds. Please check your M-Pesa app or contact support.', 'warning');
+                ui.showToast(
+                    'Payment status not confirmed after 150 seconds. Please check your M-Pesa app or contact support.',
+                    'warning'
+                );
             }
         };
 
@@ -300,9 +379,16 @@ class PaymentManager {
             const token = auth.getToken();
             if (!token) throw new Error('Not authenticated');
 
+            const payload = { token };
+            if (mpesaCode) payload.mpesaCode = mpesaCode;
+            if (phoneNumber) {
+                payload.phoneNumber =
+                    this.validatePhoneNumber(phoneNumber) || phoneNumber;
+            }
+
             const result = await convexHttpClient.action(
                 'payments/actions:claimManualPayment',
-                { token, mpesaCode, phoneNumber }
+                payload
             );
 
             if (!result.success) throw new Error(result.message);
@@ -323,12 +409,15 @@ class PaymentManager {
             const token = auth.getToken();
             if (!token) throw new Error('Not authenticated');
 
+            const normalized =
+                this.validatePhoneNumber(phoneNumber) || phoneNumber;
+
             const result = await convexHttpClient.action(
                 'payments/queries:getPendingPaymentsByPhone',
-                { token, phoneNumber }
+                { token, phoneNumber: normalized }
             );
 
-            if (!result.success) throw new Error(result.message);
+            if (!result?.success) throw new Error(result?.message || 'Failed');
             return result.data;
         } catch (error) {
             console.error('[Payment] Failed to fetch pending payments:', error);
@@ -337,26 +426,338 @@ class PaymentManager {
     }
 
     // ============================================================
-    // 7. LEGACY / HELPER METHODS
+    // 7. SUCCESS HOOK + RECEIPT FLOW
+    // ============================================================
+
+    /**
+     * Register a callback invoked when a payment completes.
+     *
+     * The callback receives the receipt payload. If it returns a truthy
+     * value (anything except `false`), the built-in DOM fallback is
+     * skipped — so pages that render their own receipt UI stay in control.
+     *
+     * @param {(receipt: Object) => any} callback
+     * @returns {Function} unsubscribe function
+     */
+    onSuccess(callback) {
+        if (typeof callback !== 'function') return () => {};
+        this.successCallbacks.push(callback);
+        return () => {
+            const i = this.successCallbacks.indexOf(callback);
+            if (i !== -1) this.successCallbacks.splice(i, 1);
+        };
+    }
+
+    /**
+     * Internal: fires once per transaction when the status first hits
+     * `completed`. Refreshes the subscription, builds the receipt,
+     * and dispatches to listeners / fallback.
+     */
+    async _handleSuccessfulPayment(transactionId) {
+        const payment = this.paymentStatus[transactionId];
+        if (!payment) return null;
+
+        // Idempotency — only run once per transaction
+        if (payment._receiptHandled) return payment._receiptPayload || null;
+        payment._receiptHandled = true;
+
+        // 1. Force-refresh subscription from backend
+        let freshSub = null;
+        try {
+            freshSub = await subscription.refreshSubscription();
+            if (!freshSub) freshSub = await subscription.getSubscription();
+        } catch (e) {
+            console.warn('[Payment] Force-refresh subscription failed; using cache', e);
+            try { freshSub = await subscription.getSubscription(); } catch (_) {}
+        }
+
+        // Persist fresh expiry onto the local record
+        if (freshSub?.expiryDate) {
+            payment.expiryDate = freshSub.expiryDate;
+        }
+
+        // 2. Build receipt payload
+        const payload = this.buildReceiptPayload(payment, freshSub);
+        payment._receiptPayload = payload;
+
+        // Persist again so history reflects the receipt snapshot
+        const idx = this.paymentHistory.findIndex((p) => p.id === transactionId);
+        if (idx !== -1) {
+            this.paymentHistory[idx] = { ...payment };
+            this.savePaymentHistory();
+        }
+
+        // 3. Notify listeners + optional DOM fallback
+        this._emitReceipt(payload);
+
+        return payload;
+    }
+
+    /**
+     * Build the receipt payload that gets handed to listeners / the
+     * built-in DOM renderer.
+     */
+    buildReceiptPayload(payment, subscriptionData) {
+        const devices = Number(
+            payment.deviceCount ?? subscriptionData?.devices ?? 1
+        );
+        const deviceLabel =
+            devices <= 1
+                ? '1 device · 📱'
+                : devices === 2
+                ? '2 devices · 📱 + 💻'
+                : `${devices} devices`;
+
+        const expiry = payment.expiryDate || subscriptionData?.expiryDate || null;
+        const completedAt = payment.completedAt || new Date().toISOString();
+
+        return {
+            transactionId: payment.id,
+            paymentId: payment.paymentId || null,
+            mpesaReceipt: payment.mpesaReceipt || null,
+            status: payment.status,
+            amount: Number(payment.amount) || 0,
+            amountLabel: `KES ${Number(payment.amount || 0).toLocaleString()}`,
+            planId: payment.plan,
+            planName: payment.planName || this._humanPlan(payment.plan),
+            durationText: payment.durationText || null,
+            phoneNumber: payment.phoneNumber,
+            phoneDisplay: this.formatPhoneDisplay(payment.phoneNumber),
+            completedAt,
+            dateLabel: new Date(completedAt).toLocaleString(),
+            devices,
+            deviceLabel,
+            expiryDate: expiry,
+            expiryLabel: expiry ? this._formatDateOnly(expiry) : '—',
+        };
+    }
+
+    _humanPlan(planId) {
+        if (!planId) return 'Subscription';
+        return String(planId).charAt(0).toUpperCase() + String(planId).slice(1);
+    }
+
+    _formatDateOnly(ts) {
+        if (!ts) return '—';
+        const d = ts instanceof Date ? ts : new Date(ts);
+        if (isNaN(d.getTime())) return '—';
+        return d.toLocaleDateString(undefined, {
+            year: 'numeric', month: 'short', day: 'numeric',
+        });
+    }
+
+    /**
+     * Dispatch the receipt to every consumer:
+     *   1. `payment:completed` CustomEvent on window
+     *   2. Registered `onSuccess` callbacks
+     *   3. Built-in DOM fallback (only if no callback handled it)
+     */
+    _emitReceipt(receipt) {
+        // 1. Global event
+        try {
+            window.dispatchEvent(new CustomEvent('payment:completed', { detail: receipt }));
+        } catch (e) {
+            /* extremely unlikely */
+        }
+
+        // 2. Registered callbacks
+        let handled = false;
+        for (const cb of this.successCallbacks.slice()) {
+            try {
+                const result = cb(receipt);
+                if (result !== false) handled = true;
+            } catch (e) {
+                console.warn('[Payment] onSuccess callback error', e);
+            }
+        }
+
+        // 3. DOM fallback
+        if (!handled) {
+            this._renderReceiptDom(receipt);
+        }
+    }
+
+    /**
+     * Fill in the built-in receipt modal if present in the DOM.
+     * Wires Continue + auto-navigate countdown. Falls back to
+     * a plain navigation if no modal exists.
+     */
+    _renderReceiptDom(receipt) {
+        const modal = document.getElementById('receipt-modal');
+        if (!modal) {
+            // No receipt UI — just navigate after a short pause
+            this._scheduleNavigation(800);
+            return;
+        }
+
+        const setText = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        };
+        setText('receipt-ref',      receipt.transactionId || '—');
+        setText('receipt-plan',     receipt.planName || '—');
+        setText('receipt-devices',  receipt.deviceLabel || '—');
+        setText('receipt-amount',   receipt.amountLabel || '—');
+        setText('receipt-duration', receipt.durationText || '—');
+        setText('receipt-expiry',   receipt.expiryLabel || '—');
+        setText('receipt-date',     receipt.dateLabel || '—');
+
+        modal.classList.add('show');
+        modal.setAttribute('aria-hidden', 'false');
+
+        // Continue button — clone to drop any prior listener
+        const continueBtn = document.getElementById('receiptContinueBtn');
+        if (continueBtn) {
+            const fresh = continueBtn.cloneNode(true);
+            continueBtn.parentNode.replaceChild(fresh, continueBtn);
+            fresh.addEventListener(
+                'click',
+                () => this._closeReceiptAndNavigate(),
+                { once: true }
+            );
+        }
+
+        // Auto-navigate countdown
+        this.cancelReceiptCountdown();
+        let remaining = RECEIPT_AUTO_NAV_SECONDS;
+        const countdownEl = document.getElementById('receipt-countdown');
+        const tick = () => {
+            if (countdownEl) countdownEl.textContent = `Continuing in ${remaining}s…`;
+        };
+        tick();
+
+        this._receiptCountdownTimer = setInterval(() => {
+            remaining -= 1;
+            if (remaining <= 0) {
+                this._closeReceiptAndNavigate();
+                return;
+            }
+            tick();
+        }, 1000);
+    }
+
+    _closeReceiptAndNavigate() {
+        this.cancelReceiptCountdown();
+        const modal = document.getElementById('receipt-modal');
+        if (modal) {
+            modal.classList.remove('show');
+            modal.setAttribute('aria-hidden', 'true');
+        }
+        this._scheduleNavigation(200);
+    }
+
+    _scheduleNavigation(delayMs = 150) {
+        if (this._receiptNavTimeout) clearTimeout(this._receiptNavTimeout);
+        this._receiptNavTimeout = setTimeout(() => {
+            this._receiptNavTimeout = null;
+            try {
+                navigateTo('subjects');
+            } catch (e) {
+                console.warn('[Payment] Navigation failed', e);
+            }
+        }, delayMs);
+    }
+
+    cancelReceiptCountdown() {
+        if (this._receiptCountdownTimer) {
+            clearInterval(this._receiptCountdownTimer);
+            this._receiptCountdownTimer = null;
+        }
+    }
+
+    /**
+     * Public: cancel the receipt flow (countdown + pending navigation).
+     * Call this from your page's `destroy()` to avoid stale timers.
+     */
+    cancelReceiptFlow() {
+        this.cancelReceiptCountdown();
+        if (this._receiptNavTimeout) {
+            clearTimeout(this._receiptNavTimeout);
+            this._receiptNavTimeout = null;
+        }
+        const modal = document.getElementById('receipt-modal');
+        if (modal) {
+            modal.classList.remove('show');
+            modal.setAttribute('aria-hidden', 'true');
+        }
+    }
+
+    /**
+     * Public: manually show the receipt for a given transaction.
+     * Useful for history views / re-print flows.
+     */
+    showReceipt(transactionId) {
+        const payment = this.paymentStatus[transactionId];
+        if (!payment) {
+            ui.showToast('Payment record not found', 'error');
+            return;
+        }
+
+        // If the payload already exists, just re-render
+        if (payment._receiptPayload) {
+            this._renderReceiptDom(payment._receiptPayload);
+            return;
+        }
+
+        // Otherwise trigger the full success flow
+        this._handleSuccessfulPayment(transactionId).catch((e) =>
+            console.warn('[Payment] showReceipt failed', e)
+        );
+    }
+
+    printReceipt(transactionId) {
+        const payment = this.paymentStatus[transactionId];
+        if (!payment) return;
+        const deviceCount = payment.deviceCount ?? 1;
+        const printContent = `
+            <html><head><title>Receipt</title><style>body{font-family:Arial;margin:20px}.row{display:flex;justify-content:space-between;margin:8px 0}.label{font-weight:bold}</style></head>
+            <body><div class="receipt"><h2>Medical Exam Room Pro</h2><h3>Payment Receipt</h3><p>${transactionId}</p>
+            <div class="row"><span class="label">Date:</span><span>${payment.completedAt ? new Date(payment.completedAt).toLocaleString() : 'Pending'}</span></div>
+            <div class="row"><span class="label">Amount:</span><span>KES ${Number(payment.amount).toFixed(2)}</span></div>
+            <div class="row"><span class="label">Plan:</span><span>${String(payment.plan).toUpperCase()}</span></div>
+            <div class="row"><span class="label">Devices:</span><span>${deviceCount}</span></div>
+            <div class="row"><span class="label">Phone:</span><span>${this.formatPhoneDisplay(payment.phoneNumber)}</span></div>
+            <div class="row"><span class="label">M-Pesa Receipt:</span><span>${payment.mpesaReceipt || 'N/A'}</span></div>
+            <div class="row"><span class="label">Status:</span><span style="color:green;font-weight:bold">${payment.status.toUpperCase()}</span></div>
+            <p>Thank you for your payment!</p></div></body></html>
+        `;
+        const win = window.open('', '_blank');
+        win.document.write(printContent);
+        win.document.close();
+        win.print();
+    }
+
+    // ============================================================
+    // 8. LEGACY / HELPER METHODS
     // ============================================================
     validatePaymentData(data) {
         const errors = [];
-        if (!data.phoneNumber) errors.push('Phone number is required');
-        else if (!this.validatePhoneNumber(data.phoneNumber)) {
+        if (!data.phoneNumber) {
+            errors.push('Phone number is required');
+        } else if (!this.validatePhoneNumber(data.phoneNumber)) {
             errors.push('Valid Kenyan phone number is required (format: 0712345678)');
         }
-        if (!data.amount || data.amount < 50) errors.push('Amount must be at least KES 50');
-        if (data.amount > 150000) errors.push('Amount cannot exceed KES 150,000');
-        if (!data.plan) errors.push('Subscription plan is required');
+        const planId = data.planId || data.plan;
+        if (!planId) {
+            errors.push('Subscription plan is required');
+        }
+        if (planId === 'custom') {
+            if (!data.amount || data.amount < 50) {
+                errors.push('Amount must be at least KES 50');
+            }
+            if (data.amount > 150000) {
+                errors.push('Amount cannot exceed KES 150,000');
+            }
+        }
         return { isValid: errors.length === 0, errors };
     }
 
-    async recordManualPayment(paymentData) {
+    async recordManualPayment() {
         console.warn('[Payment] recordManualPayment is deprecated; use claimManualPayment');
         return { success: false, message: 'Use claimManualPayment instead' };
     }
 
-    async processRefund(transactionId, reason) {
+    async processRefund() {
         console.warn('[Payment] Refunds not implemented');
         return { success: false, message: 'Refunds not supported yet' };
     }
@@ -364,13 +765,17 @@ class PaymentManager {
     getPaymentMethods() {
         return [
             { id: 'mpesa', name: 'M-Pesa', description: 'Mobile money payment', icon: '💰', available: true },
-            { id: 'cash', name: 'Cash', description: 'Manual cash payment (Buy Goods Till)', icon: '💵', available: true },
+            { id: 'cash',  name: 'Cash',   description: 'Manual cash payment (Buy Goods Till)', icon: '💵', available: true },
         ];
     }
 
-    getPlanDetails(planId) {
-        const plans = subscription.getSubscriptionPlans ? subscription.getSubscriptionPlans() : {};
-        return plans[planId] || null;
+    async getPlanDetails(planId) {
+        try {
+            const plans = await subscription.getSubscriptionPlans();
+            return plans.find((p) => p.id === planId) || null;
+        } catch {
+            return null;
+        }
     }
 
     calculateTaxAndFees(amount) {
@@ -382,51 +787,11 @@ class PaymentManager {
             vatRate,
             total: amount + vat,
             currency: 'KES',
-            breakdown: [{ name: 'Subscription', amount }, { name: 'VAT (16%)', amount: vat }],
+            breakdown: [
+                { name: 'Subscription', amount },
+                { name: 'VAT (16%)', amount: vat },
+            ],
         };
-    }
-
-    showReceipt(transactionId) {
-        const payment = this.paymentStatus[transactionId];
-        if (!payment) {
-            ui.showToast('Payment record not found', 'error');
-            return;
-        }
-        const receiptContent = `
-            <div class="receipt">
-                <div class="receipt-header"><h3>Payment Receipt</h3><p class="receipt-id">${transactionId}</p></div>
-                <div class="receipt-body">
-                    <div class="receipt-row"><span class="label">Status:</span><span class="value success">${payment.status.toUpperCase()}</span></div>
-                    <div class="receipt-row"><span class="label">Date:</span><span class="value">${payment.completedAt ? new Date(payment.completedAt).toLocaleString() : 'Pending'}</span></div>
-                    <div class="receipt-row"><span class="label">Amount:</span><span class="value">KES ${payment.amount.toFixed(2)}</span></div>
-                    <div class="receipt-row"><span class="label">Plan:</span><span class="value">${payment.plan.toUpperCase()}</span></div>
-                    <div class="receipt-row"><span class="label">Phone:</span><span class="value">${this.formatPhoneDisplay(payment.phoneNumber)}</span></div>
-                    <div class="receipt-row"><span class="label">M-Pesa Receipt:</span><span class="value">${payment.mpesaReceipt || 'N/A'}</span></div>
-                </div>
-                <div class="receipt-footer"><p>Thank you for your payment!</p></div>
-            </div>
-        `;
-        ui.showModal({ title: 'Payment Confirmation', content: receiptContent, size: 'medium' });
-    }
-
-    printReceipt(transactionId) {
-        const payment = this.paymentStatus[transactionId];
-        if (!payment) return;
-        const printContent = `
-            <html><head><title>Receipt</title><style>body{font-family:Arial;margin:20px}.row{display:flex;justify-content:space-between;margin:8px 0}.label{font-weight:bold}</style></head>
-            <body><div class="receipt"><h2>Medical Exam Room Pro</h2><h3>Payment Receipt</h3><p>${transactionId}</p>
-            <div class="row"><span class="label">Date:</span><span>${payment.completedAt ? new Date(payment.completedAt).toLocaleString() : 'Pending'}</span></div>
-            <div class="row"><span class="label">Amount:</span><span>KES ${payment.amount.toFixed(2)}</span></div>
-            <div class="row"><span class="label">Plan:</span><span>${payment.plan.toUpperCase()}</span></div>
-            <div class="row"><span class="label">Phone:</span><span>${this.formatPhoneDisplay(payment.phoneNumber)}</span></div>
-            <div class="row"><span class="label">M-Pesa Receipt:</span><span>${payment.mpesaReceipt || 'N/A'}</span></div>
-            <div class="row"><span class="label">Status:</span><span style="color:green;font-weight:bold">${payment.status.toUpperCase()}</span></div>
-            <p>Thank you for your payment!</p></div></body></html>
-        `;
-        const win = window.open('', '_blank');
-        win.document.write(printContent);
-        win.document.close();
-        win.print();
     }
 
     clearPaymentData() {
@@ -445,18 +810,27 @@ class PaymentManager {
 
     getPaymentSummary() {
         const total = this.paymentHistory.length;
-        const completed = this.paymentHistory.filter(p => p.status === 'completed').length;
-        const pending = this.paymentHistory.filter(p => p.status === 'pending').length;
-        const failed = this.paymentHistory.filter(p => p.status === 'failed' || p.status === 'expired').length;
+        const completed = this.paymentHistory.filter((p) => p.status === 'completed').length;
+        const pending = this.paymentHistory.filter((p) => p.status === 'pending').length;
+        const failed = this.paymentHistory.filter(
+            (p) => p.status === 'failed' || p.status === 'expired'
+        ).length;
         const totalAmount = this.paymentHistory
-            .filter(p => p.status === 'completed')
-            .reduce((sum, p) => sum + p.amount, 0);
-        return { total, completed, pending, failed, totalAmount, averageAmount: completed > 0 ? totalAmount / completed : 0 };
+            .filter((p) => p.status === 'completed')
+            .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+        return {
+            total,
+            completed,
+            pending,
+            failed,
+            totalAmount,
+            averageAmount: completed > 0 ? totalAmount / completed : 0,
+        };
     }
 
     handlePaymentError(error, transactionId) {
         console.error('[Payment] Error:', error);
-        let msg = error.message || 'Payment failed. Please try again.';
+        const msg = error.message || 'Payment failed. Please try again.';
         if (transactionId && this.paymentStatus[transactionId]) {
             this.paymentStatus[transactionId].status = 'failed';
             this.paymentStatus[transactionId].error = msg;
@@ -473,26 +847,40 @@ const Payment = new PaymentManager();
 
 /**
  * Initiate M‑Pesa payment using the currently selected plan.
- * @param {string} phoneNumber - M‑Pesa phone number (normalized)
- * @param {string} planId - plan identifier (e.g., 'monthly', 'quarterly', 'yearly', 'custom')
- * @returns {Promise<Object>} transaction details
+ *
+ * @param {string} phoneNumber    – M‑Pesa number (raw; will be normalized)
+ * @param {string} [planId]       – plan identifier (defaults to selected plan's id)
+ * @param {number} [devicesOverride] – 1 or 2 (overrides the plan's device count)
+ * @returns {Promise<{success:boolean, transactionId:string, paymentId:string}>}
  */
-export async function initiateMPesaPayment(phoneNumber, planId) {
+export async function initiateMPesaPayment(phoneNumber, planId, devicesOverride) {
     const plan = getSelectedPlan();
     if (!plan) {
         throw new Error('No plan selected. Please go back and choose a plan.');
     }
+
+    const effectivePlanId = planId || plan.id || 'monthly';
     const amount = plan.price;
+    const deviceCount = Math.max(
+        1,
+        Math.min(devicesOverride ?? plan.devices ?? 1, 2)
+    );
+
     if (!amount || amount <= 0) {
         throw new Error('Invalid plan amount');
     }
 
     const paymentData = {
         phoneNumber,
-        plan: planId,
+        planId: effectivePlanId,
+        plan: effectivePlanId, // legacy alias
         amount,
-        description: `Subscription: ${planId}`,
-        userId: auth.getUser()?._id || 'demo_user',
+        deviceCount,
+        planName: plan.name || effectivePlanId,
+        durationText: plan.durationText || null,
+        description: `Subscription: ${effectivePlanId} (${deviceCount} device${
+            deviceCount > 1 ? 's' : ''
+        })`,
     };
 
     const result = await Payment.initiateMpesaPayment(paymentData);
@@ -504,13 +892,11 @@ export async function initiateMPesaPayment(phoneNumber, planId) {
 }
 
 /**
- * Check payment status (wrapper).
+ * Check payment status (wrapper that returns just the status string).
  */
 export async function checkPaymentStatus(transactionId) {
     const result = await Payment.checkPaymentStatus(transactionId);
-    if (result.success) {
-        return result.status;
-    }
+    if (result.success) return result.status;
     return 'failed';
 }
 

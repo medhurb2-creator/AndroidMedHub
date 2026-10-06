@@ -8,7 +8,9 @@
   data-cache="true"
   data-transition="fade"
 >
-  <!-- ===== APP VIEW (Resource Browser) ===== -->
+  <!-- ============================================================
+       APP VIEW — Resource Browser
+       ============================================================ -->
   <div id="app">
     <header class="fixed-header">
       <div class="header-row">
@@ -42,8 +44,7 @@
 
     <main class="main-with-header">
       <div id="resource-grid" class="resource-grid">
-        <!-- 8 skeleton cards (the shimmer/loading will be replaced by JS) -->
-        <!-- The actual content is rendered by resource-browser.js -->
+        <!-- Rendered by resource-browser.js -->
       </div>
 
       <div id="load-more-container">
@@ -53,67 +54,213 @@
     </main>
   </div>
 
-  <!-- ===== VIEWER VIEW (Embedded) ===== -->
-  <div id="viewer" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 2000; background: var(--bg-primary);">
-    <div class="viewer-container" style="height: 100%; display: flex; flex-direction: column;">
+  <!-- ============================================================
+       VIEWER VIEW — Embedded document viewer
+
+       DOM contract with core.js / ui-internal.js / render.js:
+
+       .viewer-container is a 3-row CSS grid:
+         row 1  → .viewer-header    (header chrome)
+         row 2  → .viewer-main      (page canvas + scroll surface)
+         row 3  → .viewer-footer    (page nav, zoom controls)
+
+       Three nodes share grid-area:main and stack vertically:
+         #viewer-main           → z-index 1  (the page canvas + scroll surface)
+         #viewer-drawer-scrim   → z-index 35 (dim backdrop; tap to close)
+         #viewer-outline-drawer → z-index 40 (sidebar; slides in from left)
+
+       Because they share the same grid cell, the drawer automatically
+       spans exactly from the bottom of the header to the top of the
+       footer — no JS measurement of chrome heights required.
+
+       Static chrome nodes inside #viewer-main survive every document
+       switch (clearViewerContent preserves them by ID):
+         #viewer-loading       — spinner
+         #viewer-progress      — progress bar
+         #viewer-text-layer    — reserved text layer host
+         #viewer-content       — reserved alternate content host
+
+       The sidebar is a single shell that hosts three panels, selected
+       by the `data-panel` attribute:
+         data-panel="outline" → document outline (default)
+         data-panel="search"  → search input + results list
+         data-panel="more"    → document info + action buttons
+
+       ui-internal.js::_openSidebar(panel) sets the attribute and
+       dispatches to managers so the correct panel renders.
+       ============================================================ -->
+  <div id="viewer" style="display: none;">
+    <div class="viewer-container">
+
+      <!-- ─── Header ──────────────────────────────────────────────── -->
       <header class="viewer-header" id="viewer-header">
         <div class="left-group">
-          <button id="viewer-outline-btn" class="btn-icon" title="Document outline">☰</button>
-          <button id="viewer-back-btn" class="btn-back" aria-label="Back to resources">
+          <!-- Toggle 1: outline drawer -->
+          <button
+            id="viewer-outline-btn"
+            class="btn-icon"
+            type="button"
+            title="Document outline"
+            aria-label="Open document outline"
+            aria-controls="viewer-outline-drawer"
+            aria-expanded="false"
+          >☰</button>
+
+          <button id="viewer-back-btn" class="btn-back" type="button" aria-label="Back to resources">
             <span aria-hidden="true">←</span> Back
           </button>
-          <div class="viewer-title" id="viewer-title">Loading...</div>
+
+          <div class="viewer-title" id="viewer-title">Loading…</div>
         </div>
+
         <div class="right-group">
-          <button id="viewer-search-btn" class="btn-icon" title="Search">🔍</button>
-          <div class="search-bar" id="viewer-search-bar">
-            <input type="text" id="viewer-search-input" placeholder="Find..." autocomplete="off">
-            <span class="search-results" id="viewer-search-count"></span>
-            <button id="viewer-search-prev" class="btn-icon" title="Previous match">↑</button>
-            <button id="viewer-search-next" class="btn-icon" title="Next match">↓</button>
-            <div class="search-options" id="viewer-search-options">
-              <label><input type="checkbox" id="viewer-search-case"> Aa</label>
-              <label><input type="checkbox" id="viewer-search-whole"> “”</label>
-            </div>
-            <button id="viewer-search-close" class="btn-icon" title="Close search">✕</button>
-          </div>
-          <button id="viewer-toggle-view" class="btn-icon" title="Toggle view">📄 Page View</button>
-          <button id="viewer-open-local" class="btn-icon" title="Open local file">📂</button>
-          <button id="viewer-fullscreen-btn" class="btn-icon" title="Fullscreen">⛶</button>
+          <!-- Toggle 2: search drawer -->
+          <button
+            id="viewer-search-btn"
+            class="btn-icon"
+            type="button"
+            title="Search"
+            aria-label="Search document"
+            aria-controls="viewer-search-bar"
+            aria-expanded="false"
+          >🔍</button>
+
+          <!-- Toggle 3: more drawer (document info + actions) -->
+          <button
+            id="viewer-more-btn"
+            class="btn-icon"
+            type="button"
+            title="More"
+            aria-label="More options"
+            aria-controls="viewer-outline-drawer"
+            aria-expanded="false"
+          >⋮</button>
+
+          <!-- View mode toggle (page ↔ scroll). Not a drawer opener — it
+               switches the layout directly. -->
+          <button
+            id="viewer-toggle-view"
+            class="btn-icon"
+            type="button"
+            title="Toggle view mode"
+            aria-label="Toggle page or scroll view"
+          >📄 Page View</button>
+
+          <button id="viewer-open-local" class="btn-icon" type="button" title="Open local file" aria-label="Open local file">📂</button>
+          <button id="viewer-fullscreen-btn" class="btn-icon" type="button" title="Fullscreen" aria-label="Toggle fullscreen" aria-pressed="false">⛶</button>
         </div>
-        <!-- Outline drawer (populated by viewer.js) -->
-        <div class="outline-drawer" id="viewer-outline-drawer"></div>
       </header>
 
-      <main class="viewer-main" id="viewer-main">
-        <div class="loading-container" id="viewer-loading">
-          <div class="spinner"></div>
-          <p>Loading document...</p>
+      <!-- ─── Inline search bar ────────────────────────────────────
+           Legacy / header-embedded search input. In sidebar mode,
+           ui-internal hides this bar and opens the drawer's search
+           panel instead. The markup stays so the header UI keeps its
+           existing look on wide screens and in older code paths. -->
+      <div class="search-bar" id="viewer-search-bar" role="search">
+        <input
+          type="text"
+          id="viewer-search-input"
+          placeholder="Find…"
+          autocomplete="off"
+          aria-label="Search text"
+        >
+        <span class="search-results" id="viewer-search-count" aria-live="polite"></span>
+        <button id="viewer-search-prev" class="btn-icon" type="button" title="Previous match" aria-label="Previous match">↑</button>
+        <button id="viewer-search-next" class="btn-icon" type="button" title="Next match" aria-label="Next match">↓</button>
+        <div class="search-options" id="viewer-search-options">
+          <label><input type="checkbox" id="viewer-search-case"> Aa</label>
+          <label><input type="checkbox" id="viewer-search-whole"> “”</label>
         </div>
-        <progress id="viewer-progress" style="display: none; width: 80%; margin: 1rem auto;"></progress>
-      </main>
-
-      <div class="viewer-footer" id="viewer-footer" style="display: none;">
-<div class="page-nav">
-  <button id="viewer-prev-page" disabled>◀ Previous</button>
-  <div class="page-counter">
-    <label for="viewer-page-input">Page</label>
-    <input type="number" id="viewer-page-input" value="1" min="1" step="1">
-    <span>of <span id="viewer-page-count">1</span></span>
-  </div>
-  <button id="viewer-next-page" disabled>Next ▶</button>
-</div>
-        <div class="zoom-controls">
-          <button id="viewer-zoom-out" title="Zoom out">−</button>
-          <span id="viewer-zoom-level">100%</span>
-          <button id="viewer-zoom-in" title="Zoom in">+</button>
-          <button id="viewer-zoom-fit" title="Fit to width">⛶</button>
-          <button id="viewer-zoom-reset" title="Reset zoom">1:1</button>
-        </div>
+        <button id="viewer-search-close" class="btn-icon" type="button" title="Close search" aria-label="Close search">✕</button>
       </div>
 
-      <!-- Hidden file input for local files -->
-      <input type="file" id="viewer-file-input" class="file-input" accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.docx,.doc,.pptx,.ppt,.txt,.md">
+      <!-- ─── Main viewing area ──────────────────────────────────── -->
+      <main class="viewer-main" id="viewer-main" tabindex="-1">
+        <!-- Static chrome (preserved by clearViewerContent on destroy) -->
+        <div class="loading-container" id="viewer-loading">
+          <div class="spinner"></div>
+          <p>Loading document…</p>
+        </div>
+
+        <progress id="viewer-progress" style="display: none;" max="1" value="0"></progress>
+
+        <!-- Reserved: text layer host (populated when text selection is enabled) -->
+        <div id="viewer-text-layer" class="textLayer" aria-hidden="true"></div>
+
+        <!-- Reserved: alternate content host (image / text / office / unsupported) -->
+        <div id="viewer-content"></div>
+
+        <!-- Page containers and canvases are inserted here by core.js.
+             Nothing static goes after this point. -->
+      </main>
+
+      <!-- ─── Footer ─────────────────────────────────────────────── -->
+      <footer class="viewer-footer" id="viewer-footer" style="display: none;">
+        <div class="page-nav">
+          <button id="viewer-prev-page" type="button" disabled aria-label="Previous page">◀ Previous</button>
+          <div class="page-counter">
+            <label for="viewer-page-input">Page</label>
+            <input
+              type="number"
+              id="viewer-page-input"
+              value="1"
+              min="1"
+              step="1"
+              inputmode="numeric"
+              aria-label="Page number"
+            >
+            <span>of <span id="viewer-page-count">1</span></span>
+          </div>
+          <button id="viewer-next-page" type="button" disabled aria-label="Next page">Next ▶</button>
+        </div>
+
+        <div class="zoom-controls">
+          <button id="viewer-zoom-out" type="button" title="Zoom out" aria-label="Zoom out">−</button>
+          <span id="viewer-zoom-level" aria-live="polite">100%</span>
+          <button id="viewer-zoom-in" type="button" title="Zoom in" aria-label="Zoom in">+</button>
+          <button id="viewer-zoom-fit" type="button" title="Fit to width" aria-label="Fit to width">⛶</button>
+          <button id="viewer-zoom-reset" type="button" title="Reset zoom" aria-label="Reset zoom to 100%">1:1</button>
+        </div>
+      </footer>
+
+      <!-- ─── Drawer scrim (tap to close) ─────────────────────────
+           Shares grid-area:main with #viewer-main and #viewer-outline-drawer.
+           Sits at z-index 35 — below the drawer (40), above the page (1).
+           Tap-to-close is wired by ui-internal.js. -->
+      <div id="viewer-drawer-scrim" aria-hidden="true"></div>
+
+      <!-- ─── Drawer / sidebar ─────────────────────────────────────
+           One shell, multiple panels. `data-panel` selects which panel's
+           content is shown. ui-internal.js toggles `.open` and calls
+           managers.dispatchPanel(panel) to render the right panel.
+
+           Panels:
+             outline → document outline tree (nested hyperlinks)
+             search  → input + case/word toggles + result list
+             more    → document info + rotate/fit/print/download actions
+                     + keyboard shortcut reference (web only)
+
+           `role="complementary"` because the drawer hosts navigation,
+           search, AND informational panels — not just navigation. -->
+      <aside
+        class="outline-drawer"
+        id="viewer-outline-drawer"
+        data-panel="outline"
+        role="complementary"
+        aria-label="Viewer sidebar"
+        aria-hidden="true"
+        tabindex="-1"
+      ></aside>
+
+      <!-- ─── Hidden file input ────────────────────────────────────
+           Kept inside .viewer-container so it dies with the container.
+           display:none means it takes no grid cell. -->
+      <input
+        type="file"
+        id="viewer-file-input"
+        class="file-input"
+        accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.docx,.doc,.pptx,.ppt,.txt,.md"
+      >
     </div>
   </div>
 </section>
