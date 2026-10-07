@@ -12,6 +12,21 @@
  * Capacitor packages are loaded lazily. A pure web build that never installs
  * @capacitor/core or @capacitor/device works unchanged.
  *
+ * ─── DEVICEINFO SHAPE ─────────────────────────────────────────────────────
+ * deviceInfo is deliberately minimal. It exists to power the "which devices
+ * are logged in" list and nothing else. The five fields are:
+ *
+ *   platform    'android' | 'ios' | 'web' | 'windows'
+ *   model       "Samsung Galaxy S23" / "iPhone 14" / null
+ *   osName      "Android" | "iOS" | "Windows" | "macOS" | "Linux" | null
+ *   osVersion   "14" / "17.2" / null
+ *   appVersion  "2.4.1" / null
+ *
+ * Everything else the @capacitor/device plugin returns — manufacturer,
+ * architecture, isVirtual, webViewVersion, androidSDKVersion, battery,
+ * language — is intentionally dropped. If a future feature needs one of
+ * those, add it back here; do not re-broaden the default payload.
+ *
  * ─── @capacitor/device CONTRACT (verified via node_modules inspection) ────
  * The plugin exposes four asynchronous methods on the `Device` proxy:
  *
@@ -21,14 +36,14 @@
  *   Device.getLanguageCode()  → { value: string }
  *   Device.getLanguageTag()   → { value: string }
  *
- * DeviceInfo fields consumed below (from the plugin's TypeScript definitions):
- *   model, platform, operatingSystem, osVersion, manufacturer,
- *   isVirtual, webViewVersion, androidSDKVersion (Android only)
+ * Only getId() and getInfo() are used on the primary path. getBatteryInfo()
+ * is exposed via getBatteryInfo() below for on-demand callers, but is NOT
+ * part of initializeDevice() or buildDeviceIdentity().
  *
  * The plugin is auto-registered by the Capacitor bridge via the
  * @CapacitorPlugin(name = "Device") annotation on DevicePlugin.java — no
  * MainActivity.java edits are required. No AndroidManifest permissions are
- * needed: getInfo(), getBatteryInfo(), getId() all use public Android APIs.
+ * needed: getInfo() and getId() use public Android APIs.
  *
  * ─── FALLBACK CONTRACT ────────────────────────────────────────────────────
  * getDeviceId() and getDeviceInfo() are *total functions*. They never reject
@@ -76,10 +91,10 @@ const INFO_SOURCE_KEY = 'medvix.device.info.source';
 const ID_NAMESPACE = 'medvix.device.v1';
 
 // How long to wait for a native bridge call before giving up and using the
-// local fallback. Prevents the app from hanging if the WebView <-> Java
-// channel is unresponsive (misconfigured plugin, ProGuard stripping, missed
-// `npx cap sync android`, etc.).
-const NATIVE_TIMEOUT_MS = 3000;
+// local fallback. A healthy WebView <-> Java bridge answers in well under
+// 200 ms; 1.5 s is generous headroom and keeps the worst case small enough
+// to be absorbed by the boot splash even on a completely broken bridge.
+const NATIVE_TIMEOUT_MS = 1500;
 
 // Form guard for cached IDs. Anything else is treated as corrupt and re-derived.
 const MEDVIX_ID_RE = /^dv_[0-9a-f]{32}$/;
@@ -268,19 +283,13 @@ function fallbackDeviceInfo(platformTag, reason) {
     const osNameByPlatform = { android: 'Android', ios: 'iOS', windows: 'Windows' };
 
     return {
-        platform:        knownPlatform || 'web',
-        manufacturer:    null,
-        model:           null,
-        osName:          knownPlatform
-                             ? (osNameByPlatform[knownPlatform] ?? null)
-                             : detectWebOsName(),
-        osVersion:       null,
-        architecture:    null,
-        appVersion:      getAppVersion(),
-        browser:         knownPlatform ? null : detectBrowser(),
-        isVirtual:       null,
-        webViewVersion:  null,
-        androidSdkVersion: null,
+        platform:   knownPlatform || 'web',
+        model:      null,
+        osName:     knownPlatform
+                        ? (osNameByPlatform[knownPlatform] ?? null)
+                        : detectWebOsName(),
+        osVersion:  null,
+        appVersion: getAppVersion(),
         // Diagnostic fields — only present on the fallback path.
         _fallback:       true,
         _fallbackReason: reason || 'native-bridge-unavailable',
@@ -455,26 +464,14 @@ async function resolveDeviceInfo() {
         const Device = await loadDevicePlugin();
 
         if (Device?.getInfo) {
+            // Single bounded call. No supplementary battery/language queries
+            // — those were removed because the device-list UI does not use
+            // them, and they doubled the serial wait on a broken bridge.
             const info = await safeDeviceCall('Device.getInfo', () => Device.getInfo());
 
             if (info && typeof info === 'object') {
-                // Augment with battery + language via parallel calls. These
-                // are supplementary — failures do not poison the primary
-                // resolution.
-                const [battery, languageCode, languageTag] = await Promise.all([
-                    Device.getBatteryInfo
-                        ? safeDeviceCall('Device.getBatteryInfo', () => Device.getBatteryInfo())
-                        : Promise.resolve(null),
-                    Device.getLanguageCode
-                        ? safeDeviceCall('Device.getLanguageCode', () => Device.getLanguageCode())
-                        : Promise.resolve(null),
-                    Device.getLanguageTag
-                        ? safeDeviceCall('Device.getLanguageTag', () => Device.getLanguageTag())
-                        : Promise.resolve(null),
-                ]);
-
                 return {
-                    info:   normalizeCapacitorInfo(info, rt, { battery, languageCode, languageTag }),
+                    info:   normalizeCapacitorInfo(info, rt),
                     source: 'native',
                 };
             }
@@ -498,17 +495,18 @@ async function resolveDeviceInfo() {
 
 /**
  * Normalize the shape returned by @capacitor/device's Device.getInfo() into
- * the MedVix internal info object. Field names on the left match the plugin's
- * TypeScript definitions; field names on the right are MedVix's own.
+ * the minimal MedVix internal info object.
  *
- * Extra arguments (battery, languageCode, languageTag) are the results of the
- * supplementary Device.getBatteryInfo() / getLanguageCode() / getLanguageTag()
- * calls, each of which may be null if the call timed out or was unavailable.
+ * Only the five fields needed to render the "which devices are logged in"
+ * list are kept. Everything else the plugin returns — manufacturer,
+ * architecture, isVirtual, webViewVersion, androidSDKVersion, operatingSystem
+ * (redundant with platform), and the supplementary battery/language data — is
+ * intentionally dropped. If a future feature needs one of those, add it back
+ * here deliberately rather than re-broadening the default payload.
  */
-function normalizeCapacitorInfo(info, rt, extra = {}) {
-    const { battery, languageCode, languageTag } = extra;
-
+function normalizeCapacitorInfo(info, rt) {
     const osNameMap = { android: 'Android', ios: 'iOS' };
+
     // info.platform is the authoritative platform string from the plugin
     // ('android' | 'ios'). Fall back to `rt` (Capacitor.getPlatform()) if the
     // plugin omits it — should be identical.
@@ -518,85 +516,40 @@ function normalizeCapacitorInfo(info, rt, extra = {}) {
 
     return {
         platform,
-        manufacturer:      info.manufacturer      ?? null,
-        model:             info.model             ?? null,
-        osName:            osNameMap[platform]    ?? info.operatingSystem ?? null,
-        osVersion:         info.osVersion         ?? null,
-        architecture:      null,
-        appVersion:        getAppVersion(),
-        browser:           null,
-        // isVirtual === true indicates an emulator / simulator. Useful for
-        // analytics segmentation and licensing rules that distinguish
-        // physical devices from virtual ones.
-        isVirtual:         info.isVirtual         ?? null,
-        webViewVersion:    info.webViewVersion    ?? null,
-        // Android-only: API level of the device's Android SDK.
-        androidSdkVersion: info.androidSDKVersion ?? null,
-        // Supplementary fields (nullable — never assume populated).
-        batteryLevel:      battery?.batteryLevel  ?? null,
-        isCharging:        battery?.isCharging    ?? null,
-        languageCode:      languageCode?.value    ?? null,
-        languageTag:       languageTag?.value     ?? null,
+        model:      info.model     ?? null,
+        osName:     osNameMap[platform] ?? info.operatingSystem ?? null,
+        osVersion:  info.osVersion ?? null,
+        appVersion: getAppVersion(),
     };
 }
 
 function normalizeWindowsInfo() {
     return {
-        platform:          'windows',
-        manufacturer:      null,
-        model:             null,
-        osName:            'Windows',
-        osVersion:         null,
-        architecture:      null,
-        appVersion:        getAppVersion(),
-        browser:           null,
-        isVirtual:         null,
-        webViewVersion:    null,
-        androidSdkVersion: null,
+        platform:   'windows',
+        model:      null,
+        osName:     'Windows',
+        osVersion:  null,
+        appVersion: getAppVersion(),
     };
 }
 
 function normalizeWebInfo() {
     return {
-        platform:          'web',
-        manufacturer:      null,
-        model:             null,
-        osName:            detectWebOsName(),
-        osVersion:         null,
-        architecture:      null,
-        appVersion:        getAppVersion(),
-        browser:           detectBrowser(),
-        isVirtual:         null,
-        webViewVersion:    null,
-        androidSdkVersion: null,
-        // Web-only diagnostics.
-        userAgent:         navigator.userAgent,
-        language:          navigator.language,
-        cpuCores:          navigator.hardwareConcurrency ?? null,
-        deviceMemoryGb:    navigator.deviceMemory        ?? null,
-        screen:            `${screen.width}x${screen.height}`,
-        pixelRatio:        window.devicePixelRatio        ?? null,
-        timezoneOffsetMin: new Date().getTimezoneOffset(),
+        platform:   'web',
+        model:      null,
+        osName:     detectWebOsName(),
+        osVersion:  null,
+        appVersion: getAppVersion(),
     };
-}
-
-function detectBrowser() {
-    const ua = navigator.userAgent;
-    if (/Edg\//.test(ua))     return 'Edge';
-    if (/OPR\//.test(ua))     return 'Opera';
-    if (/Chrome\//.test(ua))  return 'Chrome';
-    if (/Firefox\//.test(ua)) return 'Firefox';
-    if (/Safari\//.test(ua))  return 'Safari';
-    return 'Unknown';
 }
 
 function detectWebOsName() {
     const ua = navigator.userAgent;
-    if (/Windows/.test(ua))         return 'Windows';
-    if (/Android/.test(ua))         return 'Android';
-    if (/iPhone|iPad|iPod/.test(ua))return 'iOS';
-    if (/Mac OS X/.test(ua))        return 'macOS';
-    if (/Linux/.test(ua))           return 'Linux';
+    if (/Windows/.test(ua))          return 'Windows';
+    if (/Android/.test(ua))          return 'Android';
+    if (/iPhone|iPad|iPod/.test(ua)) return 'iOS';
+    if (/Mac OS X/.test(ua))         return 'macOS';
+    if (/Linux/.test(ua))            return 'Linux';
     return null;
 }
 
@@ -607,6 +560,9 @@ function detectWebOsName() {
  * flow — call this lazily when the UI actually needs it (e.g. a power-save
  * banner). Returns null on web, on failure, or if the native bridge is
  * unavailable.
+ *
+ * Kept as an export so existing callers do not break. Not referenced by
+ * resolveDeviceInfo() or buildDeviceIdentity().
  */
 export async function getBatteryInfo() {
     const rt = await runtime();

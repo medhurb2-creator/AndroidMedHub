@@ -544,16 +544,21 @@ button:disabled {
     inset: 0;
     background-color: rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 1rem;
     z-index: 9999;
     transition: opacity 0.3s;
+    padding: 1.5rem;
 }
 .loading-overlay.hidden {
     opacity: 0;
     pointer-events: none;
 }
+
 .spinner {
     width: 48px;
     height: 48px;
@@ -561,6 +566,23 @@ button:disabled {
     border-top-color: #fff;
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+/* Label under the spinner. Always visible; text is swapped by ui.js
+   from "Loading..." to "Still working… slow connection." after 5 s. */
+.loading-label {
+    color: #ffffff;
+    font-size: 0.9rem;
+    font-weight: 500;
+    line-height: 1.4;
+    text-align: center;
+    max-width: 280px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    /* Reserve a line so the spinner doesn't jump when text appears */
+    min-height: 1.4em;
+    /* Smooth swap between the two messages */
+    transition: opacity 0.2s ease;
 }
 
 /* ---------- 14. Toast ---------- */

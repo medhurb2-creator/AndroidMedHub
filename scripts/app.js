@@ -56,6 +56,55 @@ async function importCapacitor() {
 }
 
 // ============================================================
+// DEVICE IDENTITY WARM-UP
+// ============================================================
+//
+// security/device.js resolves deviceId + deviceInfo lazily. The first
+// caller may hit the native bridge (up to NATIVE_TIMEOUT_MS) or fall
+// back to a locally-derived UUID. If that first caller is auth.login(),
+// the user stares at the spinner while the bridge is probed.
+//
+// warmDeviceIdentity() kicks off the same promise auth later awaits.
+// security/device.js dedupes via its internal _pendingId / _pendingInfo,
+// so calling this early costs nothing and the login path becomes a
+// synchronous cache hit.
+//
+// Fire-and-forget. Never throws. Idempotent — safe to call from both
+// bootstrap() and initializeApp().
+
+let _deviceWarmPromise = null;
+
+function warmDeviceIdentity() {
+    if (_deviceWarmPromise) return _deviceWarmPromise;
+
+    const t0 = (typeof performance !== 'undefined' && performance.now)
+        ? performance.now()
+        : Date.now();
+
+    _deviceWarmPromise = security.buildDeviceIdentity()
+        .then(({ deviceId, deviceInfo }) => {
+            const t1 = (typeof performance !== 'undefined' && performance.now)
+                ? performance.now()
+                : Date.now();
+            const ms = Math.round(t1 - t0);
+            console.log(
+                `[Device] Ready in ${ms}ms → ${deviceId}` +
+                (deviceInfo?.platform ? ` (${deviceInfo.platform})` : '')
+            );
+            return { deviceId, deviceInfo };
+        })
+        .catch((err) => {
+            // buildDeviceIdentity() is contractually total — it never
+            // rejects. If a future change breaks that, log and resolve
+            // to null so bootstrap never hangs on this.
+            console.warn('[Device] Warm-up failed:', err);
+            return null;
+        });
+
+    return _deviceWarmPromise;
+}
+
+// ============================================================
 // APP-LEVEL STATE
 // ============================================================
 let pendingAppUrl = null;
@@ -571,6 +620,12 @@ export async function initializeApp() {
     console.log('[App] Initializing...');
     updateProgress(5);
 
+    // Defensive warm-up. If some entry point calls initializeApp()
+    // without going through bootstrap(), device resolution still
+    // gets kicked off here. Idempotent — dedupes via the module-level
+    // _deviceWarmPromise and security/device.js's own _pendingId.
+    warmDeviceIdentity();
+
     try {
         // 1. Referral code detection
         if (!utils.getLocalStorage('accessToken')) {
@@ -670,6 +725,19 @@ window.addEventListener('time-tamper-detected', async () => {
 // ============================================================
 async function bootstrap() {
     try {
+        // ── 0. Warm device identity (fire-and-forget) ───────────────────
+        //
+        // Fired FIRST, before any other work, so it overlaps with
+        // Capacitor import, file capture, Play update check, auth init,
+        // subscription load, session refresh, and sync. By the time the
+        // user reaches the login form, `_deviceId` and `_deviceInfo` are
+        // already resident and auth.login() never waits on the bridge.
+        //
+        // security/device.js dedupes via its own _pendingId/_pendingInfo,
+        // so this costs nothing even if it races with a later call from
+        // initializeApp() or auth.js.
+        warmDeviceIdentity();
+
         // ── 1. Read the deep link captured by index.html ────────────────
         consumeEarlyDeepLink();
 
@@ -817,6 +885,13 @@ import * as payment from './payment.js';
 
 window.app = {
     initializeApp,
+
+    // Device identity (warm-up + direct access)
+    warmDeviceIdentity,
+    getDeviceId: security.getDeviceId,
+    getDeviceInfo: security.getDeviceInfo,
+    getCachedDeviceId: security.getCachedDeviceId,
+    getCachedDeviceInfo: security.getCachedDeviceInfo,
 
     // Auth
     setToken: auth.setToken,

@@ -43,23 +43,90 @@ export function setAppSettings(settings) {
 
 // ==================== LOADING OVERLAY ====================
 
-let loadingOverlay = null;
-let loadingTimeout = null;
+/**
+ * Two-stage loading-overlay budget.
+ *
+ *   SOFT_MS    — after this long, the overlay is still up but the label
+ *                switches to a "still working…" message. Purely
+ *                informational: nothing is torn down, the request is
+ *                untouched. Exists because an unlabelled spinner that
+ *                has been running for more than a few seconds reads as
+ *                "hung", and users force-quit. A visible acknowledgement
+ *                of the wait keeps them on the page.
+ *
+ *   BASE_MS    — how long a "normal" operation is allowed to take before
+ *                we consider it slow. Historically this was the whole
+ *                budget; it is now the middle stage.
+ *
+ *   MERCY_MS   — extra room granted on top of BASE_MS. A genuinely slow
+ *                network call (cold Convex function, weak mobile data,
+ *                first-render bundle) often needs a few more seconds
+ *                than the baseline. Without this, the spinner is torn
+ *                down while the request is still in flight and the user
+ *                sees "took too long" for a call that was about to
+ *                succeed.
+ *
+ *   TIMEOUT_MS — BASE + MERCY. The moment the overlay is force-hidden
+ *                and the error toast is raised.
+ *
+ * Timeline: soft message at 5 s, hard kill at 14 s.
+ * Change MERCY_MS to widen or narrow the grace period without touching
+ * the baseline.
+ */
+const LOADING_SOFT_MS    =  5000;   // soft stage — label switches
+const LOADING_BASE_MS    = 10000;   // baseline — 10 s
+const LOADING_MERCY_MS   =  4000;   // mercy window — +4 s
+const LOADING_TIMEOUT_MS = LOADING_BASE_MS + LOADING_MERCY_MS;   // = 14000
 
-export function showLoading(message = 'Loading...') {
+const LOADING_DEFAULT_MESSAGE = 'Loading...';
+const LOADING_SOFT_MESSAGE    = 'Still working… slow connection.';
+
+let loadingOverlay      = null;
+let loadingLabel        = null;
+let loadingTimeout      = null;
+let loadingKillTimeout  = null;
+
+export function showLoading(message = LOADING_DEFAULT_MESSAGE) {
     if (!loadingOverlay) {
         loadingOverlay = document.createElement('div');
         loadingOverlay.className = 'loading-overlay';
-        loadingOverlay.innerHTML = '<div class="spinner"></div>';
+        loadingOverlay.innerHTML = `
+            <div class="spinner"></div>
+            <div class="loading-label"></div>
+        `;
         document.body.appendChild(loadingOverlay);
+        loadingLabel = loadingOverlay.querySelector('.loading-label');
     }
+
+    // Reset the label to the caller's message on every fresh show. If a
+    // previous call had swapped it to the soft-stage string, this puts
+    // it back.
+    if (loadingLabel) loadingLabel.textContent = message;
+
     loadingOverlay.classList.remove('hidden');
 
-    if (loadingTimeout) clearTimeout(loadingTimeout);
+    // Clear any timers left over from a previous show.
+    if (loadingTimeout)     clearTimeout(loadingTimeout);
+    if (loadingKillTimeout) clearTimeout(loadingKillTimeout);
+
+    // ── Stage 1: soft acknowledgment ────────────────────────────────
+    // Fires while the overlay is still visible. If hideLoading() has
+    // already run by then, the overlay will be hidden — check and bail.
     loadingTimeout = setTimeout(() => {
+        if (!loadingOverlay || loadingOverlay.classList.contains('hidden')) return;
+        const label = loadingOverlay.querySelector('.loading-label');
+        if (label) label.textContent = LOADING_SOFT_MESSAGE;
+    }, LOADING_SOFT_MS);
+
+    // ── Stage 2: hard kill ──────────────────────────────────────────
+    // Force-hides the overlay and surfaces the error toast. Called only
+    // when the operation genuinely failed to complete in the full
+    // budget — a slow-but-eventually-successful request never reaches
+    // here because hideLoading() clears this timer first.
+    loadingKillTimeout = setTimeout(() => {
         hideLoading();
-        showToast('Loading took too long. Please try again.', 'error');
-    }, 10000);
+        showToast('Loading took too long. Please try again.', 'error', 5000);
+    }, LOADING_TIMEOUT_MS);
 }
 
 export function hideLoading() {
@@ -69,6 +136,10 @@ export function hideLoading() {
     if (loadingTimeout) {
         clearTimeout(loadingTimeout);
         loadingTimeout = null;
+    }
+    if (loadingKillTimeout) {
+        clearTimeout(loadingKillTimeout);
+        loadingKillTimeout = null;
     }
 }
 

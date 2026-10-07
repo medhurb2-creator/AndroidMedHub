@@ -8,7 +8,6 @@
   "android": {
     "allowMixedContent": false,
     "captureInput": true,
-    "initialFocus": true,
     "webContentsDebuggingEnabled": false
   },
   "plugins": {
