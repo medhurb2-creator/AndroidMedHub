@@ -24,7 +24,7 @@ import * as appUpdate from './app-update.js';
 // ============================================================
 // CAPACITOR IMPORTS (dynamic, only when available)
 // ============================================================
-let App, ScreenOrientation;
+let App, ScreenOrientation, FileOpen;
 
 async function importCapacitor() {
     if (typeof window.Capacitor === 'undefined') {
@@ -36,6 +36,19 @@ async function importCapacitor() {
         App = appModule.App;
         const screenModule = await import('@capacitor/screen-orientation');
         ScreenOrientation = screenModule.ScreenOrientation;
+
+        // FileOpen is a CUSTOM Capacitor plugin, not an npm package.
+        // It registers itself in `window.Capacitor.Plugins.FileOpen` when
+        // the native Android side loads it (via MainActivity + the plugin's
+        // own JS bootstrap). We grab the reference here so every subsequent
+        // call site has a stable handle.
+        FileOpen = (window.Capacitor.Plugins && window.Capacitor.Plugins.FileOpen) || null;
+        if (FileOpen) {
+            console.log('[App] FileOpen plugin available');
+        } else {
+            console.log('[App] FileOpen plugin not registered');
+        }
+
         console.log('[App] Capacitor modules loaded.');
     } catch (e) {
         console.warn('[App] Capacitor modules not available:', e);
@@ -43,7 +56,7 @@ async function importCapacitor() {
 }
 
 // ============================================================
-// DEEP‑LINK & REFERRAL STATE
+// APP-LEVEL STATE
 // ============================================================
 let pendingAppUrl = null;
 let appInitialized = false;
@@ -53,47 +66,298 @@ let redirectTarget = null;
 let screenOrientation = null;
 
 // ============================================================
-// DEEP‑LINK HELPERS
+// FILE-OPEN — EXTERNAL FILE INTENTS (ANDROID)
 // ============================================================
-function normalizeMedVixUrl(url) {
-    try {
-        const parsed = new URL(url);
-        if (parsed.protocol !== 'https:' || parsed.hostname !== 'app.medvex.co.ke') {
-            console.warn('[DeepLink] Rejected external URL:', url);
-            return null;
-        }
-        return parsed.pathname + parsed.search + parsed.hash;
-    } catch (_) {
-        console.error('[DeepLink] Invalid URL:', url);
-        return null;
-    }
-}
+//
+// When the OS hands MedVix a file — a PDF, image, or text file the user
+// tapped in Files, Gmail, or Chrome — the FileOpen plugin copies the
+// bytes into the app cache and delivers a payload:
+//
+//   { path: string, name: string, mimeType: string|null, size?: number }
+//
+// Two delivery paths:
+//
+//   • Cold start — the app was launched BY the intent. The payload is
+//     stashed by the native side and retrieved via `getPendingFile()`
+//     after JS boots. `captureLaunchFile()` reads it once, before the
+//     initial route is resolved.
+//
+//   • Warm start — the app is already running. The plugin fires a
+//     `fileOpen` event. `registerFileListener()` handles it: stash the
+//     payload, then either dispatch a page-level event (chrome already
+//     mounted) or navigate to the host page.
+//
+// In both cases, the payload is written to `sessionStorage.pendingFileOpen`
+// and the app routes to `resource-browser`. That page's init() calls
+// `viewer.openPendingFile()`, which drains the stash and loads the file
+// through the standard viewer pipeline. External files never require auth
+// — the user chose the file; it just opens.
 
-function isRootDestination(destination) {
+const PENDING_FILE_KEY = 'pendingFileOpen';
+
+/** True once a cold-start file has been detected. @private */
+let fileLaunchPending = false;
+
+/** Idempotence flag for the warm-start listener. @private */
+let _fileListenerRegistered = false;
+
+/**
+ * True when the currently mounted page is the resource browser — the
+ * page that hosts the viewer chrome. Used to decide whether a warm-start
+ * file should trigger a navigation (chrome not mounted) or a page-level
+ * reload (chrome already mounted).
+ *
+ * @private
+ * @returns {boolean}
+ */
+function _isOnResourceBrowser() {
     try {
-        const parsed = new URL(destination, 'https://app.medvex.co.ke');
-        return parsed.pathname === '/' || parsed.pathname === '/index.html';
+        const root = document.getElementById('app-root');
+        if (!root) return false;
+        const section = root.querySelector('section[data-page]');
+        return !!(section && section.dataset.page === 'resource-browser');
     } catch {
         return false;
     }
 }
 
+/**
+ * Write an external file payload to sessionStorage in the shape
+ * `viewer.openPendingFile()` expects. Idempotent — a second call replaces
+ * the previous payload, which is correct when a new file arrives before
+ * the previous one has been drained.
+ *
+ * @private
+ * @param {{ path: string, name?: string, mimeType?: string|null, size?: number }} payload
+ */
+function _stashFilePayload(payload) {
+    if (!payload || !payload.path) return;
+    try {
+        sessionStorage.setItem(PENDING_FILE_KEY, JSON.stringify({
+            path: payload.path,
+            name: payload.name || 'Document',
+            mimeType: payload.mimeType || null,
+            size: payload.size || 0,
+        }));
+    } catch (err) {
+        console.warn('[FileOpen] Could not stash payload:', err);
+    }
+}
+
+/**
+ * Read the cold-start file payload from the FileOpen plugin. Called once
+ * during bootstrap, before route resolution. If a payload exists, the
+ * initial route is forced to `resource-browser`.
+ *
+ * @private
+ * @returns {Promise<void>}
+ */
+async function captureLaunchFile() {
+    if (!FileOpen || typeof FileOpen.getPendingFile !== 'function') return;
+    try {
+        const payload = await FileOpen.getPendingFile();
+        if (payload && payload.path) {
+            console.log('[FileOpen] Cold-start file:', payload.name || '(unnamed)');
+            _stashFilePayload(payload);
+            fileLaunchPending = true;
+        }
+    } catch (err) {
+        console.warn('[FileOpen] getPendingFile failed:', err);
+    }
+}
+
+/**
+ * Register the warm-start `fileOpen` listener. Called once during bootstrap.
+ * Idempotent.
+ *
+ * @private
+ */
+function registerFileListener() {
+    if (_fileListenerRegistered) return;
+    if (!FileOpen || typeof FileOpen.addListener !== 'function') return;
+
+    FileOpen.addListener('fileOpen', (payload) => {
+        if (!payload || !payload.path) return;
+        console.log('[FileOpen] Live file:', payload.name || '(unnamed)');
+
+        _stashFilePayload(payload);
+
+        if (!appInitialized) {
+            // Arrived during bootstrap — resolveInitialRoute() will pick it up.
+            fileLaunchPending = true;
+            return;
+        }
+
+        if (_isOnResourceBrowser()) {
+            // Chrome already mounted. Dispatch an event the page listens
+            // for so it drains the stash without a full re-mount.
+            try {
+                document.dispatchEvent(new CustomEvent('native:file-arrived'));
+            } catch { /* ignore */ }
+        } else {
+            // Some other page is mounted. Navigate to the host page;
+            // page-manager will run its init(), which drains the stash.
+            navigateTo('resource-browser');
+        }
+    });
+
+    _fileListenerRegistered = true;
+}
+
 // ============================================================
-// CAPACITOR DEEP‑LINK CAPTURE
+// DEEP LINK — EXTRACT THE PATH
 // ============================================================
+//
+// A deep link is a share link. Someone sends a URL, the receiver taps
+// it, the app opens to that path. That is the whole contract.
+//
+// No origin check. No domain whitelist. No auth gate. No decision to
+// make. Whatever the OS gave us, we extract a path from it and go.
+
+function extractDeepLinkPath(rawUrl) {
+    if (!rawUrl || typeof rawUrl !== 'string') return null;
+
+    // Android file intents — the URL itself is the payload. These route
+    // to the viewer's file pipeline instead of a page.
+    if (rawUrl.startsWith('content://') || rawUrl.startsWith('file://')) {
+        return { kind: 'file', url: rawUrl };
+    }
+
+    // Absolute URL → take path + query + hash. Origin ignored.
+    try {
+        const u = new URL(rawUrl);
+
+        // ── Standard web schemes (http/https) ─────────────────────────
+        if (u.protocol === 'http:' || u.protocol === 'https:') {
+            return {
+                kind: 'route',
+                path: u.pathname + u.search + u.hash,
+            };
+        }
+
+        // ── Custom app schemes (medvix://, myapp://, etc.) ────────────
+        // Two shapes both matter:
+        //
+        //   medvix://exam/123?tab=recent   → host='exam', path='/123'
+        //   medvix://?code=oauth_test      → host='',     path='',  query='?code=…'
+        //
+        // The second form is common for OAuth callbacks and password
+        // resets. Falling through to the bare-path branch turns it into
+        // `/medvix://?…`, which the router fetches as a page and 404s.
+        if (u.protocol) {
+            const host     = u.hostname || '';
+            const pathPart = u.pathname || '';
+            const suffix   = (u.search || '') + (u.hash || '');
+
+            // Query-only custom scheme — route to app root, keep query.
+            if (!host && !pathPart) {
+                return { kind: 'route', path: '/' + suffix };
+            }
+
+            const combined = '/' + host + pathPart + suffix;
+            return { kind: 'route', path: combined };
+        }
+    } catch {
+        // Not a parseable URL — fall through to bare-path handling.
+    }
+
+    // Bare path — `/exam/123`, `exam/123`, `?code=x`.
+    const path = rawUrl.startsWith('/') ? rawUrl : '/' + rawUrl;
+    return { kind: 'route', path };
+}
+
+// ============================================================
+// DEEP LINK — COLD START ROUTE
+// ============================================================
+//
+// Called exactly once during bootstrap. Priority order:
+//
+//   1. External file intent — the OS handed us a file. Route to the
+//      viewer host page unconditionally. No auth check.
+//   2. Deep link — a URL the user tapped. Extract the path and route
+//      to it verbatim. No auth check.
+//   3. Fallback — no deep link, no file. Auth-based default.
+
+function resolveInitialRoute() {
+    // ── External file intent (highest priority) ────────────────────────
+    if (fileLaunchPending) {
+        console.log('[App] Initial route: resource-browser (file intent)');
+        return 'resource-browser';
+    }
+
+    // ── Deep link wins over the default route ──────────────────────────
+    if (pendingAppUrl) {
+        const link = extractDeepLinkPath(pendingAppUrl);
+        if (link) {
+            if (link.kind === 'file') {
+                // Defensive fallback: if a content:// URI reached this
+                // path via @capacitor/app (unusual but possible on some
+                // Android builds), stash it and route to the host page.
+                try { sessionStorage.setItem(PENDING_FILE_KEY, JSON.stringify({ path: link.url, name: 'Document', mimeType: null, size: 0 })); } catch {}
+                return 'resource-browser';
+            }
+
+            // Split path from query/hash so a deep link with NO route
+            // segment (e.g. `medvix://?code=oauth`) still lands on a
+            // real page. Otherwise the URL bar becomes `/?code=…` and
+            // initRouter()'s bare-root guard returns early — blank
+            // screen on OAuth callbacks.
+            const qIdx = link.path.indexOf('?');
+            const hIdx = link.path.indexOf('#');
+            let splitIdx = link.path.length;
+            if (qIdx >= 0 && qIdx < splitIdx) splitIdx = qIdx;
+            if (hIdx >= 0 && hIdx < splitIdx) splitIdx = hIdx;
+
+            const pathPart = link.path.slice(0, splitIdx);
+            const suffix   = link.path.slice(splitIdx); // '?query', '#hash', or both
+
+            const route = pathPart.replace(/^\//, '');
+            if (route) return route + suffix;
+
+            // No route segment, but query/hash present — fall back to
+            // the default page and keep the suffix in the URL bar.
+            if (suffix) {
+                const def = appAuthenticated ? 'subjects' : 'welcome';
+                return def + suffix;
+            }
+        }
+    }
+
+    // ── No deep link → auth-based default ───────────────────────────────
+    return appAuthenticated ? 'subjects' : 'welcome';
+}
+
+// ============================================================
+// DEEP LINK — WARM START DISPATCH
+// ============================================================
+
+function dispatchDeepLink(rawUrl) {
+    const link = extractDeepLinkPath(rawUrl);
+    if (!link) return;
+
+    if (link.kind === 'file') {
+        try { sessionStorage.setItem(PENDING_FILE_KEY, JSON.stringify({ path: link.url, name: 'Document', mimeType: null, size: 0 })); } catch {}
+        navigateTo('resource-browser');
+        return;
+    }
+
+    const route = link.path.replace(/^\//, '');
+    if (route) navigateTo(route);
+}
+
+// ============================================================
+// DEEP LINK — CAPTURE
+// ============================================================
+
 async function captureLaunchUrl() {
     if (!App) return;
     try {
         const result = await App.getLaunchUrl();
-        if (result?.url) {
-            console.log('[DeepLink] Launch URL:', result.url);
-            const normalized = normalizeMedVixUrl(result.url);
-            if (normalized) {
-                pendingAppUrl = normalized;
-                console.log('[DeepLink] Pending destination:', pendingAppUrl);
-            }
+        if (result && result.url) {
+            console.log('[DeepLink] getLaunchUrl:', result.url);
+            if (!pendingAppUrl) pendingAppUrl = result.url;
         }
-    } catch (_) {
+    } catch {
         console.warn('[DeepLink] Could not obtain launch URL');
     }
 }
@@ -101,33 +365,45 @@ async function captureLaunchUrl() {
 function registerAppUrlListener() {
     if (!App) return;
     App.addListener('appUrlOpen', ({ url }) => {
-        console.log('[DeepLink] App URL opened:', url);
-        const destination = normalizeMedVixUrl(url);
-        if (!destination) return;
+        if (!url) return;
+        console.log('[DeepLink] appUrlOpen:', url);
         if (appInitialized) {
-            processDestination(destination);
-        } else {
-            pendingAppUrl = destination;
+            dispatchDeepLink(url);
+        } else if (!pendingAppUrl) {
+            pendingAppUrl = url;
         }
     });
 }
 
-// ============================================================
-// DESTINATION PROCESSOR (runs only after app is initialized)
-// ============================================================
-function processDestination(destination) {
-    if (!destination) return;
-    if (isRootDestination(destination)) {
-        console.log('[DeepLink] Root destination – handled by referral logic.');
-        return;
+function consumeEarlyDeepLink() {
+    const early = window.__deepLink;
+    if (!early || typeof early !== 'object') return;
+
+    if (!pendingAppUrl && early.launch) {
+        console.log('[DeepLink] Using early launch URL:', early.launch);
+        pendingAppUrl = early.launch;
     }
-    console.log('[DeepLink] Processing destination:', destination);
-    if (appAuthenticated) {
-        console.log('[DeepLink] Authenticated → navigating to:', destination);
-        navigateTo(destination);
-    } else {
-        console.log('[DeepLink] Auth required – storing for later.');
-        sessionStorage.setItem('redirectAfterLogin', destination);
+    if (Array.isArray(early.queue) && early.queue.length > 0) {
+        if (!pendingAppUrl) pendingAppUrl = early.queue.shift();
+    }
+}
+
+/**
+ * Drain warm-start URLs captured by the early (index.html) listener
+ * before app.js's own listener was registered.
+ *
+ * Called once, AFTER initRouter() has mounted the initial route. Any
+ * URL left in the queue is a "the app was already opening" case that
+ * arrived too late for resolveInitialRoute() — dispatching them now
+ * layers them on top of the initial mount, matching what a user would
+ * see if the app had already been running.
+ */
+function drainEarlyQueue() {
+    const early = window.__deepLink;
+    if (!early || !Array.isArray(early.queue) || early.queue.length === 0) return;
+    const urls = early.queue.splice(0);
+    for (const url of urls) {
+        Promise.resolve().then(() => dispatchDeepLink(url));
     }
 }
 
@@ -140,7 +416,7 @@ async function initOrientation() {
         screenOrientation = ScreenOrientation;
         await screenOrientation.lock({ orientation: 'portrait' });
         console.log('[App] Orientation locked');
-    } catch (_) {
+    } catch {
         console.warn('[App] Orientation lock not available');
     }
 }
@@ -148,7 +424,6 @@ async function initOrientation() {
 // ============================================================
 // GOOGLE PLAY IN-APP UPDATE
 // ============================================================
-
 function showFlexibleUpdateBanner() {
     const banner = window.MedVixUpdateBanner;
     if (!banner) {
@@ -214,19 +489,15 @@ async function runPlayUpdateCheck() {
 }
 
 // ============================================================
-// SAFE REDIRECT (used only before router is ready – fallback)
+// SAFE REDIRECT (fallback if router fails)
 // ============================================================
 function safeRedirect(targetPath) {
     if (screenOrientation) {
         screenOrientation.unlock().catch(() => {});
     }
     let target = targetPath;
-    if (target.startsWith('/pages/')) {
-        target = target.replace('/pages/', '');
-    }
-    if (target.endsWith('.html')) {
-        target = target.replace('.html', '');
-    }
+    if (target.startsWith('/pages/')) target = target.replace('/pages/', '');
+    if (target.endsWith('.html')) target = target.replace('.html', '');
     if (referralCode && !target.includes('ref=')) {
         const sep = target.includes('?') ? '&' : '?';
         target += sep + 'ref=' + encodeURIComponent(referralCode);
@@ -240,23 +511,18 @@ function safeRedirect(targetPath) {
 }
 
 // ============================================================
-// PROGRESS BAR HELPER
+// PROGRESS BAR
 // ============================================================
 let progressFill = null;
-let progressResolve = null;
 
 function getProgressFill() {
-    if (!progressFill) {
-        progressFill = document.getElementById('progressFill');
-    }
+    if (!progressFill) progressFill = document.getElementById('progressFill');
     return progressFill;
 }
 
 function updateProgress(percent) {
     const el = getProgressFill();
-    if (el) {
-        el.style.width = Math.min(100, Math.max(0, percent)) + '%';
-    }
+    if (el) el.style.width = Math.min(100, Math.max(0, percent)) + '%';
 }
 
 function completeProgress() {
@@ -264,13 +530,12 @@ function completeProgress() {
 }
 
 // ============================================================
-// COMPLETE SPLASH CLEANUP
+// SPLASH CLEANUP
 // ============================================================
 async function destroySplash() {
     console.log('[Splash] Destroying splash resources...');
 
     const splash = document.getElementById('app-bootstrap');
-
     if (splash) {
         splash.style.opacity = '0';
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -278,24 +543,12 @@ async function destroySplash() {
     }
 
     const splashCss = document.getElementById('medvex-splash-css');
-    if (splashCss) {
-        splashCss.remove();
-        console.log('[Splash] Splash CSS removed.');
-    }
+    if (splashCss) splashCss.remove();
 
-    document.documentElement.classList.remove(
-        'app-ready',
-        'medvex-app-ready'
-    );
-
-    document.body.classList.remove(
-        'splash-active',
-        'medvex-splash-active'
-    );
+    document.documentElement.classList.remove('app-ready', 'medvex-app-ready');
+    document.body.classList.remove('splash-active', 'medvex-splash-active');
 
     progressFill = null;
-    progressResolve = null;
-
     console.log('[Splash] Splash completely destroyed.');
 }
 
@@ -312,26 +565,24 @@ function withTimeout(promise, ms = 8000) {
 }
 
 // ============================================================
-// INITIALIZATION (with progress steps)
+// INITIALIZATION
 // ============================================================
 export async function initializeApp() {
     console.log('[App] Initializing...');
     updateProgress(5);
 
     try {
-        // 1. Check for referral code in URL
+        // 1. Referral code detection
         if (!utils.getLocalStorage('accessToken')) {
-            const urlToCheck = pendingAppUrl
-                ? 'https://app.medvex.co.ke' + pendingAppUrl
-                : undefined;
+            const urlToCheck = pendingAppUrl || undefined;
             const refCode = referral.detectReferralFromURL(urlToCheck);
             if (refCode) {
-                console.log('[App] Referral code detected from URL:', refCode);
+                console.log('[App] Referral code detected:', refCode);
                 referral.validateReferralCode(refCode).then(result => {
                     if (result.valid) {
-                        console.log('[App] Referral code is valid, referrer:', result.referrerName);
+                        console.log('[App] Referral valid:', result.referrerName);
                     } else {
-                        console.warn('[App] Referral code is invalid, clearing');
+                        console.warn('[App] Referral invalid, clearing');
                         referral.clearStoredReferralCode();
                     }
                 });
@@ -340,7 +591,7 @@ export async function initializeApp() {
         updateProgress(15);
 
         const token = utils.getLocalStorage('accessToken');
-        console.log('[App] Token from localStorage:', token ? 'exists' : 'none');
+        console.log('[App] Token:', token ? 'exists' : 'none');
 
         // 2. Load user
         await auth.initUser();
@@ -352,50 +603,43 @@ export async function initializeApp() {
 
         // 4. Load app settings
         const savedSettings = utils.getLocalStorage('appSettings', null);
-        if (savedSettings) {
-            ui.setAppSettings(savedSettings);
-        }
+        if (savedSettings) ui.setAppSettings(savedSettings);
         updateProgress(55);
 
         // 5. Time verification
-        if (!timeVerifier.verifyTime()) {
-            return;
-        }
+        if (!timeVerifier.verifyTime()) return;
         updateProgress(65);
 
         // 6. Silent token refresh
         let validToken = false;
         if (token && navigator.onLine) {
-            console.log('[App] Online with token – attempting silent refresh...');
+            console.log('[App] Online with token – silent refresh...');
             try {
                 const refreshed = await withTimeout(auth.refreshSession(), 8000);
                 if (refreshed) {
                     validToken = true;
-                    console.log('[App] Token refreshed successfully');
-                } else {
-                    console.warn('[App] Could not refresh session – using cached data');
+                    console.log('[App] Token refreshed');
                 }
             } catch (err) {
-                console.warn('[App] Session refresh error (timeout or other):', err);
+                console.warn('[App] Session refresh error:', err);
             }
         } else {
-            console.log('[App] Offline or no token – using cached data only');
+            console.log('[App] Offline or no token – cached data only');
         }
         updateProgress(75);
 
+        // 7. Sync
         if (validToken) {
-            console.log('[App] Syncing fresh data with valid token...');
             try {
                 await withTimeout(sync.syncUserData(), 8000);
                 await withTimeout(sync.triggerFullSync(), 8000);
             } catch (err) {
-                console.warn('[App] Data sync timed out – using cached data', err);
+                console.warn('[App] Data sync timed out', err);
             }
-        } else {
-            console.log('[App] No valid token – using cached data only');
         }
         updateProgress(85);
 
+        // 8. Notifications
         if (notifications && typeof notifications.init === 'function') {
             notifications.init();
         }
@@ -403,20 +647,17 @@ export async function initializeApp() {
 
         console.log('[App] Loaded user:', auth.getUser());
     } catch (e) {
-        console.warn('[App] Initialization error, using localStorage fallback', e);
+        console.warn('[App] Init error, using fallback', e);
         auth.fallbackLoadUser();
         subscription.fallbackLoadSubscription();
     }
 
-    // 7. Register service worker update listener
     updates.registerUpdateListener();
-
-    // 8. Mark progress as complete
     completeProgress();
 }
 
 // ============================================================
-// GLOBAL LISTENER FOR TIME TAMPER
+// GLOBAL TIME TAMPER LISTENER
 // ============================================================
 window.addEventListener('time-tamper-detected', async () => {
     console.warn('[App] Time tamper detected – logging out');
@@ -429,24 +670,32 @@ window.addEventListener('time-tamper-detected', async () => {
 // ============================================================
 async function bootstrap() {
     try {
-        // 1. Load Capacitor modules (if available)
+        // ── 1. Read the deep link captured by index.html ────────────────
+        consumeEarlyDeepLink();
+
+        // ── 2. Load Capacitor modules + plugin handles ──────────────────
         await importCapacitor();
 
-        // 2. Capture launch URL and register listener
+        // ── 3. Capture cold-start file intent (Android ACTION_VIEW) ─────
+        // Runs BEFORE the deep-link capture so a file intent takes
+        // priority in resolveInitialRoute().
+        await captureLaunchFile();
+        registerFileListener();
+
+        // ── 4. Backup capture of URL-based deep links ──────────────────
         await captureLaunchUrl();
         registerAppUrlListener();
 
-        // 3. Orientation lock
+        // ── 5. Orientation lock ─────────────────────────────────────────
         await initOrientation();
 
-        // 3.5. Google Play in-app update check
+        // ── 6. Play update check ────────────────────────────────────────
         await runPlayUpdateCheck();
 
-        // 4. Detect referral from URL or storage
+        // ── 7. Referral detection ───────────────────────────────────────
         let initialReferral = null;
         if (pendingAppUrl) {
-            const fullUrl = 'https://app.medvex.co.ke' + pendingAppUrl;
-            initialReferral = referral.detectReferralFromURL(fullUrl);
+            initialReferral = referral.detectReferralFromURL(pendingAppUrl);
         } else {
             initialReferral = referral.detectReferralFromURL();
         }
@@ -460,58 +709,56 @@ async function bootstrap() {
             }
         }
 
-        // 5. Initialize the core application
+        // ── 8. Core init (auth, subscription, sync) ─────────────────────
         await initializeApp();
 
-        // 6. Set authentication state
+        // ── 9. Auth state is only used as a fallback for the default
+        //       landing page. It never gates a deep link or a file.
         appAuthenticated = auth.checkAuth();
         appInitialized = true;
 
-        // 7. Determine redirect target
-        let target;
+        // ── 10. Resolve the initial route ───────────────────────────────
+        // Priority: external file > deep link > auth-based default.
+        // No auth gate is applied to file intents or deep links.
+        redirectTarget = resolveInitialRoute();
+        console.log('[App] Initial route:', redirectTarget,
+                    '| authed:', appAuthenticated,
+                    '| fileLaunch:', fileLaunchPending);
 
-        if (pendingAppUrl) {
-            const destination = pendingAppUrl;
-            console.log('[App] Incoming deep-link:', destination);
-
-            if (isRootDestination(destination)) {
-                const parsed = new URL(destination, 'https://app.medvex.co.ke');
-                target = appAuthenticated ? 'subjects' : 'welcome';
-                if (parsed.search) {
-                    target += parsed.search;
-                }
-                if (parsed.hash) {
-                    target += parsed.hash;
-                }
-            } else {
-                if (appAuthenticated) {
-                    target = destination;
-                } else {
-                    sessionStorage.setItem('redirectAfterLogin', destination);
-                    target = 'welcome';
-                }
-            }
-        } else {
-            target = appAuthenticated ? 'subjects' : 'welcome';
-        }
-
-        redirectTarget = target;
-        console.log('[App] Target determined:', target, '| loggedIn:', appAuthenticated);
-
-        // 8. Apply theme
+        // ── 11. Apply theme ─────────────────────────────────────────────
         if (ui.applyTheme) ui.applyTheme();
 
-        // 9. Set the URL via history API
+        // ── 12. Set the URL bar to match the resolved route ─────────────
         const currentFull = window.location.pathname + window.location.search + window.location.hash;
-        if (target && target !== currentFull) {
-            const fullTarget = target.startsWith('/') ? target : '/' + target;
-            window.history.replaceState({}, '', fullTarget);
+        if (redirectTarget && redirectTarget !== currentFull) {
+            const fullTarget = redirectTarget.startsWith('/') ? redirectTarget : '/' + redirectTarget;
+            try {
+                window.history.replaceState({}, '', fullTarget);
+            } catch (err) {
+                console.warn('[App] history.replaceState failed:', err);
+            }
         }
 
-        // 10. Start the router
+        // ── 13. Start the router ────────────────────────────────────────
+        // Mounts the initial route exactly once. The drain step below is
+        // deliberately placed AFTER this so a queue entry cannot tear
+        // down the just-mounted page and mount twice.
         initRouter();
 
-        // 11. Wait for the first page to be rendered
+        // ── 14. Drain any warm-start URLs captured during bootstrap ─────
+        // Only URLs past the first (which resolveInitialRoute already
+        // consumed via pendingAppUrl) reach here. Each dispatches on its
+        // own microtask so the initial mount has time to settle.
+        drainEarlyQueue();
+
+        // ── 15. Freeze the early queue ──────────────────────────────────
+        // From this point, app.js's own appUrlOpen listener owns every
+        // URL. The early (index.html) listener keeps its handler attached
+        // — Capacitor does not offer a synchronous remove — but the
+        // freeze flag stops it from buffering into a queue nothing drains.
+        if (window.__deepLink) window.__deepLink.frozen = true;
+
+        // ── 16. Wait for the first render ───────────────────────────────
         const appRoot = document.getElementById('app-root');
         if (appRoot && !appRoot.children.length) {
             await new Promise((resolve) => {
@@ -525,10 +772,10 @@ async function bootstrap() {
             });
         }
 
-        // 12. Application is ready – destroy splash
+        // ── 17. Destroy splash ──────────────────────────────────────────
         await destroySplash();
 
-        // 13. Register service worker
+        // ── 18. Register service worker ─────────────────────────────────
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('/service-worker.js');
         }
@@ -537,25 +784,15 @@ async function bootstrap() {
 
         const splash = document.getElementById('app-bootstrap');
         if (splash) splash.remove();
-
         const splashCss = document.getElementById('medvex-splash-css');
         if (splashCss) splashCss.remove();
 
-        document.documentElement.classList.remove(
-            'app-ready',
-            'medvex-app-ready'
-        );
-
-        document.body.classList.remove(
-            'splash-active',
-            'medvex-splash-active'
-        );
+        document.documentElement.classList.remove('app-ready', 'medvex-app-ready');
+        document.body.classList.remove('splash-active', 'medvex-splash-active');
 
         progressFill = null;
-        progressResolve = null;
 
         const appRoot = document.getElementById('app-root');
-
         if (appRoot) {
             appRoot.innerHTML = `
                 <section class="page error-page" data-page="error">
@@ -573,18 +810,17 @@ async function bootstrap() {
 bootstrap();
 
 // ============================================================
-// EXPOSE GLOBALLY (for legacy inline scripts and other modules)
+// EXPOSE GLOBALLY
 // ============================================================
 import * as examEngine from './exam-engine.js';
 import * as payment from './payment.js';
 
 window.app = {
-    // ---- Bootstrap ----
     initializeApp,
 
-    // ---- Auth: token / user management ----
-    setToken: auth.setToken,               // ← renamed from setAuthToken
-    clearToken: auth.clearToken,           // ← new
+    // Auth
+    setToken: auth.setToken,
+    clearToken: auth.clearToken,
     checkAuth: auth.checkAuth,
     setUser: auth.setUser,
     getUser: auth.getUser,
@@ -592,19 +828,17 @@ window.app = {
     initUser: auth.initUser,
     fallbackLoadUser: auth.fallbackLoadUser,
     refreshSession: auth.refreshSession,
-
-    // ---- Google Sign-In ----
     loginWithGoogle: auth.loginWithGoogle,
     linkGoogleAccount: auth.linkGoogleAccount,
 
-    // ---- Subscription ----
+    // Subscription
     setSubscription: subscription.setSubscription,
     getSubscription: subscription.getSubscription,
     hasActiveSubscription: subscription.hasActiveSubscription,
     clearSubscription: subscription.clearSubscription,
     refreshSubscription: subscription.refreshSubscription,
 
-    // ---- Exam engine ----
+    // Exam
     setExamState: examEngine.setExamState,
     getExamState: examEngine.getExamState,
     clearExamState: examEngine.clearExamState,
@@ -612,22 +846,22 @@ window.app = {
     getExamConfig: examEngine.getExamConfig,
     clearExamConfig: examEngine.clearExamConfig,
 
-    // ---- UI / App settings ----
+    // UI
     setAppSetting: ui.setAppSetting,
     getAppSetting: ui.getAppSetting,
     toggleTheme: ui.toggleTheme,
 
-    // ---- Plan / Payment ----
+    // Payment
     setSelectedPlan: payment.setSelectedPlan,
     getSelectedPlan: payment.getSelectedPlan,
     setCurrentTransaction: payment.setCurrentTransaction,
     getCurrentTransaction: payment.getCurrentTransaction,
 
-    // ---- Service worker updates ----
+    // Updates
     checkForUpdates: updates.checkForUpdates,
     skipWaitingAndReload: updates.skipWaitingAndReload,
 
-    // ---- Sync ----
+    // Sync
     syncUserData: sync.syncUserData,
     triggerFullSync: sync.triggerFullSync,
     syncData: sync.syncData,
@@ -635,11 +869,19 @@ window.app = {
     syncUserProfile: sync.syncUserProfile,
     syncSubscription: sync.syncSubscription,
 
-    // ---- Event bus ----
+    // Events
     events: events.events,
 
-    // ---- Google Play In-App Update ----
+    // Play update
     checkPlayUpdate: runPlayUpdateCheck,
     applyPlayUpdate: appUpdate.applyDownloadedUpdate,
     isPlayUpdateSupported: appUpdate.isAppUpdateSupported,
+
+    // Deep-link debug helpers
+    extractDeepLinkPath,
+    dispatchDeepLink,
+
+    // File-intent debug helpers
+    isFileLaunchPending: () => fileLaunchPending,
+    stashFilePayload: _stashFilePayload,
 };

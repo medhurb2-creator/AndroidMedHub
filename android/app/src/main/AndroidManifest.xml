@@ -14,7 +14,7 @@
     <!-- Notifications -->
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-
+<uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- 🚫 Unused system permissions — removed from merged manifest.
          These are auto-injected by plugins but MedVix does not use them. -->
     <uses-permission
@@ -26,9 +26,7 @@
     <uses-permission
         android:name="android.permission.RECEIVE_BOOT_COMPLETED"
         tools:node="remove" />
-    <uses-permission
-        android:name="android.permission.WAKE_LOCK"
-        tools:node="remove" />
+
 
 
     <!-- Runtime (Dangerous) permissions – requested at runtime -->
@@ -82,12 +80,19 @@
             </intent-filter>
 
             <!-- ===== Custom scheme for OAuth redirects ===== -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="medvix" android:host="oauth" />
-            </intent-filter>
+<intent-filter android:autoVerify="true">
+    <action android:name="android.intent.action.VIEW" />
+    <category android:name="android.intent.category.DEFAULT" />
+    <category android:name="android.intent.category.BROWSABLE" />
+    <data android:scheme="https" android:host="app.medvix.co.ke" />
+</intent-filter>
+
+<intent-filter android:autoVerify="true">
+    <action android:name="android.intent.action.VIEW" />
+    <category android:name="android.intent.category.DEFAULT" />
+    <category android:name="android.intent.category.BROWSABLE" />
+    <data android:scheme="https" android:host="www.app.medvix.co.ke" />
+</intent-filter>
 
             <!-- ================================================================
                  "Open with" file handlers

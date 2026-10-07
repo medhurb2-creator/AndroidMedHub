@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0,  viewport-fit=cover, user-scalable=yes" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes" />
     <meta name="theme-color" content="#ffffff" />
     <meta name="application-name" content="MedVix" />
     <meta name="description" content="MedVix — Learn. Practice. Connect. Grow. Achieve." />
@@ -354,27 +354,77 @@
     </div>
 
     <!-- ============================================================
-         DEEP-LINK CAPTURE (Capacitor)
+         DEEP-LINK CAPTURE (Capacitor) — CAPTURE ONLY, NO ROUTING
+         ============================================================
+         Capacitor can fire `appUrlOpen` before `app.js` has had a chance
+         to load its own listener. This script captures those URLs into a
+         global so they are not lost.
+
+         It deliberately does NOT navigate. Routing decisions — file URIs
+         to the file pipeline, routes to the router, custom schemes to
+         their handlers — belong to `app.js`, which owns the full URL
+         contract and can tell a `content://` URI from an App Link.
+
+         Routing from here was the source of the `/pages/content://…html`
+         404 error: the raw URL went straight to the router, which tried
+         to fetch it as a page path.
+
+         Contract with app.js:
+           window.__deepLink.launch    — string|null   (cold start)
+           window.__deepLink.queue     — string[]      (warm start, buffered)
+
+         FileOpen (external PDFs and other files) is handled by app.js
+         directly via the FileOpen plugin — no capture needed here.
          ============================================================ -->
     <script>
-        if (window.Capacitor?.Plugins?.App) {
-            const App = window.Capacitor.Plugins.App;
-            App.getLaunchUrl().then(result => {
-                if (result?.url) {
-                    console.log('[DeepLink] Launch URL:', result.url);
-                    sessionStorage.setItem('deepLink', result.url);
-                }
-            }).catch(err => console.warn('[DeepLink] getLaunchUrl error:', err));
+        // Shared deep-link buffer between this early capture script and
+        // /scripts/app.js. Shape:
+        //   launch  — string|null  cold-start URL (from getLaunchUrl)
+        //   queue   — string[]     warm-start URLs buffered before app.js boots
+        //   frozen  — boolean      set true by app.js after bootstrap completes.
+        //                          Once frozen, app.js's own appUrlOpen listener
+        //                          owns every URL and this early listener
+        //                          stops buffering — otherwise the queue grows
+        //                          unbounded for the rest of the session.
+        window.__deepLink = window.__deepLink || {
+            launch: null,
+            queue:  [],
+            frozen: false,
+        };
 
-            App.addListener('appUrlOpen', (data) => {
-                console.log('[DeepLink] appUrlOpen:', data.url);
-                if (window.router && typeof window.router.navigateTo === 'function') {
-                    window.router.navigateTo(data.url);
-                } else {
-                    sessionStorage.setItem('deepLink', data.url);
-                }
+        (function captureDeepLinks() {
+            const CapApp = window.Capacitor
+                && window.Capacitor.Plugins
+                && window.Capacitor.Plugins.App;
+            if (!CapApp) return;
+
+            // Cold start: the URL that launched the app.
+            // getLaunchUrl() is idempotent — app.js calls it again as a
+            // backup; multiple calls return the same value.
+            CapApp.getLaunchUrl()
+                .then(function (result) {
+                    if (result && result.url) {
+                        console.log('[DeepLink:early] launch URL:', result.url);
+                        window.__deepLink.launch = result.url;
+                    }
+                })
+                .catch(function () { /* no launch URL */ });
+
+            // Warm start: URLs that arrive while the app is already running.
+            // Buffer them; app.js drains the queue during bootstrap, then
+            // freezes it. After that point this listener becomes a no-op.
+            CapApp.addListener('appUrlOpen', function (data) {
+                if (!data || !data.url) return;
+
+                // app.js owns dispatch once bootstrap finishes. Without
+                // this guard the queue would accumulate one dead string
+                // per warm-start URL, forever.
+                if (window.__deepLink && window.__deepLink.frozen) return;
+
+                console.log('[DeepLink:early] appUrlOpen:', data.url);
+                window.__deepLink.queue.push(data.url);
             });
-        }
+        })();
     </script>
 
     <!-- ============================================================

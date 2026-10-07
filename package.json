@@ -8,7 +8,7 @@
     "predev": "npm run sync-wasm",
     "dev": "vite",
     "prebuild": "npm run sync-wasm",
-    "build": "vite build && node scripts/obfuscate-dist.mjs && node scripts/encrypt-json.js && npx cap sync android",
+    "build": "vite build && node scripts/obfuscate-dist.mjs && node scripts/encrypt-json.js && npx cap sync android && git add .",
     "preview": "vite preview",
     "sync": "npx cap sync android",
     "open:android": "npx cap open android"
@@ -19,7 +19,7 @@
     "@capacitor/app": "^8.1.2",
     "@capacitor/cli": "^8.5.2",
     "@capacitor/core": "^8.5.2",
-    "@capacitor/device": "^8.0.3",
+    "@capacitor/device": "8.0.3",
     "@capacitor/filesystem": "^8.1.4",
     "@capacitor/haptics": "^8.0.2",
     "@capacitor/ios": "^8.5.2",
