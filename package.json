@@ -8,7 +8,7 @@
     "predev": "npm run sync-wasm",
     "dev": "vite",
     "prebuild": "npm run sync-wasm",
-    "build": "vite build && node scripts/obfuscate-dist.mjs && node scripts/encrypt-json.js && npx cap sync android && git add .",
+    "build": "vite build && node scripts/encrypt-json.js && npx cap sync android && git add .",
     "preview": "vite preview",
     "sync": "npx cap sync android",
     "open:android": "npx cap open android"
