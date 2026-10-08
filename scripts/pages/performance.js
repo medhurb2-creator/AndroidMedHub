@@ -23,6 +23,66 @@ function setText(id, value) {
   if (el) el.textContent = value ?? '';
 }
 
+// ==================== HELPER: NATIVE SHARE & FALLBACK ====================
+function nativeShare(shareData) {
+  const data = {
+    title: shareData.title || 'MedVix',
+    text: shareData.text || '',
+    url: shareData.url || '',
+    dialogTitle: shareData.dialogTitle || 'Share'
+  };
+
+  // 1. Prefer custom MedvixShare plugin
+  if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.MedvixShare) {
+    window.Capacitor.Plugins.MedvixShare.share(data)
+      .catch(() => fallbackShare(data));
+  }
+  // 2. Fallback to Web Share API
+  else if (navigator.share) {
+    navigator.share(data)
+      .catch(() => fallbackShare(data));
+  }
+  // 3. Final fallback: copy to clipboard
+  else {
+    fallbackShare(data);
+  }
+}
+
+function fallbackShare(shareData) {
+  const url = shareData.url || shareData.text || '';
+  if (!url) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(() => {
+      ui.showToast('Link copied to clipboard!', 'success');
+    }).catch(() => {
+      fallbackCopy(url);
+    });
+  } else {
+    fallbackCopy(url);
+  }
+}
+
+function fallbackCopy(text) {
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  textarea.style.pointerEvents = 'none';
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    const success = document.execCommand('copy');
+    if (success) {
+      ui.showToast('Link copied to clipboard!', 'success');
+    } else {
+      ui.showToast('Failed to copy link. Please copy manually.', 'error');
+    }
+  } catch (e) {
+    ui.showToast('Failed to copy link. Please copy manually.', 'error');
+  }
+  document.body.removeChild(textarea);
+}
+
 // ==================== INIT ====================
 export async function init(context) {
   $ = (sel) => context.root.querySelector(sel);
@@ -1174,7 +1234,14 @@ async function renderDownloadedExams() {
   container.innerHTML = html;
 
   container.querySelectorAll('.review-btn').forEach((btn) => {
-    btn.addEventListener('click', () => reviewDownloadedExam(btn.dataset.examid));
+    btn.addEventListener('click', async () => {
+      try {
+        await reviewDownloadedExam(btn.dataset.examid);
+      } catch (err) {
+        console.error('[Review] Error:', err);
+        ui.showToast('Failed to open review. Please try again.', 'error');
+      }
+    });
   });
   container.querySelectorAll('.share-btn').forEach((btn) => {
     btn.addEventListener('click', () => shareDownloadedExam(btn.dataset.examid));
@@ -1187,50 +1254,84 @@ async function renderDownloadedExams() {
 async function reviewDownloadedExam(examId) {
   const exams = await db.getDownloadedExams();
   const exam = exams.find((e) => e.examId === examId);
-  if (!exam) return;
+  if (!exam) {
+    ui.showToast('Exam not found.', 'error');
+    return;
+  }
 
-  const questions = exam.data && Array.isArray(exam.data.questions) ? exam.data.questions : [];
-  const totalQuestions = exam.data && exam.data.totalQuestions != null ? exam.data.totalQuestions : questions.length;
-  const correctAnswers = exam.data && exam.data.correctAnswers != null ? exam.data.correctAnswers : 0;
+  // Safely parse exam data if it's a JSON string
+  let examData = exam.data;
+  if (typeof examData === 'string') {
+    try {
+      examData = JSON.parse(examData);
+    } catch (e) {
+      console.error('Failed to parse exam data:', e);
+      ui.showToast('Failed to load exam data.', 'error');
+      return;
+    }
+  }
+
+  const questions = examData && Array.isArray(examData.questions) ? examData.questions : [];
+  const totalQuestions = examData && examData.totalQuestions != null ? examData.totalQuestions : questions.length;
+  const correctAnswers = examData && examData.correctAnswers != null ? examData.correctAnswers : 0;
+
+  // Safe date formatting
+  const formatDateSafe = (date) => {
+    try {
+      return utils.formatDate ? utils.formatDate(date) : new Date(date).toLocaleDateString();
+    } catch {
+      return '—';
+    }
+  };
 
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
-  modal.innerHTML = `
-    <div class="modal review-modal">
-      <div class="modal-header"><h2>Exam Review: ${exam.subject} - ${Math.round(exam.score)}%</h2><button class="modal-close">&times;</button></div>
-      <div class="modal-body">
-        <div class="summary-card" style="display:flex; gap:1rem; margin-bottom:1rem;">
-          <div class="score-circle" style="width:80px; height:80px; border-radius:50%; background:conic-gradient(var(--accent) ${exam.score}deg, #eee 0deg); display:flex; align-items:center; justify-content:center; font-weight:bold;">${Math.round(exam.score)}%</div>
-          <div><p>Date: ${utils.formatDate(exam.date)}</p><p>Questions: ${totalQuestions}</p><p>Correct: ${correctAnswers}</p></div>
+  // Inline styles ensure the modal is always visible and centered, regardless of external CSS
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:9999;overflow-y:auto;padding:1rem;';
+
+  let reviewHtml = '';
+  if (questions.length > 0) {
+    reviewHtml = questions.map((q, idx) => {
+      const isCorrect = q.correct;
+      const userAnswerText = getOptionText(q.userAnswer, q.options);
+      const correctAnswerText = getOptionText(q.correctAnswer, q.options);
+      const explanationHtml = formatExplanation(q.explanation);
+      return `
+        <div class="review-item ${isCorrect ? 'correct' : 'incorrect'}" style="margin-bottom:1rem;padding:1rem;border-radius:8px;background:var(--bg-secondary, #0f172a);border-left:4px solid ${isCorrect ? '#10b981' : '#ef4444'};">
+          <div style="font-weight:600;margin-bottom:0.5rem;color:var(--text-primary, #fff);"><strong>Q${idx + 1}:</strong> ${q.question}</div>
+          <div style="font-size:0.85rem;color:var(--text-muted, #94a3b8);margin-bottom:0.5rem;">
+            <span style="color:${isCorrect ? '#10b981' : '#ef4444'};">Your answer: ${userAnswerText}</span> | 
+            <span style="color:#10b981;">Correct: ${correctAnswerText}</span>
+          </div>
+          <div class="explanation" style="font-size:0.85rem;padding:0.5rem;background:var(--bg-card, #1e293b);border-radius:4px;color:var(--text-primary, #fff);">${explanationHtml}</div>
         </div>
-        <div id="modal-review-list" class="review-list"></div>
+      `;
+    }).join('');
+  } else {
+    reviewHtml = '<p style="text-align:center;color:var(--text-muted);">No question data available for this exam.</p>';
+  }
+
+  modal.innerHTML = `
+    <div class="modal review-modal" style="background:var(--bg-card, #1e293b);border-radius:12px;max-width:600px;width:100%;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 10px 25px rgba(0,0,0,0.5);">
+      <div class="modal-header" style="padding:1rem;border-bottom:1px solid var(--border, #334155);display:flex;justify-content:space-between;align-items:center;">
+        <h2 style="margin:0;font-size:1.1rem;color:var(--text-primary, #fff);">Exam Review: ${exam.subject} - ${Math.round(exam.score)}%</h2>
+        <button class="modal-close" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--text-primary, #fff);">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:1rem;overflow-y:auto;flex:1;">
+        <div class="summary-card" style="display:flex;gap:1rem;margin-bottom:1rem;padding:1rem;background:var(--bg-secondary, #0f172a);border-radius:8px;">
+          <div class="score-circle" style="width:80px;height:80px;border-radius:50%;background:conic-gradient(var(--accent, #2563eb) ${exam.score}deg, #eee 0deg);display:flex;align-items:center;justify-content:center;font-weight:bold;color:var(--text-primary, #fff);">${Math.round(exam.score)}%</div>
+          <div style="color:var(--text-primary, #fff);">
+            <p style="margin:0.2rem 0;">Date: ${formatDateSafe(exam.date)}</p>
+            <p style="margin:0.2rem 0;">Questions: ${totalQuestions}</p>
+            <p style="margin:0.2rem 0;">Correct: ${correctAnswers}</p>
+          </div>
+        </div>
+        <div id="modal-review-list" class="review-list">${reviewHtml}</div>
       </div>
     </div>
   `;
-  document.body.appendChild(modal);
 
-  const list = modal.querySelector('#modal-review-list');
-  if (list) {
-    if (questions.length > 0) {
-      list.innerHTML = questions
-        .map((q, idx) => {
-          const isCorrect = q.correct;
-          const userAnswerText = getOptionText(q.userAnswer, q.options);
-          const correctAnswerText = getOptionText(q.correctAnswer, q.options);
-          const explanationHtml = formatExplanation(q.explanation);
-          return `
-            <div class="review-item ${isCorrect ? 'correct' : 'incorrect'}">
-              <div><strong>Q${idx + 1}:</strong> ${q.question}</div>
-              <div><small>Your answer: ${userAnswerText} | Correct: ${correctAnswerText}</small></div>
-              <div class="explanation">${explanationHtml}</div>
-            </div>
-          `;
-        })
-        .join('');
-    } else {
-      list.innerHTML = '<p>No question data available for this exam.</p>';
-    }
-  }
+  document.body.appendChild(modal);
 
   modal.querySelector('.modal-close').onclick = () => modal.remove();
   modal.onclick = (e) => {
@@ -1768,17 +1869,12 @@ function cancelAIPlan() {
 
 // ==================== SHARE FUNCTIONS ====================
 function shareAcademicProfile() {
-  if (navigator.share) {
-    navigator
-      .share({
-        title: 'MedVix Academic Profile',
-        text: 'Check out my academic performance on MedVix!',
-        url: window.location.href,
-      })
-      .catch(() => {});
-  } else {
-    copyProfileLink();
-  }
+  nativeShare({
+    title: 'MedVix Academic Profile',
+    text: 'Check out my academic performance on MedVix!',
+    url: window.location.href,
+    dialogTitle: 'Share Profile'
+  });
 }
 
 function copyProfileLink() {
@@ -1819,27 +1915,6 @@ function copyShareLink() {
   }
 }
 
-function fallbackCopy(text) {
-  const textarea = document.createElement('textarea');
-  textarea.value = text;
-  textarea.style.position = 'fixed';
-  textarea.style.opacity = '0';
-  textarea.style.pointerEvents = 'none';
-  document.body.appendChild(textarea);
-  textarea.select();
-  try {
-    const success = document.execCommand('copy');
-    if (success) {
-      ui.showToast('Link copied to clipboard!', 'success');
-    } else {
-      ui.showToast('Failed to copy link. Please copy manually.', 'error');
-    }
-  } catch (e) {
-    ui.showToast('Failed to copy link. Please copy manually.', 'error');
-  }
-  document.body.removeChild(textarea);
-}
-
 async function shareLinkViaNative() {
   const linkInput = document.getElementById('share-link');
   if (!linkInput || !linkInput.value) {
@@ -1847,20 +1922,18 @@ async function shareLinkViaNative() {
     return;
   }
   const url = linkInput.value;
-  if (navigator.share) {
-    try {
-      await navigator.share({
-        title: 'MedVix Exam',
-        text: 'Check out this MedVix exam!',
-        url: url,
-      });
-    } catch (e) {
-      if (e.name !== 'AbortError') {
-        ui.showToast('Share failed.', 'error');
-      }
-    }
-  } else {
-    copyShareLink();
+
+  nativeShare({
+    title: 'MedVix Exam',
+    text: 'Check out this MedVix exam!',
+    url: url,
+    dialogTitle: 'Share Exam'
+  });
+
+  // Optionally close the share modal after triggering share
+  const shareModal = $('#share-modal');
+  if (shareModal) {
+    setTimeout(() => { shareModal.style.display = 'none'; }, 500);
   }
 }
 

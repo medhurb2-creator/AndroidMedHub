@@ -5,147 +5,19 @@ import * as router from '../router.js';
 
 // DOM refs – we'll collect them in init
 let dom = {};
-
-export async function init(context) {
-  // DOM references
-  dom = {
-    shimmer: context.root.querySelector('#shimmer-skeleton'),
-    mainContent: context.root.querySelector('#main-content'),
-    bottomCard: context.root.querySelector('#bottomCard'),
-    fixedHeader: context.root.querySelector('#fixedHeader'),
-
-    subjectIcon: context.root.querySelector('#subject-icon'),
-    subjectName: context.root.querySelector('#subject-name'),
-    subjectTopics: context.root.querySelector('#subject-topics'),
-    statQuestions: context.root.querySelector('#stat-questions'),
-    statDifficulty: context.root.querySelector('#stat-difficulty'),
-    statTime: context.root.querySelector('#stat-time'),
-
-    step1: context.root.querySelector('#step1'),
-    step2Std: context.root.querySelector('#step2-standard'),
-    step2Chal: context.root.querySelector('#step2-challenge'),
-    step2Rev: context.root.querySelector('#step2-revision'),
-    step2Join: context.root.querySelector('#step2-join'),
-
-    continueBtn: context.root.querySelector('#continue-btn'),
-    backBtns: context.root.querySelectorAll('.back-btn'),
-    startBtns: context.root.querySelectorAll('.start-exam-btn'),
-    challengeStartBtn: context.root.querySelector('#challenge-start-btn'),
-
-    qtyInputs: {
-      std: context.root.querySelector('#std-qty'),
-      challenge: context.root.querySelector('#challenge-qty'),
-      rev: context.root.querySelector('#rev-qty')
-    },
-    maxHints: {
-      std: context.root.querySelector('#std-max-hint'),
-      challenge: context.root.querySelector('#challenge-max-hint'),
-      rev: context.root.querySelector('#rev-max-hint')
-    },
-    warnings: {
-      std: context.root.querySelector('#std-warning'),
-      challenge: context.root.querySelector('#challenge-warning'),
-      rev: context.root.querySelector('#rev-warning')
-    },
-
-    stdDifficulty: context.root.querySelector('#std-difficulty'),
-    revDifficulty: context.root.querySelector('#rev-difficulty'),
-
-    challengeType: context.root.querySelector('#challenge-type'),
-    friendExtra: context.root.querySelector('#friend-extra'),
-    anyoneExtra: context.root.querySelector('#anyone-extra'),
-    challengeStatus: context.root.querySelector('#challenge-status'),
-    challengeCodeDisplay: context.root.querySelector('#challenge-code-display'),
-    waitingMessage: context.root.querySelector('#waiting-message'),
-    challengeActions: context.root.querySelector('#challenge-actions'),
-    inviteStatus: context.root.querySelector('#invite-status'),
-    inviteFriendInput: context.root.querySelector('#invite-friend-input'),
-    sendInviteBtn: context.root.querySelector('#send-invite-btn'),
-    cancelInviteBtn: context.root.querySelector('#cancel-invite-btn'),
-    copyChallengeCodeBtn: context.root.querySelector('#copy-challenge-code-btn'),
-    shareChallengeCodeBtn: context.root.querySelector('#share-challenge-code-btn'),
-    refreshInvitations: context.root.querySelector('#refresh-invitations'),
-    createGroupBtn: context.root.querySelector('#create-group-btn'),
-    invitationList: context.root.querySelector('#invitation-list'),
-
-    joinCodeInput: context.root.querySelector('#join-code-input'),
-    joinCodeBtn: context.root.querySelector('#join-code-btn'),
-    joinCodeDisplay: context.root.querySelector('#join-code-display'),
-    joinStatus: context.root.querySelector('#join-status'),
-    joinStartBtn: context.root.querySelector('#join-start-btn'),
-
-    shareLinkArea: context.root.querySelector('#share-link-area'),
-    shareLinkInput: context.root.querySelector('#share-link-input'),
-    copyShareLinkBtn: context.root.querySelector('#copy-share-link-btn'),
-
-    presetSelect: context.root.querySelector('#preset-select'),
-    examMode: context.root.querySelector('#exam-mode'),
-    questionCount: context.root.querySelector('#question-count'),
-    customCount: context.root.querySelector('#custom-count'),
-    customCountContainer: context.root.querySelector('#custom-count-container'),
-    timing: context.root.querySelector('#timing'),
-    preventCopy: context.root.querySelector('#prevent-copy'),
-    autoSave: context.root.querySelector('#auto-save'),
-    detectTab: context.root.querySelector('#detect-tab'),
-    breakEnabled: context.root.querySelector('#break-enabled'),
-
-    backBtn: context.root.querySelector('#backBtn'),
-    themeToggle: context.root.querySelector('#themeToggle'),
-  };
-
-  // Pass DOM refs to the exam-settings module
-  examSettings.setDomRefs(dom);
-
-  // Update bottom card position
-  function updateBottomCardPosition() {
-    const header = dom.fixedHeader;
-    const card = dom.bottomCard;
-    if (header && card) {
-      const headerBottom = header.getBoundingClientRect().bottom;
-      card.style.top = headerBottom + 'px';
-    }
-  }
-
-  // Listen for resize and header changes
-  window.addEventListener('resize', updateBottomCardPosition);
-  const headerObserver = new ResizeObserver(updateBottomCardPosition);
-  if (dom.fixedHeader) {
-    headerObserver.observe(dom.fixedHeader);
-  }
-
-  // Initialize the exam settings
-  dom.shimmer.style.display = 'flex';
-  await examSettings.initExamSettings();
-  dom.shimmer.style.display = 'none';
-  dom.mainContent.style.display = 'block';
-  updateBottomCardPosition();
-
-  // Auto-join from URL parameter
-  const urlParams = new URLSearchParams(window.location.search);
-  const examCode = urlParams.get('exam');
-  if (examCode) {
-    if (dom.joinCodeDisplay) dom.joinCodeDisplay.textContent = examCode;
-    showStep('step2-join');
-  }
-
-  // Attach event listeners
-  setupEventListeners();
-
-  // Expose global functions for inline onclick (preserved)
-  window.showShareableLink = (code) => {
-    if (dom.shareLinkArea && dom.shareLinkInput) {
-      dom.shareLinkInput.value = getShareableLink(code);
-      dom.shareLinkArea.style.display = 'block';
-    }
-  };
-  window.shareChallengeLink = shareChallengeLink;
-  window.showInlineSpinner = showInlineSpinner;
-  window.hideInlineSpinner = hideInlineSpinner;
-  window.showStep = showStep;
-  window.updateBottomCardPosition = updateBottomCardPosition;
-}
+let headerObserver = null; // for cleanup
 
 // ==================== HELPER FUNCTIONS ====================
+
+// Update bottom card position (moved to top-level so it can be used by all functions)
+function updateBottomCardPosition() {
+  const header = dom.fixedHeader;
+  const card = dom.bottomCard;
+  if (header && card) {
+    const headerBottom = header.getBoundingClientRect().bottom;
+    card.style.top = headerBottom + 'px';
+  }
+}
 
 function getShareableLink(code) {
   const BASE_URL = 'https://medvix.co.ke';
@@ -158,20 +30,21 @@ function shareChallengeLink(code) {
   const shareData = {
     title: 'Join my MedVix Challenge!',
     text: 'Join my medical exam challenge on MedVix!',
-    url: link
+    url: link,
+    dialogTitle: 'Share Challenge'
   };
 
-  // Capacitor / Web Share / Clipboard fallback
-  if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Share) {
-    window.Capacitor.Plugins.Share.share({
-      title: shareData.title,
-      text: shareData.text,
-      url: shareData.url,
-      dialogTitle: 'Share Challenge'
-    }).catch(() => fallbackShare(shareData));
-  } else if (navigator.share) {
+  // 1. Prefer custom MedvixShare plugin
+  if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.MedvixShare) {
+    window.Capacitor.Plugins.MedvixShare.share(shareData)
+      .catch(() => fallbackShare(shareData));
+  }
+  // 2. Fallback to Web Share API
+  else if (navigator.share) {
     navigator.share(shareData).catch(() => fallbackShare(shareData));
-  } else {
+  }
+  // 3. Final fallback: copy to clipboard
+  else {
     fallbackShare(shareData);
   }
 }
@@ -407,8 +280,143 @@ function setupEventListeners() {
   document.querySelector('[onclick="resetToDefault()"]')?.addEventListener('click', examSettings.resetToDefault);
 }
 
+// ==================== INIT ====================
+export async function init(context) {
+  // DOM references
+  dom = {
+    shimmer: context.root.querySelector('#shimmer-skeleton'),
+    mainContent: context.root.querySelector('#main-content'),
+    bottomCard: context.root.querySelector('#bottomCard'),
+    fixedHeader: context.root.querySelector('#fixedHeader'),
+
+    subjectIcon: context.root.querySelector('#subject-icon'),
+    subjectName: context.root.querySelector('#subject-name'),
+    subjectTopics: context.root.querySelector('#subject-topics'),
+    statQuestions: context.root.querySelector('#stat-questions'),
+    statDifficulty: context.root.querySelector('#stat-difficulty'),
+    statTime: context.root.querySelector('#stat-time'),
+
+    step1: context.root.querySelector('#step1'),
+    step2Std: context.root.querySelector('#step2-standard'),
+    step2Chal: context.root.querySelector('#step2-challenge'),
+    step2Rev: context.root.querySelector('#step2-revision'),
+    step2Join: context.root.querySelector('#step2-join'),
+
+    continueBtn: context.root.querySelector('#continue-btn'),
+    backBtns: context.root.querySelectorAll('.back-btn'),
+    startBtns: context.root.querySelectorAll('.start-exam-btn'),
+    challengeStartBtn: context.root.querySelector('#challenge-start-btn'),
+
+    qtyInputs: {
+      std: context.root.querySelector('#std-qty'),
+      challenge: context.root.querySelector('#challenge-qty'),
+      rev: context.root.querySelector('#rev-qty')
+    },
+    maxHints: {
+      std: context.root.querySelector('#std-max-hint'),
+      challenge: context.root.querySelector('#challenge-max-hint'),
+      rev: context.root.querySelector('#rev-max-hint')
+    },
+    warnings: {
+      std: context.root.querySelector('#std-warning'),
+      challenge: context.root.querySelector('#challenge-warning'),
+      rev: context.root.querySelector('#rev-warning')
+    },
+
+    stdDifficulty: context.root.querySelector('#std-difficulty'),
+    revDifficulty: context.root.querySelector('#rev-difficulty'),
+
+    challengeType: context.root.querySelector('#challenge-type'),
+    friendExtra: context.root.querySelector('#friend-extra'),
+    anyoneExtra: context.root.querySelector('#anyone-extra'),
+    challengeStatus: context.root.querySelector('#challenge-status'),
+    challengeCodeDisplay: context.root.querySelector('#challenge-code-display'),
+    waitingMessage: context.root.querySelector('#waiting-message'),
+    challengeActions: context.root.querySelector('#challenge-actions'),
+    inviteStatus: context.root.querySelector('#invite-status'),
+    inviteFriendInput: context.root.querySelector('#invite-friend-input'),
+    sendInviteBtn: context.root.querySelector('#send-invite-btn'),
+    cancelInviteBtn: context.root.querySelector('#cancel-invite-btn'),
+    copyChallengeCodeBtn: context.root.querySelector('#copy-challenge-code-btn'),
+    shareChallengeCodeBtn: context.root.querySelector('#share-challenge-code-btn'),
+    refreshInvitations: context.root.querySelector('#refresh-invitations'),
+    createGroupBtn: context.root.querySelector('#create-group-btn'),
+    invitationList: context.root.querySelector('#invitation-list'),
+
+    joinCodeInput: context.root.querySelector('#join-code-input'),
+    joinCodeBtn: context.root.querySelector('#join-code-btn'),
+    joinCodeDisplay: context.root.querySelector('#join-code-display'),
+    joinStatus: context.root.querySelector('#join-status'),
+    joinStartBtn: context.root.querySelector('#join-start-btn'),
+
+    shareLinkArea: context.root.querySelector('#share-link-area'),
+    shareLinkInput: context.root.querySelector('#share-link-input'),
+    copyShareLinkBtn: context.root.querySelector('#copy-share-link-btn'),
+
+    presetSelect: context.root.querySelector('#preset-select'),
+    examMode: context.root.querySelector('#exam-mode'),
+    questionCount: context.root.querySelector('#question-count'),
+    customCount: context.root.querySelector('#custom-count'),
+    customCountContainer: context.root.querySelector('#custom-count-container'),
+    timing: context.root.querySelector('#timing'),
+    preventCopy: context.root.querySelector('#prevent-copy'),
+    autoSave: context.root.querySelector('#auto-save'),
+    detectTab: context.root.querySelector('#detect-tab'),
+    breakEnabled: context.root.querySelector('#break-enabled'),
+
+    backBtn: context.root.querySelector('#backBtn'),
+    themeToggle: context.root.querySelector('#themeToggle'),
+  };
+
+  // Pass DOM refs to the exam-settings module
+  examSettings.setDomRefs(dom);
+
+  // Listen for resize and header changes
+  window.addEventListener('resize', updateBottomCardPosition);
+  headerObserver = new ResizeObserver(updateBottomCardPosition);
+  if (dom.fixedHeader) {
+    headerObserver.observe(dom.fixedHeader);
+  }
+
+  // Initialize the exam settings
+  dom.shimmer.style.display = 'flex';
+  await examSettings.initExamSettings();
+  dom.shimmer.style.display = 'none';
+  dom.mainContent.style.display = 'block';
+  updateBottomCardPosition();
+
+  // Auto-join from URL parameter
+  const urlParams = new URLSearchParams(window.location.search);
+  const examCode = urlParams.get('exam');
+  if (examCode) {
+    if (dom.joinCodeDisplay) dom.joinCodeDisplay.textContent = examCode;
+    showStep('step2-join');
+  }
+
+  // Attach event listeners
+  setupEventListeners();
+
+  // Expose global functions for inline onclick (preserved)
+  window.showShareableLink = (code) => {
+    if (dom.shareLinkArea && dom.shareLinkInput) {
+      dom.shareLinkInput.value = getShareableLink(code);
+      dom.shareLinkArea.style.display = 'block';
+    }
+  };
+  window.shareChallengeLink = shareChallengeLink;
+  window.showInlineSpinner = showInlineSpinner;
+  window.hideInlineSpinner = hideInlineSpinner;
+  window.showStep = showStep;
+  window.updateBottomCardPosition = updateBottomCardPosition;
+}
+
+// ==================== DESTROY ====================
 export function destroy() {
-  // Cleanup: remove observers, listeners if needed
+  // Cleanup: remove observers, listeners
   window.removeEventListener('resize', updateBottomCardPosition);
+  if (headerObserver) {
+    headerObserver.disconnect();
+    headerObserver = null;
+  }
   // The page-manager will abort any pending fetches via context.signal
 }

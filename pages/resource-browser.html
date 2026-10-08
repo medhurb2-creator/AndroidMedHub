@@ -57,52 +57,81 @@
   <!-- ============================================================
        VIEWER VIEW — Embedded document viewer
 
-       DOM contract with core.js / ui-internal.js / render.js:
+       INVARIANTS THIS MARKUP OBEYS:
 
-       .viewer-container is a 3-row CSS grid:
-         row 1  → .viewer-header    (header chrome)
-         row 2  → .viewer-main      (page canvas + scroll surface)
-         row 3  → .viewer-footer    (page nav, zoom controls)
+       1. #viewer-main is a fixed window. It paints the background
+          colour and owns the native scroll box. It is never
+          transformed, never a gesture target.
 
-       Three nodes share grid-area:main and stack vertically:
-         #viewer-main           → z-index 1  (the page canvas + scroll surface)
-         #viewer-drawer-scrim   → z-index 35 (dim backdrop; tap to close)
-         #viewer-outline-drawer → z-index 40 (sidebar; slides in from left)
+       2. .page-container is the ONLY interactive element. It is
+          created dynamically by core.js when a document loads. It
+          receives the zoom/pan transform during a pinch.
 
-       Because they share the same grid cell, the drawer automatically
-       spans exactly from the bottom of the header to the top of the
-       footer — no JS measurement of chrome heights required.
+       3. Inside .page-container, every page slot is either:
+            <canvas class="page" data-page="n">   (rendered)
+            <div    class="cover" data-page="n">  (placeholder)
+          Both are sized inline to natural × displayScale. No wrapper.
+          Sharp corners. White background. The canvas IS the page.
 
-       Static chrome nodes inside #viewer-main survive every document
-       switch (clearViewerContent preserves them by ID):
-         #viewer-loading       — spinner
-         #viewer-progress      — progress bar
-         #viewer-text-layer    — reserved text layer host
-         #viewer-content       — reserved alternate content host
+       4. The resolution pyramid governs bitmap density only. Every
+          slot in every ring is sized natural × displayScale. A
+          cover-to-canvas swap is a paint event, not a layout event.
 
-       The sidebar is a single shell that hosts three panels, selected
-       by the `data-panel` attribute:
+       GRID LAYOUT — .viewer-container
+
+         row 1  header
+         row 2  searchbar (hidden until toggled)
+         row 3  main      ← shared grid cell for:
+                              #viewer-main            (page + scroll)
+                              #viewer-drawer-scrim    (dim backdrop)
+                              #viewer-outline-drawer  (sidebar)
+         row 4  footer
+
+       Because they share grid-area:main, the drawer spans exactly
+       from the bottom of the header to the top of the footer with no
+       JS measurement.
+
+       STATIC CHROME NODES INSIDE #viewer-main
+
+       These four nodes survive every document switch
+       (clearViewerContent preserves them by ID):
+
+         #viewer-loading     — spinner
+         #viewer-progress    — progress bar
+         #viewer-content     — reserved host for image/text/office
+                               (each is wrapped in its own
+                               .page-container by core.js, so this
+                               node is unused for PDFs)
+         #viewer-text-layer  — RESERVED. When text selection is
+                               enabled, JS relocates this node into
+                               .page-container so it can be
+                               absolutely positioned over the page.
+                               Left in place here for compatibility;
+                               it is inert until moved.
+
+       SIDEBAR — one shell, three panels
+
+       #viewer-outline-drawer is a single <aside> whose content is
+       chosen by its `data-panel` attribute:
          data-panel="outline" → document outline (default)
          data-panel="search"  → search input + results list
          data-panel="more"    → document info + action buttons
-
        ui-internal.js::_openSidebar(panel) sets the attribute and
        dispatches to managers so the correct panel renders.
 
-       Header layout (matches pages/viewer.html):
+       HEADER LAYOUT
+
          Row 1: [Back]  [Title]  [☰ Menu]
-         Row 2 (on toggle): inline search bar
-         Dropdown menu on the ☰ button contains:
-           Outline · Search text · Page view · Open file
-           Fit to width · Reset zoom · Fullscreen
+         The ☰ button opens a dropdown containing every viewer
+         action (outline, search, view toggle, open file, fit,
+         reset, fullscreen). Row 2 of the header is the search bar
+         when toggled. IDs match pages/viewer.html so ui-internal.js
+         works identically on both pages.
 
-       Footer contains only navigation and continuous zoom:
-         [◀ Previous]  [Page #/total]  [Next ▶]
-         [−] [zoom %] [+]
+       FOOTER
 
+         [◀ Previous] [Page #/total] [Next ▶]  ·  [−] [zoom %] [+]
        Fit and Reset live ONLY in the menu — no duplicate IDs.
-       The menu IDs match pages/viewer.html so ui-internal.js works
-       identically on both pages.
        ============================================================ -->
   <div id="viewer" style="display: none;">
     <div class="viewer-container">
@@ -172,7 +201,7 @@
         </div>
       </header>
 
-      <!-- ─── Search bar (appears below the header when toggled) ────
+      <!-- ─── Search bar (grid row between header and main) ────────
            Toggled by the Search text item in the dropdown menu. -->
       <div class="search-bar" id="viewer-search-bar" role="search">
         <input
@@ -192,9 +221,24 @@
         <button id="viewer-search-close" class="btn-icon" type="button" title="Close search" aria-label="Close search">✕</button>
       </div>
 
-      <!-- ─── Main viewing area ──────────────────────────────────── -->
+      <!-- ─── Main viewing area ──────────────────────────────────────
+           The fixed window. Background colour. Native scroll on both
+           axes. Never transformed. Native touch gestures
+           (touch-action: pan-x pan-y) own scrolling.
+
+           core.js inserts a single .page-container here per document.
+           Inside .page-container, one slot per page:
+             <canvas class="page" data-page="n">   (rendered)
+             <div    class="cover" data-page="n">  (placeholder)
+
+           Static chrome below (#viewer-loading, #viewer-progress,
+           #viewer-content, #viewer-text-layer) is preserved across
+           document switches by clearViewerContent.
+
+           #viewer-text-layer is INERT in this position. When text
+           selection is enabled, JS moves it inside .page-container so
+           its absolute-positioned spans can align with the page. -->
       <main class="viewer-main" id="viewer-main" tabindex="-1">
-        <!-- Static chrome (preserved by clearViewerContent on destroy) -->
         <div class="loading-container" id="viewer-loading">
           <div class="spinner"></div>
           <p>Loading document…</p>
@@ -202,14 +246,17 @@
 
         <progress id="viewer-progress" style="display: none;" max="1" value="0"></progress>
 
-        <!-- Reserved: text layer host (populated when text selection is enabled) -->
-        <div id="viewer-text-layer" class="textLayer" aria-hidden="true"></div>
-
-        <!-- Reserved: alternate content host (image / text / office / unsupported) -->
+        <!-- Reserved: alternate content host (image / text / office /
+             unsupported). Each is wrapped in its own .page-container
+             by core.js. -->
         <div id="viewer-content"></div>
 
-        <!-- Page containers and canvases are inserted here by core.js.
-             Nothing static goes after this point. -->
+        <!-- Reserved: text layer host. Relocated into .page-container
+             by core.js when text selection is enabled. -->
+        <div id="viewer-text-layer" class="textLayer" aria-hidden="true"></div>
+
+        <!-- .page-container and its .page / .cover slots are inserted
+             here by core.js. Nothing static goes after this point. -->
       </main>
 
       <!-- ─── Footer ─────────────────────────────────────────────── -->
@@ -233,7 +280,7 @@
         </div>
 
         <!-- Zoom controls: continuous zoom in/out only.
-             Fit and Reset have moved to the dropdown menu so the two
+             Fit and Reset live in the dropdown menu so the two
              surfaces do not share IDs. -->
         <div class="zoom-controls">
           <button id="viewer-zoom-out" type="button" title="Zoom out" aria-label="Zoom out">−</button>
@@ -243,15 +290,17 @@
       </footer>
 
       <!-- ─── Drawer scrim (tap to close) ─────────────────────────
-           Shares grid-area:main with #viewer-main and #viewer-outline-drawer.
-           Sits at z-index 35 — below the drawer (40), above the page (1).
-           Tap-to-close is wired by ui-internal.js. -->
+           Shares grid-area:main with #viewer-main and
+           #viewer-outline-drawer. Sits at z-index 35 — below the
+           drawer (40), above the page (1). Tap-to-close is wired by
+           ui-internal.js. -->
       <div id="viewer-drawer-scrim" aria-hidden="true"></div>
 
       <!-- ─── Drawer / sidebar ─────────────────────────────────────
-           One shell, multiple panels. `data-panel` selects which panel's
-           content is shown. ui-internal.js toggles `.open` and calls
-           managers.dispatchPanel(panel) to render the right panel. -->
+           One shell, multiple panels. `data-panel` selects which
+           panel's content is shown. ui-internal.js toggles `.open`
+           and calls managers.dispatchPanel(panel) to render the
+           right panel. -->
       <aside
         class="outline-drawer"
         id="viewer-outline-drawer"
@@ -263,8 +312,8 @@
       ></aside>
 
       <!-- ─── Hidden file input ────────────────────────────────────
-           Kept inside .viewer-container so it dies with the container.
-           display:none means it takes no grid cell. -->
+           Kept inside .viewer-container so it dies with the
+           container. display:none means it takes no grid cell. -->
       <input
         type="file"
         id="viewer-file-input"

@@ -7,6 +7,36 @@
  * Owns everything about turning a page (or a tile of a page) into pixels, and
  * deciding when, in what order, at what resolution, and how many at a time.
  *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * INVARIANTS (do not violate — see project spec):
+ *
+ *   1. This pipeline produces BITMAPS. It never inserts canvases into the
+ *      DOM. Core's RENDER_COMPLETE subscriber copies the bitmap into the
+ *      slot that belongs to that page — the slot is either an existing
+ *      <canvas class="page"> or a <div class="cover"> being promoted.
+ *
+ *   2. Slot sizing is core's job, not this file's. Core writes
+ *      width/height inline on every slot to natural × displayScale. This
+ *      file only decides the bitmap's pixel density (renderScale × DPR)
+ *      and hands it back.
+ *
+ *   3. The canvas this file creates is a scratch surface. Its className
+ *      ("page") is cosmetic — it never appears in the live DOM, because
+ *      core either reuses an existing slot canvas or creates its own. The
+ *      name matches so that a future change to a direct-canvas-install
+ *      policy would not require touching this file.
+ *
+ *   4. #viewer-main is a fixed window; this file never touches it. The
+ *      only transform target in the whole system is .page-container,
+ *      owned by interaction.js.
+ *
+ *   5. Every page job carries a `ringRes` — the resolution ring the
+ *      pyramid assigned this render (1.0, 0.8, 0.6, 0.4, 0.2). This file
+ *      forwards it on the RENDER_COMPLETE payload so core can record it as
+ *      `data-res` on the slot, which is what lets the pyramid tell which
+ *      ring a completed render belongs to and avoid re-enqueuing forever.
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
  * Exports (5):
  *   • RenderJob        — typedef (documentation only)
  *   • PageRenderer     — canvas allocation + engine delegation
@@ -54,7 +84,15 @@ import {
  * @property {string} id                 Unique per job. Used for deduplication.
  * @property {'page'|'tile'|'thumbnail'|'metadata'} kind
  * @property {number} pageNum            1-based
- * @property {number} scale              Effective render scale (before DPR)
+ * @property {number} scale              Effective render scale (before DPR).
+ *                                       For pages this is displayScale × ringRes.
+ * @property {number} [ringRes]          Ring resolution the pyramid assigned
+ *                                       this page (1.0, 0.8, 0.6, 0.4, 0.2).
+ *                                       Only meaningful for kind === 'page'.
+ *                                       Forwarded unchanged to the
+ *                                       RENDER_COMPLETE payload so core can
+ *                                       record it as data-res on the slot.
+ * @property {number} [rotation]         0 | 90 | 180 | 270 (mirrors state)
  * @property {{x:number,y:number,width:number,height:number}|null} tileRect
  * @property {number} priority           One of PRIORITY.*
  * @property {AbortSignal} [signal]      Optional external cancellation source
@@ -85,6 +123,12 @@ const TERMINAL_HISTORY_CAP = 32;
  *
  * The returned handle satisfies the RenderTaskHandle shape (see engine.js §4.5):
  *   { promise, cancel(), isCancelled(), pageNum, scale }
+ *
+ * The canvas this renderer creates is a SCRATCH SURFACE. It is not inserted
+ * into the DOM. Core's RENDER_COMPLETE handler copies its bitmap into the
+ * page's slot — either an existing <canvas class="page"> inside
+ * .page-container, or a fresh canvas that replaces the page's .cover
+ * placeholder.
  */
 export class PageRenderer {
   /**
@@ -99,9 +143,10 @@ export class PageRenderer {
   // ── Public ────────────────────────────────────────────────────────────────
 
   /**
-   * Allocate and size a canvas. The engine adapter overwrites width/height
-   * internally, so this returns an empty canvas with the class attribute set
-   * (so callers can identify it in the DOM when they insert it).
+   * Allocate an empty canvas. Width/height are set by the engine adapter;
+   * className is set to CONFIG.PAGE_CLASS so that a scratch canvas, if it
+   * ever did end up in the DOM (future policy change), would be styled
+   * identically to a slot canvas.
    *
    * @param {number} pageNum
    * @param {number} scale
@@ -111,7 +156,7 @@ export class PageRenderer {
    */
   createCanvas(pageNum, scale, dpr, tileRect) {
     const canvas = document.createElement('canvas');
-    canvas.className = CONFIG.PDF_CANVAS_CLASS;
+    canvas.className = CONFIG.PAGE_CLASS;
     // Dimensions are set by the engine. `tileRect` is passed through to the
     // engine via renderTile in Phase 5; in Phase 1 the engine renders the
     // full page and TileManager crops.
@@ -124,7 +169,7 @@ export class PageRenderer {
 
   /**
    * Render a job. Returns a handle synchronously; the promise resolves with
-   * the normalised result `{ canvas, pageNum, scale, tileRect, kind, jobId }`.
+   * the normalised result `{ canvas, pageNum, scale, ringRes, tileRect, kind, jobId }`.
    *
    * Canvas release guarantees:
    *   • On success: canvas is handed to the caller; NOT released here.
@@ -199,6 +244,12 @@ export class PageRenderer {
           canvas,
           pageNum: job.pageNum,
           scale: job.scale,
+          // Ring resolution carried through unchanged. Core reads this off
+          // the RENDER_COMPLETE payload (via RenderScheduler._handleComplete)
+          // to record data-res on the slot. Including it here as well keeps
+          // the handle's resolve value self-describing for tests and future
+          // direct callers.
+          ringRes: typeof job.ringRes === 'number' ? job.ringRes : 1.0,
           tileRect: job.tileRect || null,
           kind: job.kind,
           jobId: job.id,
@@ -297,7 +348,8 @@ export class PageRenderer {
  * and interaction layer.
  *
  * The manager is a pure decision module — it does not render, does not store
- * canvases, and does not touch the DOM.
+ * canvases, and does not touch the DOM. It does not know about slots or the
+ * page-container; it only knows about pixels.
  */
 export class TileManager {
   /**
@@ -954,7 +1006,14 @@ export class RenderScheduler {
         jobId: job.id,
         pageNum: job.pageNum,
         scale: job.scale,
+        // Ring resolution carried through unchanged. Core records it as
+        // data-res on the slot so the pyramid knows which ring this
+        // completed bitmap belongs to. Without this, the pyramid cannot
+        // tell 100% from 80% and will re-enqueue forever.
+        ringRes: typeof job.ringRes === 'number' ? job.ringRes : 1.0,
         kind: job.kind,
+        // The rendered scratch canvas. Core copies the bitmap into the
+        // page's slot; it does NOT insert this canvas into the DOM.
         canvas: result && result.canvas ? result.canvas : null,
       });
     } catch { /* ignore */ }

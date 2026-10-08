@@ -27,14 +27,15 @@
     --warning:      #f59e0b;
     --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
     --radius: 12px;
-    --header-height: 130px;   /* 3 header rows */
+    --header-height: 130px;
 
-    /* Safe-area insets — resolved to real values on Android/iOS with
-       viewport-fit=cover, zero elsewhere. */
     --safe-top:    env(safe-area-inset-top, 0px);
     --safe-bottom: env(safe-area-inset-bottom, 0px);
     --safe-left:   env(safe-area-inset-left, 0px);
     --safe-right:  env(safe-area-inset-right, 0px);
+
+    /* Viewer-specific: the 3px breathing room around the page. */
+    --page-gutter: 3px;
 }
 
 body.dark-theme {
@@ -49,7 +50,6 @@ body.dark-theme {
     --shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
-/* Body override — 0.2s theme transition (common uses 0.3s) */
 body {
     transition: background 0.2s, color 0.2s;
 }
@@ -73,13 +73,8 @@ body {
     -webkit-backdrop-filter: blur(6px);
 }
 
-.header-row {
-    padding: 0.2rem 0;
-    min-height: 36px;
-}
-.header-row:last-child {
-    padding-bottom: 0.3rem;
-}
+.header-row { padding: 0.2rem 0; min-height: 36px; }
+.header-row:last-child { padding-bottom: 0.3rem; }
 
 .logo-area {
     display: flex;
@@ -117,10 +112,7 @@ body {
     border-color: var(--accent);
 }
 
-.title-area {
-    flex: 1;
-    text-align: center;
-}
+.title-area { flex: 1; text-align: center; }
 .title-area h1 {
     margin: 0;
     font-size: 1.2rem;
@@ -129,12 +121,7 @@ body {
     letter-spacing: -0.3px;
 }
 
-/* Search & filter row */
-.search-filter-row {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: nowrap;
-}
+.search-filter-row { display: flex; gap: 0.5rem; flex-wrap: nowrap; }
 .search-filter-row input[type="text"] {
     flex: 1;
     min-width: 0;
@@ -153,10 +140,7 @@ body {
     box-shadow: none;
 }
 
-.filter-wrapper {
-    position: relative;
-    flex-shrink: 0;
-}
+.filter-wrapper { position: relative; flex-shrink: 0; }
 .filter-btn {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
@@ -170,10 +154,7 @@ body {
     align-items: center;
     gap: 0.3rem;
 }
-.filter-btn:hover {
-    background: var(--accent);
-    color: #fff;
-}
+.filter-btn:hover { background: var(--accent); color: #fff; }
 
 .filter-dropdown {
     position: absolute;
@@ -257,15 +238,8 @@ body {
     border-bottom: 1px solid var(--border-light);
     overflow: hidden;
 }
-.card-thumbnail img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-.thumbnail-placeholder {
-    font-size: 2.8rem;
-    color: var(--text-muted);
-}
+.card-thumbnail img { width: 100%; height: 100%; object-fit: cover; }
+.thumbnail-placeholder { font-size: 2.8rem; color: var(--text-muted); }
 
 .card-info {
     padding: 0.5rem 0.6rem 0.4rem;
@@ -336,7 +310,6 @@ body {
     z-index: 2;
 }
 
-/* Card actions */
 .card-actions {
     display: flex;
     gap: 0.4rem;
@@ -416,12 +389,7 @@ body {
     color: var(--warning);
 }
 
-/* Download progress */
-.download-progress {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-}
+.download-progress { display: flex; align-items: center; gap: 0.4rem; }
 .download-progress .spinner-small {
     width: 14px;
     height: 14px;
@@ -430,10 +398,7 @@ body {
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
 }
-.download-progress .percent {
-    font-weight: 600;
-    font-size: 0.75rem;
-}
+.download-progress .percent { font-weight: 600; font-size: 0.75rem; }
 
 /* ============================================================
    SHIMMER (SKELETON) CARDS
@@ -469,11 +434,7 @@ body {
 .shimmer-meta  { height: 10px; width: 60%; }
 .shimmer-badge { height: 16px; width: 40%; border-radius: 9999px; }
 .shimmer-stats { height: 10px; width: 50%; }
-.shimmer-actions {
-    display: flex;
-    gap: 0.4rem;
-    margin-top: 0.2rem;
-}
+.shimmer-actions { display: flex; gap: 0.4rem; margin-top: 0.2rem; }
 .shimmer-btn {
     height: 32px;
     flex: 1;
@@ -495,15 +456,9 @@ body {
 /* ============================================================
    NO DATA / LOAD MORE
    ============================================================ */
-.no-data {
-    padding: 2rem;
-    grid-column: 1 / -1;
-}
+.no-data { padding: 2rem; grid-column: 1 / -1; }
 
-#load-more-container {
-    text-align: center;
-    margin: 1.5rem 0 2rem;
-}
+#load-more-container { text-align: center; margin: 1.5rem 0 2rem; }
 #load-more-btn {
     padding: 0.6rem 2rem;
     border-radius: 30px;
@@ -514,10 +469,7 @@ body {
     cursor: pointer;
     transition: all 0.2s;
 }
-#load-more-btn:hover {
-    background: var(--accent);
-    color: #fff;
-}
+#load-more-btn:hover { background: var(--accent); color: #fff; }
 .loading-spinner-small {
     display: inline-block;
     padding: 0.6rem 1.5rem;
@@ -546,26 +498,44 @@ body {
 /* ==========================================================================
    EMBEDDED VIEWER — scoped to #viewer
    ==========================================================================
-   Boundary rules this section implements:
-     • The page canvas is the PAGE. Nothing clips it, nothing constrains it.
-       The wrapper is a transparent positioning context only.
-     • #viewer-main scrolls on BOTH axes so zoomed / landscape pages are
-       fully reachable (360° pan in scroll mode; PanManager handles page mode).
-     • The outline drawer is a full-height sidebar overlaying the main area
-       (below the header, above the footer) with a dimmed scrim behind it.
-     • Safe-area insets keep chrome clear of notches, punch-holes, and the
-       Android gesture bar.
+   INVARIANTS THIS SECTION OBEYS (do not violate — see project spec):
+
+   1. Background is a colour on #viewer-main. Nothing else. It receives no
+      gestures, is never a transform target, and is never measured for
+      anything except "what size viewport must the page fit into".
+
+   2. The page is a <canvas class="page">. No wrapper. Sharp corners. White
+      background. data-page="<n>" lives on it.
+
+   3. Every slot — cover, thumbnail canvas, or full canvas — is sized to
+      naturalWidth × displayScale by naturalHeight × displayScale. Always.
+      Resolution changes the bitmap inside a canvas, never the slot's size.
+
+   4. Swapping a cover for a canvas, or a coarse canvas for a sharp one, is
+      a paint event, not a layout event. Scroll position cannot jump.
+
+   5. Zoom/pan target .page-container only. Never #viewer-main.
+
+   6. Native scroll on #viewer-main owns X and Y. No JS translate.
+
+   7. Default: page is fit-to-width, X locked at centre (margin: 0 auto +
+      overflow-x: hidden). When the page becomes wider than the viewport,
+      JS flips #viewer-main to .x-scroll to enable native horizontal scroll.
+
+   8. Resolution pyramid (pages from current):
+        ±0–5   → 100% (full canvas)
+        ±6–9   → 80%
+        ±10–12 → 60%
+        ±13–14 → 40%
+        ±15    → 20%
+        ±16+   → plain .cover
+      Only the ring bitmap changes. Slot size is natural × displayScale
+      in every ring.
    ========================================================================== */
 
-#viewer {
-    position: relative;
-}
+#viewer { position: relative; }
 
 #viewer .viewer-container {
-    /* Grid: header / searchbar / main / footer rows.
-       The search bar sits between header and main as its own row so it
-       can be full-width when active. Drawer + scrim share the main cell
-       via grid-area so they inherit the exact same vertical bounds. */
     display: grid;
     grid-template-rows: auto auto 1fr auto;
     grid-template-areas:
@@ -580,22 +550,17 @@ body {
     overflow: hidden;
 }
 
-/* ---------- Header ----------
-   New layout: back · title · hamburger. The hamburger opens a dropdown
-   menu containing every action that used to live in the header row
-   (outline, search, view toggle, open file, fit, reset, fullscreen).
-   The search bar is a sibling of the header, appearing below it as its
-   own grid row when activated. */
+/* ---------- Header ---------- */
 #viewer .viewer-header {
     grid-area: header;
-    position: relative;    /* containing block for the dropdown menu */
-    display: block;        /* the row inside is the actual flex container */
+    position: relative;
+    display: block;
     padding: calc(0.5rem + var(--safe-top)) calc(0.8rem + var(--safe-right))
              0.5rem calc(0.8rem + var(--safe-left));
     background: var(--bg-card);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
-    z-index: 30;           /* above main content, below the drawer (40) */
+    z-index: 30;
 }
 
 #viewer .viewer-header-main {
@@ -634,10 +599,7 @@ body {
 #viewer .btn-icon:hover { background: var(--bg-secondary); }
 #viewer .btn-icon:active { background: var(--border); }
 
-#viewer .btn-menu {
-    font-size: 1.4rem;
-    flex-shrink: 0;
-}
+#viewer .btn-menu { font-size: 1.4rem; flex-shrink: 0; }
 
 #viewer .btn-back {
     display: inline-flex;
@@ -660,10 +622,7 @@ body {
     border-color: var(--accent);
 }
 
-/* ---------- Dropdown menu (hamburger) ----------
-   Absolute-positioned panel that drops below the header. Contains every
-   viewer action as an icon + label row. Closed by default; ui-internal.js
-   toggles the `hidden` attribute. */
+/* ---------- Dropdown menu (hamburger) ---------- */
 #viewer .viewer-menu {
     position: absolute;
     top: calc(100% + 4px);
@@ -708,11 +667,7 @@ body {
     font-size: 1.05rem;
     line-height: 1;
 }
-
-#viewer .viewer-menu-label {
-    flex: 1;
-    min-width: 0;
-}
+#viewer .viewer-menu-label { flex: 1; min-width: 0; }
 
 #viewer .viewer-menu-divider {
     height: 1px;
@@ -720,9 +675,7 @@ body {
     margin: 0.25rem 0.35rem;
 }
 
-/* ---------- Search bar (sibling of the header) ----------
-   Toggled by the Search text item in the dropdown menu. When active it
-   occupies its own grid row between the header and main, full-width. */
+/* ---------- Search bar (below header row) ---------- */
 #viewer .search-bar {
     grid-area: searchbar;
     display: none;
@@ -766,92 +719,109 @@ body {
 }
 
 /* ---------- Main viewing area ----------
-   360° scroll: both axes scrollable. touch-action: pan-x pan-y lets the
-   browser handle touch scrolling natively — no preventDefault needed for
-   simple scrolls. Pinch zoom is handled by GestureManager and calls
-   preventDefault only on the two-finger touchmove path. */
+   THE WINDOW. Background colour. Owns the scroll box. Never transformed.
+   Native scroll on both axes. The page fits or overflows within it.
+
+   Default state: page is fit-to-width, X locked at centre.
+   JS adds .x-scroll when the page becomes wider than the viewport so
+   the browser gives us a native X scrollbar.
+
+   pointer-events: none — the window is deaf. Only .page-container
+   (below) re-enables interaction.
+   ------------------------------------------------------------------ */
 #viewer .viewer-main {
     grid-area: main;
-    overflow: auto;
-    overflow-x: auto;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    display: block;                 /* NOT flex — centered content clips under overflow */
-    padding: calc(0.5rem + var(--safe-top) * 0)
-             calc(0.5rem + var(--safe-right))
-             calc(0.5rem + var(--safe-bottom))
-             calc(0.5rem + var(--safe-left));
-    background: var(--bg-primary);
     position: relative;
     box-sizing: border-box;
-    touch-action: pan-x pan-y;
+
+    /* Both axes scroll when needed; X is off until JS flips .x-scroll. */
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
-    /* Suppress native long-press callout so it doesn't fight gestures.
-       Text selection is re-enabled when a text layer is present. */
+
+    display: block;
+    padding: var(--page-gutter)
+             calc(var(--page-gutter) + var(--safe-right))
+             calc(var(--page-gutter) + var(--safe-bottom))
+             calc(var(--page-gutter) + var(--safe-left));
+
+    background: var(--bg-primary);   /* the ONLY job of this element */
+
+    /* Native browser gestures, not JS. Both axes. */
+    touch-action: pan-x pan-y;
+
+    /* The window is not a gesture target. */
+    pointer-events: none;
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
 }
-/* Text layer (when present) re-enables selection. */
+/* When the page overflows the viewport horizontally, enable native X. */
+#viewer .viewer-main.x-scroll {
+    overflow-x: auto;
+}
+
+/* Text layer re-enables selection. */
 #viewer .viewer-main .textLayer,
 #viewer .viewer-main .textLayer * {
     -webkit-user-select: text;
     user-select: text;
+    pointer-events: auto;
 }
 
 /* ---------- Page container ----------
-   Vertical stack of pages, centered horizontally when there is room,
-   growing past the viewport when zoomed. min-content lets the container
-   widen to fit the widest page so #viewer-main's horizontal scrollbar
-   appears when needed. */
+   The ONLY interactive element. Zoom/pan transform target during pinch.
+   Its width wraps the widest page; margin: 0 auto centres the whole
+   thing when the page fits, left-aligns when it overflows.
+
+   No transform here at rest. JS applies a temporary CSS transform during
+   the pinch gesture and clears it on settle (after resizing slots and
+   restoring scroll).
+   ------------------------------------------------------------------ */
 #viewer .page-container {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 0.75rem;
     margin: 0 auto;
-    width: fit-content;
-    min-width: min-content;
-    min-height: min-content;
-    /* No transform-origin, no will-change. Transform-based zoom was removed:
-       the wrapper now sizes itself to the canvas, and #viewer-main scrolls. */
+    width: fit-content; 
+    min-width: min-content;        /* wraps the widest page */
     max-width: none;
     padding: 0;
+    transform-origin: 0 0;
+    will-change: transform;
+
+    /* Re-enable interaction: this is the page area. */
+    pointer-events: auto;
 }
 
-/* ---------- Canvas wrapper ----------
-   THE most important rule in this file.
-   NO content-visibility. NO contain. NO overflow: hidden. NO fixed
-   dimensions. Any of those turn the page into a fixed window that clips a
-   zoomed canvas — which was the original bug.
-   The wrapper's size is driven by the canvas inside it (set in
-   core.js::_onRenderComplete). It exists only to:
-     1. Reserve space before the first render completes.
-     2. Provide a positioning context for search-highlight overlays. */
-#viewer .page-container .canvas-wrapper {
+/* ---------- The page and its cover ----------
+   Both are sized to natural × displayScale by JS (inline style). Both
+   occupy identical space. Swapping one for the other is a paint event,
+   not a layout event.
+
+   Sharp corners. White background. No wrapper.
+   ------------------------------------------------------------------ */
+#viewer .page-container .page,
+#viewer .page-container .cover {
+    display: block;
     background: #ffffff;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-    border-radius: 4px;
-    /* Deliberately NOT setting width/height/overflow/contain here.
-       The wrapper's size is inline-written by core.js. */
-    position: relative;
+    /* No border-radius. No box-shadow. No wrapper.
+       Width/height set inline by JS: naturalWidth × displayScale. */
+}
+
+/* Rendered pages are canvases. */
+#viewer .page-container canvas.page {
+    /* Sharp corners, white page, block-level. Nothing else. */
     max-width: none;
-    /* Block Android long-press callout on the page itself. */
+    height: auto;
     -webkit-touch-callout: none;
 }
 
-#viewer .page-container canvas {
-    display: block;
-    max-width: none;
-    height: auto;
-}
-
-#viewer .viewer-main img {
-    max-width: none;
-    max-height: none;
-    object-fit: contain;
-    transform-origin: center center;
-    touch-action: pan-x pan-y;
+/* Covers are divs that reserve the slot until the canvas arrives. */
+#viewer .page-container .cover {
+    /* Same sizing as the eventual canvas, provided inline by JS. */
 }
 
 /* ---------- Text layer & search highlight ---------- */
@@ -953,9 +923,7 @@ body {
   font-size: 0.9rem;
   outline: none;
 }
-#viewer .search-panel-input:focus {
-  border-color: var(--accent);
-}
+#viewer .search-panel-input:focus { border-color: var(--accent); }
 #viewer .search-panel-options {
   display: flex;
   gap: 1rem;
@@ -974,20 +942,14 @@ body {
   font-size: 0.8rem;
   color: var(--text-muted);
 }
-#viewer .search-panel-results {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0.5rem 0;
-}
+#viewer .search-panel-results { flex: 1; overflow-y: auto; padding: 0.5rem 0; }
 #viewer .search-panel-empty {
   padding: 1.5rem 1rem;
   color: var(--text-muted);
   font-size: 0.85rem;
   text-align: center;
 }
-#viewer .search-panel-group {
-  margin-bottom: 0.5rem;
-}
+#viewer .search-panel-group { margin-bottom: 0.5rem; }
 #viewer .search-panel-group-header {
   padding: 0.25rem 0.75rem;
   font-size: 0.75rem;
@@ -1010,13 +972,8 @@ body {
   transition: background 0.15s;
   line-height: 1.35;
 }
-#viewer .search-panel-result:hover {
-  background: var(--bg-secondary);
-}
-#viewer .search-panel-result.active {
-  background: var(--accent);
-  color: #fff;
-}
+#viewer .search-panel-result:hover { background: var(--bg-secondary); }
+#viewer .search-panel-result.active { background: var(--accent); color: #fff; }
 #viewer .search-panel-snippet {
   display: block;
   overflow: hidden;
@@ -1025,12 +982,8 @@ body {
 }
 
 /* ── More panel (inside the drawer) ───────────────────────────────── */
-#viewer .outline-drawer[data-panel="more"] {
-  padding: 1rem;
-}
-#viewer .more-section {
-  margin-bottom: 1.5rem;
-}
+#viewer .outline-drawer[data-panel="more"] { padding: 1rem; }
+#viewer .more-section { margin-bottom: 1.5rem; }
 #viewer .more-section h4 {
   margin: 0 0 0.75rem;
   font-size: 0.85rem;
@@ -1039,18 +992,13 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
-#viewer .more-info-list {
-  margin: 0;
-  font-size: 0.85rem;
-}
+#viewer .more-info-list { margin: 0; font-size: 0.85rem; }
 #viewer .more-info-list dt {
   color: var(--text-muted);
   margin-top: 0.5rem;
   font-weight: 500;
 }
-#viewer .more-info-list dt:first-child {
-  margin-top: 0;
-}
+#viewer .more-info-list dt:first-child { margin-top: 0; }
 #viewer .more-info-list dd {
   margin: 0.15rem 0 0;
   color: var(--text-primary);
@@ -1086,43 +1034,105 @@ body {
 }
 
 /* ── Outline links ────────────────────────────────────────────────── */
+#viewer .outline-root { padding: 0.5rem 0; }
+#viewer .outline-list { list-style: none; margin: 0; padding: 0; }
+#viewer .outline-list .outline-list { padding-left: 1rem; }
+#viewer .outline-item { margin: 0; }
+/* ── Outline tree ──────────────────────────────────────────────────── */
+
 #viewer .outline-root {
   padding: 0.5rem 0;
 }
+
 #viewer .outline-list {
   list-style: none;
   margin: 0;
   padding: 0;
 }
-#viewer .outline-list .outline-list {
-  padding-left: 1rem;
+
+#viewer .outline-nested {
+  padding-left: 1.25rem;
 }
+
 #viewer .outline-item {
   margin: 0;
 }
-#viewer .outline-link {
-  display: block;
-  padding: 0.5rem 0.75rem;
-  color: var(--text-primary);
-  text-decoration: none;
-  font-size: 0.85rem;
-  line-height: 1.35;
+
+/* Row = toggle + label. */
+#viewer .outline-row {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  min-height: 36px;
   border-radius: 6px;
   transition: background 0.15s;
 }
-#viewer .outline-link:hover {
+
+#viewer .outline-row:hover {
   background: var(--bg-secondary);
 }
-#viewer .outline-item.level-1 > .outline-link { padding-left: 1rem; }
-#viewer .outline-item.level-2 > .outline-link { padding-left: 2rem; }
-#viewer .outline-item.level-3 > .outline-link { padding-left: 3rem; }
 
-/* ---------- Outline / Search / More DRAWER ----------
-   Full-height sidebar overlaying the page area (below header, above
-   footer) thanks to grid-area: main. Closed state pushes it fully off the
-   left edge; open state slides it in.
-   Width: 80vw on narrow phones, capped at 320px on wide screens — matches
-   Material Design's navigation drawer spec. */
+/* Disclosure triangle. */
+#viewer .outline-toggle {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+#viewer .outline-toggle:hover {
+  color: var(--text-primary);
+  background: var(--border);
+}
+
+/* Spacer so leaves align with parents that have a triangle. */
+#viewer .outline-toggle-spacer {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+}
+
+/* Label = the navigation target. A <button>, styled to look like a link. */
+#viewer .outline-link {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  padding: 0.4rem 0.5rem 0.4rem 0;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 4px;
+}
+
+#viewer .outline-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+#viewer .outline-link:active {
+  color: var(--accent);
+}
+
+/* Indentation is now handled by .outline-nested padding-left, so the old
+   .level-N padding rules are gone. */
+/* ---------- Outline / Search / More DRAWER ---------- */
 #viewer .outline-drawer {
     grid-area: main;
     z-index: 40;
@@ -1145,23 +1155,8 @@ body {
     transform: translateX(0);
     pointer-events: auto;
 }
-/* When the drawer opens, prevent body scroll if it ever appears on the
-   page container (defensive; usually not needed since drawer is grid item). */
-#viewer .outline-drawer.open ~ .viewer-main { overflow: hidden; }
 
-/* Drawer content: outline items */
-#viewer .outline-drawer .outline-item {
-    display: block;
-    padding: 0.6rem 1rem;
-    cursor: pointer;
-    font-size: 0.9rem;
-    color: var(--text-primary);
-    border-bottom: 1px solid var(--border-light);
-    text-decoration: none;
-    line-height: 1.35;
-}
-#viewer .outline-drawer .outline-item:hover { background: var(--bg-secondary); }
-#viewer .outline-drawer .outline-list { list-style: none; margin: 0; padding: 0; }
+
 #viewer .outline-drawer .outline-list .outline-list { padding-left: 1rem; }
 #viewer .outline-drawer .outline-empty {
     padding: 1.5rem 1rem;
@@ -1170,7 +1165,6 @@ body {
     text-align: center;
 }
 
-/* Drawer panel variants — same shell, different content. */
 #viewer .outline-drawer[data-panel="search"] input {
     width: 100%;
     box-sizing: border-box;
@@ -1188,9 +1182,7 @@ body {
     margin-top: 0.5rem;
 }
 
-/* ---------- Scrim (dimmed backdrop behind an open drawer) ----------
-   Same grid cell as the drawer, one layer below it. Tap anywhere on it
-   closes the drawer. Handled by ui-internal.js. */
+/* ---------- Scrim ---------- */
 #viewer-drawer-scrim {
     grid-area: main;
     z-index: 35;
@@ -1342,11 +1334,7 @@ body {
     outline-offset: 2px;
 }
 
-/* ---------- Blocked-preview placeholder ----------
-   Shown when a premium document has fewer than
-   CONFIG.PREVIEW_MIN_PAGES_FOR_FRACTIONAL pages. The document's actual
-   content is never rendered — the placeholder + banner is all the user
-   sees. */
+/* ---------- Blocked-preview placeholder ---------- */
 #viewer .page-container.preview-blocked {
     display: flex;
     flex-direction: column;
@@ -1357,19 +1345,17 @@ body {
     padding: 1rem;
     box-sizing: border-box;
 }
-
 #viewer .preview-blocked-placeholder {
     position: relative;
     background: #ffffff;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-    border-radius: 4px;
     overflow: hidden;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    /* Sharp corners — it's a page. */
 }
-
 #viewer .viewer-preview-blocked {
     position: absolute;
     inset: 0;
@@ -1382,7 +1368,6 @@ body {
         rgba(245, 247, 250, 0.97) 100%);
     box-sizing: border-box;
 }
-
 #viewer .viewer-preview-blocked-inner {
     max-width: 360px;
     width: 100%;
@@ -1393,27 +1378,23 @@ body {
     border-radius: 12px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
-
 #viewer .viewer-preview-blocked-icon {
     font-size: 2.25rem;
     line-height: 1;
     margin-bottom: 0.65rem;
 }
-
 #viewer .viewer-preview-blocked-title {
     margin: 0 0 0.6rem;
     font-size: 1.1rem;
     font-weight: 600;
     color: var(--text-primary);
 }
-
 #viewer .viewer-preview-blocked-body {
     margin: 0 0 1.15rem;
     color: var(--text-secondary);
     font-size: 0.92rem;
     line-height: 1.5;
 }
-
 #viewer .viewer-preview-blocked-btn {
     display: inline-block;
     padding: 0.6rem 1.25rem;
@@ -1446,8 +1427,6 @@ body {
     #viewer .btn-menu { font-size: 1.5rem; }
     #viewer .btn-back { min-height: 40px; font-size: 0.85rem; }
 
-    /* On narrow screens the dropdown fills the width of the header row
-       so long labels don't get cut off. */
     #viewer .viewer-menu {
         left: calc(0.4rem + var(--safe-left));
         right: calc(0.4rem + var(--safe-right));
@@ -1460,10 +1439,6 @@ body {
         padding-bottom: calc(0.25rem + var(--safe-bottom));
     }
     #viewer .page-container { gap: 0.5rem; }
-    #viewer .page-container .canvas-wrapper { border-radius: 2px; 
-    content-visibility: auto;
-  contain-intrinsic-size: auto 800px;
-}
 
     #viewer .viewer-footer {
         padding-left: calc(0.6rem + var(--safe-left));
@@ -1477,11 +1452,9 @@ body {
         min-width: 40px;
     }
     #viewer #viewer-zoom-level { min-width: 44px; font-size: 0.85rem; }
-
     #viewer .search-bar input { font-size: 0.85rem; }
 }
 
-/* Tablets — keep footer compact, allow drawer a bit wider. */
 @media (min-width: 640px) and (max-width: 1023px) {
     #viewer .outline-drawer { width: 340px; max-width: 40vw; }
 }
@@ -1502,7 +1475,6 @@ body {
    ORIENTATION — portrait vs landscape
    ========================================================================== */
 @media (orientation: landscape) and (max-height: 500px) {
-    /* Short landscape: shrink the header so more page fits. */
     #viewer .viewer-header {
         padding-top: calc(0.3rem + var(--safe-top));
         padding-bottom: 0.3rem;

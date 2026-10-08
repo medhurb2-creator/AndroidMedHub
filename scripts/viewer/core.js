@@ -15,24 +15,36 @@
  *   • ViewerCore   — lifecycle, document loading, subsystem orchestration
  *   • createCore() — singleton factory
  *
- * Performance posture:
- *   All FEATURES flags default to TRUE — the viewer boots with the full
- *   optimized pipeline by default:
- *     • Priority-queue render scheduling with cancellation
- *     • Byte-accounted LRU caches with device-tuned caps
- *     • Hybrid tiled rendering for large pages
- *     • Worker-offloaded search
- *     • Velocity-aware rasterization throttling
- *     • Two-phase zoom (GPU transform → async re-raster)
- *     • rAF-batched pan writes
- *     • Directional render-ahead prefetch (5 pages)
- *     • Low-resolution thumbnail placeholders
- *     • Full EngineAdapter routing (ready for PDFium-WASM swap)
+ * ═══════════════════════════════════════════════════════════════════════════
+ * INVARIANTS (do not violate — see project spec):
  *
- *   To diagnose a specific subsystem, turn its flag off via the URL:
- *     ?viewerFlags=USE_SCHEDULER,USE_TILING
- *   This *enables* the listed flags on top of the defaults — it does not
- *   disable them. To disable a flag permanently, edit the value in CONFIG.
+ *   1. #viewer-main is a fixed window. It paints the background colour and
+ *      owns the native scroll box. It is NEVER transformed, NEVER a gesture
+ *      target, NEVER measured for anything except viewport size.
+ *
+ *   2. .page-container is the ONLY interactive element. It receives the
+ *      zoom/pan transform during a pinch. It is the sole child of #viewer-main
+ *      that participates in the document.
+ *
+ *   3. Every page slot is either:
+ *        <canvas class="page" data-page="n" data-res="r">   (rendered)
+ *        <div    class="cover" data-page="n">                (placeholder)
+ *      Both are sized inline to natural × displayScale. No wrapper.
+ *      Sharp corners. White background. The canvas IS the page.
+ *
+ *   4. Every slot in every ring is sized natural × displayScale. Resolution
+ *      changes the bitmap inside a canvas — never the slot's size. Cover →
+ *      canvas swaps are a paint event, not a layout event.
+ *
+ *   5. X-axis lock: when the page fits horizontally, #viewer-main is
+ *      overflow-x: hidden (page centered by margin auto). When the page is
+ *      wider than the viewport, core flips the .x-scroll class on so the
+ *      browser gives a native X scrollbar. Native scroll owns both axes.
+ *
+ *   6. The resolution pyramid SLIDES with the current page. Five pages
+ *      change ring per single-page step; all five upgrades are enqueued in
+ *      the same tick. See _applyPyramidWindow().
+ * ═══════════════════════════════════════════════════════════════════════════
  *
  * Preview-mode support:
  *   Two policies, selected by the document's total page count:
@@ -44,60 +56,18 @@
  *     • numPages < CONFIG.PREVIEW_MIN_PAGES_FOR_FRACTIONAL
  *         Block the entire document. Nothing renders. A page-shaped
  *         placeholder with a centered subscribe banner replaces the
- *         first page. This applies to every document kind — PDF, image,
- *         text, office, unsupported.
- *
- *   Preview mode is scoped to premium catalogue resources opened by
- *   unsubscribed users. External files (file picker, Android intent) and
- *   subscribed users are never affected.
+ *         first page.
  *
  * Android / Capacitor posture:
  *   `_doInit` calls `setupNativeBridge(this)`, which wires the Android back
  *   button, immersive-mode status bar, keep-awake, and file intents through
- *   `native-bridge.js`. Every native call has a web fallback, so `npm run dev`
- *   works unchanged. Device detection delegates to `platform.js`, which is
- *   the single source of truth for environment questions.
- *
- * Layout invariants:
- *   • The page canvas is the page. `.canvas-wrapper` is a transparent
- *     positioning context only — no clipping, no contain, no fixed size.
- *     Its size tracks the canvas via `_onRenderComplete`.
- *   • #viewer-main is the scroll surface. It scrolls on BOTH axes
- *     (`overflow: auto; touch-action: pan-x pan-y` in CSS) so landscape and
- *     zoomed content is reachable without a pan transform.
- *   • Off-screen pages are skipped in layout/paint by `content-visibility:
- *     auto` on the wrapper (restored, safely, because the wrapper now
- *     always tracks its canvas).
+ *   `native-bridge.js`. Every native call has a web fallback.
  *
  * Destroy semantics:
  *   `destroy()` runs on every document switch AND on explicit viewer close.
- *   It tears down the engine, workers, scheduler, caches, and state, and it
- *   clears the viewer DOM via `clearViewerContent()` so the next document
- *   starts from a blank slate. The four static chrome nodes declared in
- *   viewer.html (#viewer-loading, #viewer-progress, #viewer-content,
+ *   Clears the viewer DOM via `clearViewerContent()`. The four static chrome
+ *   nodes (#viewer-loading, #viewer-progress, #viewer-content,
  *   #viewer-text-layer) survive the clear.
- *
- *   The sidebar drawer, its scrim, and every toggle's aria-expanded state
- *   are also reset so the next open starts from a clean, closed state.
- *
- * Import discipline:
- *   • Imports only from ./utils.js and the sibling subsystem factories.
- *   • NEVER imports from ../content.js, ../subscription.js, ../ui.js, ../router.js.
- *   • Is imported by viewer.js only.
- *
- * Cycle resolution:
- *   Sub-modules import { CONFIG, Events, PRIORITY, MIME_TYPES } from './core.js'.
- *   This is safe because:
- *     1. Neither side uses those bindings at module-evaluation time.
- *     2. Their exported consts are hoisted before any sub-module import executes.
- *     3. A dev assertion in createCore() verifies they resolved.
- *
- * Bootstrap ordering (critical):
- *   During `_doInit()`, subsystem factories call `core.getBus()` and
- *   `core.getState()` while `_initialised` is still false. The getters
- *   therefore check the resource they return — not the global `_initialised`
- *   flag — so that factories can read flags and subscribe to the bus as soon
- *   as those resources exist.
  *
  * @module viewer/core
  */
@@ -141,20 +111,12 @@ import {
   clearViewerContent,
 } from './ui-internal.js';
 
-// Re-export so that consumers of core get MIME_TYPES without a separate import.
 export { MIME_TYPES };
 
 // ============================================================================
 // PRIVATE HELPERS
 // ============================================================================
 
-/**
- * Recursively freeze an object graph. Used to protect CONFIG and PRIORITY
- * from accidental mutation. Arrays are frozen too.
- *
- * @param {any} obj
- * @returns {any}
- */
 function deepFreeze(obj) {
   if (obj === null || typeof obj !== 'object') return obj;
   if (Object.isFrozen(obj)) return obj;
@@ -172,7 +134,7 @@ function deepFreeze(obj) {
 
 /**
  * All viewer constants, thresholds, feature flags, and DOM class contracts.
- * Deep-frozen. Any attempted mutation throws in strict mode.
+ * Deep-frozen.
  *
  * @readonly
  */
@@ -184,25 +146,12 @@ export const CONFIG = deepFreeze({
   ZOOM_SETTLE_DEBOUNCE_MS: 120,
 
   // ── Tap sequences ─────────────────────────────────────────────────────────
-  // Android convention: single tap toggles chrome, double tap toggles zoom.
-  // Triple tap is not recognized (conflicts with long-press text selection).
   TAP_SEQUENCE_GAP_MS: 350,
   DOUBLE_SETTLE_MS: 250,
-
-  // Multiplier applied by the double-tap zoom toggle. The toggle is always
-  // viewport-centered.
   MAGNIFY_FACTOR: 2.0,
 
   // ── Preview mode ──────────────────────────────────────────────────────────
-  // When a premium catalogue resource is opened without an active
-  // subscription, this fraction of the document's pages are rendered and a
-  // subscribe CTA is appended after the last preview page.
   PREVIEW_PAGE_FRACTION: 0.10,
-
-  // Documents with this many pages or more use the fractional preview cap.
-  // Documents with fewer pages are fully blocked — no content renders, the
-  // first page is replaced by a subscribe banner. Applies to every document
-  // kind, including single-page images / text / office files.
   PREVIEW_MIN_PAGES_FOR_FRACTIONAL: 10,
 
   // ── Search ────────────────────────────────────────────────────────────────
@@ -231,18 +180,10 @@ export const CONFIG = deepFreeze({
   // ── Velocity thresholds ───────────────────────────────────────────────────
   VELOCITY_SUSPEND_PX_PER_FRAME: 40,
   VELOCITY_PREFETCH_MAX: 500,
-  // 5 pages above/below the current page are kept warm while scrolling
-  // slowly. At high velocity, only 2 pages — the visible set moves fast
-  // enough that deeper prefetch would waste render budget on pages the
-  // user has already passed.
   PREFETCH_DEPTH_SLOW: 5,
   PREFETCH_DEPTH_FAST: 2,
 
   // ── Render concurrency ────────────────────────────────────────────────────
-  // Bounded by hardwareConcurrency - 1 to leave one core for the main thread.
-  // Capped at 6 to let modern phones and tablets overlap engine work with
-  // canvas composition. PDF.js worker contention is the practical ceiling;
-  // beyond 6, additional concurrency slows total throughput on most devices.
   RENDER_CONCURRENCY: (() => {
     try {
       const hc = typeof navigator !== 'undefined' && navigator.hardwareConcurrency
@@ -264,62 +205,48 @@ export const CONFIG = deepFreeze({
   PDFJS_WORKER_SRC:
     'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js',
 
-  // ── Worker script paths ───────────────────────────────────────────────────
   WORKER_PATHS: {
     search: './viewer/search.worker.js',
     parser: './viewer/parser.worker.js',
   },
 
-  // ── DOM contracts (class names, storage keys) ─────────────────────────────
+  // ── DOM contracts ─────────────────────────────────────────────────────────
+  PAGE_CONTAINER_CLASS: 'page-container',   // the sole interactive element
+  PAGE_CLASS: 'page',                       // the canvas that IS the page
+  COVER_CLASS: 'cover',                     // the placeholder that becomes one
   SEARCH_LAYER_CLASS: 'search-layer',
   SEARCH_HIGHLIGHT_CLASS: 'search-highlight active',
-  CANVAS_WRAPPER_CLASS: 'canvas-wrapper',
-  PAGE_CONTAINER_CLASS: 'page-container',
-  PDF_CANVAS_CLASS: 'pdf-canvas',
+  X_SCROLL_CLASS: 'x-scroll',               // toggled on #viewer-main
   VIEW_MODE_STORAGE_KEY: 'viewer-viewMode',
 
   // ── Fit-to-width layout ───────────────────────────────────────────────────
-  // Horizontal padding (px) subtracted from the content area width when
-  // computing the initial fit-to-width scale.
   FIT_WIDTH_H_PADDING_PX: 32,
-
-  // Maximum time (ms) to wait for #viewer-main to have a non-zero width
-  // before giving up on fit-to-width. Prevents the viewer from hanging if
-  // the container is never shown.
   FIT_WIDTH_WAIT_TIMEOUT_MS: 2000,
 
   // ── Metadata prefetch ─────────────────────────────────────────────────────
-  // Eagerly fetch page metadata for the first N pages so the initial
-  // scrollbar geometry is approximately correct. Pages past N are fetched
-  // on demand when the scroll viewport approaches them.
   EAGER_METADATA_PAGES: 20,
 
-  // ── Dev-mode flags (not feature flags; gate diagnostics) ──────────────────
+  // ── Pyramid window geometry ───────────────────────────────────────────────
+  // Forward rings (distance from current page):
+  //   d=0..5   → 100%
+  //   d=6..9   →  80%
+  //   d=10..12 →  60%
+  //   d=13..14 →  40%
+  //   d=15     →  20%
+  //   d≥16     → cover (0%)
+  // Behind rings:
+  //   d=-1     → 100%
+  //   d=-2..-3 →  40%
+  //   d≤-4     → cover (0%)
+  PYRAMID_MAX_AHEAD: 16,
+  PYRAMID_MAX_BEHIND: 4,
+
+  // ── Dev-mode flags ────────────────────────────────────────────────────────
   DEBUG_VIEWER: false,
   DEBUG_WORKERS: false,
   DEBUG_MEMORY: false,
 
   // ── Feature flags ─────────────────────────────────────────────────────────
-  //
-  // All performance features are enabled by default. This is the tuned
-  // configuration for production: every subsystem ships its optimized path.
-  //
-  // Each flag can be turned off individually to diagnose a specific subsystem
-  // or to recover a fallback path if an edge case is discovered. The fallback
-  // paths are the exact behaviour of the previous monolithic viewer.
-  //
-  // Flags and their subsystems:
-  //   USE_WORKER_SEARCH       → managers.SearchManager → workers / search.worker.js
-  //   USE_SCHEDULER           → render.RenderScheduler priority queue
-  //   USE_TILING              → render.TileManager hybrid canvas/tile decision
-  //   USE_ENGINE_ADAPTER      → engine.EngineAdapter routes all PDF.js calls
-  //   USE_LRU_CACHES          → managers.LRUCache + MemoryManager caps
-  //   USE_VELOCITY_THROTTLE   → interaction.ScrollManager pause/resume
-  //   USE_TWO_PHASE_ZOOM      → interaction.ZoomManager GPU transform
-  //   USE_RAF_PAN             → interaction.PanManager rAF-batched writes
-  //   USE_RENDER_PREFETCH     → interaction.ScrollManager directional prefetch
-  //   USE_LOW_RES_PLACEHOLDER → render.TileManager pinned thumbnails
-  //   USE_PARSER_WORKER       → workers / parser.worker.js (Phase 5 stub)
   FEATURES: {
     USE_WORKER_SEARCH: true,
     USE_SCHEDULER: true,
@@ -339,13 +266,6 @@ export const CONFIG = deepFreeze({
 // 2. PRIORITY
 // ============================================================================
 
-/**
- * Task priority bands. Lower numeric value = higher priority. Strictly
- * monotonic; the scheduler sorts ascending.
- *
- * @readonly
- * @enum {number}
- */
 export const PRIORITY = deepFreeze({
   VISIBLE: 1,
   ADJACENT: 2,
@@ -357,14 +277,7 @@ export const PRIORITY = deepFreeze({
 // 3. EVENTS
 // ============================================================================
 
-/**
- * Every event name emitted or subscribed to within the viewer subsystem.
- * Value strings use colon-separated namespaces.
- *
- * @readonly
- */
 export const Events = deepFreeze({
-  // Core lifecycle
   CORE_READY: 'core:ready',
   DOCUMENT_LOADING: 'document:loading',
   DOCUMENT_LOADED: 'document:loaded',
@@ -372,36 +285,29 @@ export const Events = deepFreeze({
   DOCUMENT_DESTROYING: 'document:destroying',
   DOCUMENT_DESTROYED: 'document:destroyed',
 
-  // Layout
   LAYOUT_CHANGED: 'layout:changed',
 
-  // Navigation
   PAGE_VISIBLE: 'page:visible',
   PAGE_JUMP_REQUESTED: 'page:jump-requested',
   NAV_BACK_REQUESTED: 'nav:back-requested',
 
-  // Zoom / scale
   SCALE_REQUESTED: 'scale:requested',
   SCALE_APPLIED: 'scale:applied',
   ZOOM_GESTURE_START: 'zoom:gesture-start',
   ZOOM_GESTURE_END: 'zoom:gesture-end',
 
-  // Rotation
   ROTATE_REQUESTED: 'rotate:requested',
   ROTATION_APPLIED: 'rotation:applied',
 
-  // Panning / gestures
-  // Android convention: single tap toggles chrome, double tap toggles zoom.
   SINGLE_TAP: 'single-tap',
   DOUBLE_TAP: 'double-tap',
-  TRIPLE_TAP: 'triple-tap', // reserved; not emitted by default UI
+  TRIPLE_TAP: 'triple-tap',
   SWIPE: 'swipe',
   PAN_START: 'pan:start',
   PAN_END: 'pan:end',
   INTERACTION_ACTIVITY: 'interaction:activity',
   SCROLL_VELOCITY: 'scroll:velocity',
 
-  // Rendering
   RENDER_ENQUEUE: 'render:enqueue',
   RENDER_START: 'render:start',
   RENDER_COMPLETE: 'render:complete',
@@ -409,38 +315,25 @@ export const Events = deepFreeze({
   RENDER_ERROR: 'render:error',
   TILE_VISIBLE_SET: 'tile:visible-set',
 
-  // Search
   SEARCH_STARTED: 'search:started',
   SEARCH_PROGRESS: 'search:progress',
   SEARCH_COMPLETED: 'search:completed',
   SEARCH_MATCH_FOCUSED: 'search:match-focused',
   SEARCH_CLEARED: 'search:cleared',
 
-  // Outline
   OUTLINE_READY: 'outline:ready',
 
-  // Memory
   MEMORY_PRESSURE: 'memory:pressure',
   MEMORY_REPORT: 'memory:report',
 
-  // Workers
   WORKER_READY: 'worker:ready',
   WORKER_PROGRESS: 'worker:progress',
   WORKER_ERROR: 'worker:error',
   WORKER_TERMINATED: 'worker:terminated',
 
-  // App-level intents
   LOCAL_FILE_OPEN_REQUESTED: 'local-file:open-requested',
-
-  // Network
   NETWORK_OFFLINE: 'network:offline',
-
-  // Preview-mode subscribe CTA. Emitted by the CTA card that core inserts
-  // after the last preview page, and by the blocked-preview banner. Handled
-  // by viewer.js, which routes the user to the subscription page.
   PREVIEW_SUBSCRIBE_REQUESTED: 'preview:subscribe-requested',
-
-  // State change
   STATE_CHANGED: 'state:changed',
 });
 
@@ -448,45 +341,20 @@ export const Events = deepFreeze({
 // 4. EVENT BUS
 // ============================================================================
 
-/**
- * Synchronous publish/subscribe hub. Deliberately minimal — no wildcards,
- * no async dispatch, no handler priorities.
- *
- * Reentrancy-safe: emitting an event from within a handler is supported
- * (iteration snapshots the listener list at emission start).
- *
- * Fault-isolated: a handler that throws does not prevent later handlers from
- * running; the error is caught and swallowed.
- */
 export class EventBus {
   constructor() {
     /** @type {Map<string, Set<Function>>} */
     this._handlers = new Map();
   }
 
-  /**
-   * @param {string} event
-   * @param {Function} handler
-   * @returns {() => void}
-   */
   on(event, handler) {
-    if (typeof event !== 'string' || typeof handler !== 'function') {
-      return () => {};
-    }
+    if (typeof event !== 'string' || typeof handler !== 'function') return () => {};
     let set = this._handlers.get(event);
-    if (!set) {
-      set = new Set();
-      this._handlers.set(event, set);
-    }
+    if (!set) { set = new Set(); this._handlers.set(event, set); }
     set.add(handler);
     return () => this.off(event, handler);
   }
 
-  /**
-   * @param {string} event
-   * @param {Function} handler
-   * @returns {void}
-   */
   off(event, handler) {
     const set = this._handlers.get(event);
     if (!set) return;
@@ -494,14 +362,8 @@ export class EventBus {
     if (set.size === 0) this._handlers.delete(event);
   }
 
-  /**
-   * @param {string} event
-   * @param {Function} handler
-   * @returns {() => void}
-   */
   once(event, handler) {
     if (typeof handler !== 'function') return () => {};
-    /** @type {Function} */
     const wrapper = (...args) => {
       this.off(event, wrapper);
       try { handler(...args); } catch { /* swallow */ }
@@ -509,11 +371,6 @@ export class EventBus {
     return this.on(event, wrapper);
   }
 
-  /**
-   * @param {string} event
-   * @param {any} [payload]
-   * @returns {void}
-   */
   emit(event, payload) {
     const set = this._handlers.get(event);
     if (!set || set.size === 0) return;
@@ -523,22 +380,11 @@ export class EventBus {
     }
   }
 
-  /**
-   * @param {string} [event]
-   * @returns {void}
-   */
   clear(event) {
-    if (event === undefined) {
-      this._handlers.clear();
-      return;
-    }
+    if (event === undefined) { this._handlers.clear(); return; }
     this._handlers.delete(event);
   }
 
-  /**
-   * @param {string} event
-   * @returns {number}
-   */
   listenerCount(event) {
     const set = this._handlers.get(event);
     return set ? set.size : 0;
@@ -549,11 +395,6 @@ export class EventBus {
 // 5. VIEWER STATE
 // ============================================================================
 
-/**
- * Frozen defaults. `reset()` restores from this object, preserving only
- * `flags`, `deviceProfile`, and `initTimestamp`.
- * @private
- */
 const DEFAULT_STATE = Object.freeze({
   docId: null,
   mimeType: null,
@@ -561,8 +402,8 @@ const DEFAULT_STATE = Object.freeze({
   isLocalFile: false,
   documentKind: null,
   previewMode: false,
-  previewPageLimit: 0, // 0 = no limit (subscribed, non-PDF, or not a preview)
-  previewBlocked: false, // true = document fully blocked (fewer than N pages)
+  previewPageLimit: 0,
+  previewBlocked: false,
   isLoading: false,
   error: null,
 
@@ -571,7 +412,7 @@ const DEFAULT_STATE = Object.freeze({
   outline: [],
 
   scale: 1.0,
-  rotation: 0, // 0 | 90 | 180 | 270 (clockwise)
+  rotation: 0,
   viewMode: 'scroll',
   dpr: 1,
   scrollVelocityPxPerFrame: 0,
@@ -604,17 +445,9 @@ const DEFAULT_STATE = Object.freeze({
   },
 });
 
-/**
- * Observable state container. Every mutation goes through `set()` or
- * `patch()`, which emit change events only when the value actually changes.
- */
 export class ViewerState {
-  /**
-   * @param {EventBus} bus
-   */
   constructor(bus) {
     this._bus = bus;
-    /** @type {Record<string, any>} */
     this._data = { ...DEFAULT_STATE };
 
     this._data.outline = [];
@@ -628,9 +461,7 @@ export class ViewerState {
       if (stored === 'scroll' || stored === 'page') {
         this._data.viewMode = stored;
       }
-    } catch {
-      // localStorage may be unavailable (Safari private mode, etc.)
-    }
+    } catch { /* ignore */ }
 
     try {
       const rawDpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
@@ -640,19 +471,8 @@ export class ViewerState {
     }
   }
 
-  /**
-   * @param {string} key
-   * @returns {any}
-   */
-  get(key) {
-    return this._data[key];
-  }
+  get(key) { return this._data[key]; }
 
-  /**
-   * @param {string} key
-   * @param {any} value
-   * @returns {void}
-   */
   set(key, value) {
     const prev = this._data[key];
     if (Object.is(prev, value)) return;
@@ -662,38 +482,22 @@ export class ViewerState {
     this._bus.emit(`${Events.STATE_CHANGED}:${key}`, payload);
   }
 
-  /**
-   * @param {Record<string, any>} partial
-   * @returns {void}
-   */
   patch(partial) {
     if (!partial || typeof partial !== 'object') return;
-    for (const key of Object.keys(partial)) {
-      this.set(key, partial[key]);
-    }
+    for (const key of Object.keys(partial)) this.set(key, partial[key]);
   }
 
-  /**
-   * @returns {Record<string, any>}
-   */
   snapshot() {
     const copy = {};
     for (const key of Object.keys(this._data)) {
       const value = this._data[key];
-      if (Array.isArray(value)) {
-        copy[key] = value.slice();
-      } else if (value && typeof value === 'object') {
-        copy[key] = { ...value };
-      } else {
-        copy[key] = value;
-      }
+      if (Array.isArray(value)) copy[key] = value.slice();
+      else if (value && typeof value === 'object') copy[key] = { ...value };
+      else copy[key] = value;
     }
     return copy;
   }
 
-  /**
-   * @returns {void}
-   */
   reset() {
     const preserved = {
       flags: this._data.flags,
@@ -711,11 +515,6 @@ export class ViewerState {
     this._data.initTimestamp = preserved.initTimestamp;
   }
 
-  /**
-   * @param {string} key
-   * @param {(payload: { key: string, prev: any, next: any }) => void} handler
-   * @returns {() => void}
-   */
   subscribe(key, handler) {
     return this._bus.on(`${Events.STATE_CHANGED}:${key}`, handler);
   }
@@ -725,40 +524,29 @@ export class ViewerState {
 // 6. VIEWER CORE
 // ============================================================================
 
-/**
- * The orchestrator. Owns the bus, the state, and every subsystem. Delegates
- * every meaningful action to the subsystem that owns the concern.
- */
 export class ViewerCore {
   constructor() {
-    /** @type {EventBus|null} */ this._bus = null;
-    /** @type {ViewerState|null} */ this._state = null;
+    this._bus = null;
+    this._state = null;
 
-    /** @type {any} */ this._engine = null;
-    /** @type {any} */ this._render = null;
-    /** @type {any} */ this._interaction = null;
-    /** @type {any} */ this._managers = null;
-    /** @type {any} */ this._workers = null;
+    this._engine = null;
+    this._render = null;
+    this._interaction = null;
+    this._managers = null;
+    this._workers = null;
 
-    /** @type {Promise<void>|null} */ this._initPromise = null;
-    /** @type {boolean} */ this._initialised = false;
-    /** @type {boolean} */ this._destroying = false;
+    this._initPromise = null;
+    this._initialised = false;
+    this._destroying = false;
 
-    /** @type {Array<() => void>} */ this._teardowns = [];
-    /** @type {null | (() => void)} */ this._nativeTeardown = null;
+    this._teardowns = [];
+    this._nativeTeardown = null;
 
-    /** @type {boolean} */ this._pageSizePreloadStarted = false;
+    this._pageSizePreloadStarted = false;
   }
 
   // ── Public API ────────────────────────────────────────────────────────────
 
-  /**
-   * Idempotent initialisation. Subsequent calls return the same in-flight
-   * promise; a failed init can be retried by calling init() again (the
-   * promise is cleared on rejection).
-   *
-   * @returns {Promise<void>}
-   */
   async init() {
     if (this._initialised) return;
     if (this._initPromise) return this._initPromise;
@@ -769,40 +557,20 @@ export class ViewerCore {
     try {
       await p;
     } catch (err) {
-      // Allow a retry after a failed init.
       this._initPromise = null;
       throw err;
     }
   }
 
-  /**
-   * Load a document. Never throws — errors are emitted via `document:error`.
-   *
-   * @param {Blob} blob
-   * @param {string|null} [fileType]
-   * @param {string} [title]
-   * @param {{ previewMode?: boolean }|null} [opts]
-   *   Optional hints. When `previewMode` is true, the preview policy
-   *   applies: for documents with >= PREVIEW_MIN_PAGES_FOR_FRACTIONAL
-   *   pages, the first fraction is rendered with a subscribe CTA; for
-   *   documents with fewer pages, the entire document is blocked and a
-   *   subscribe banner replaces the first page.
-   * @returns {Promise<void>}
-   */
   async loadDocument(blob, fileType = null, title = 'Document', opts = null) {
     if (!this._state) {
       throw new Error('ViewerCore not initialised. Call init() first.');
     }
 
-    // Destroy any previous document before starting a new one.
     if (this._state.get('docId') !== null || this._state.get('documentKind') !== null) {
       this.destroy();
     }
 
-    // Apply the preview hint AFTER destroy(), because destroy() resets state
-    // and would otherwise clear these fields. Set the initial limits to 0 /
-    // false here; the loaders compute the actual policy once the page count
-    // is known.
     const previewMode = !!(opts && opts.previewMode);
     this._state.set('previewMode', previewMode);
     this._state.set('previewPageLimit', 0);
@@ -823,20 +591,11 @@ export class ViewerCore {
       this._state.set('documentKind', kind);
 
       switch (kind) {
-        case 'pdf':
-          await this._loadPdf(normalised);
-          break;
-        case 'image':
-          this._loadImage(normalised);
-          break;
-        case 'text':
-          await this._loadText(normalised);
-          break;
-        case 'office':
-          this._loadOffice(normalised);
-          break;
-        default:
-          this._loadUnsupported(normalised);
+        case 'pdf':    await this._loadPdf(normalised); break;
+        case 'image':  this._loadImage(normalised); break;
+        case 'text':   await this._loadText(normalised); break;
+        case 'office': this._loadOffice(normalised); break;
+        default:       this._loadUnsupported(normalised);
       }
 
       this._state.set('isLoading', false);
@@ -850,21 +609,6 @@ export class ViewerCore {
     }
   }
 
-  /**
-   * Canonical teardown. Idempotent.
-   *
-   * Runs on every document switch AND on explicit viewer close. Clears the
-   * viewer DOM via `clearViewerContent()` so the next document starts from
-   * a blank slate — page containers, canvases, search overlays, error
-   * containers, and the preview-mode CTA are removed; the four static
-   * chrome nodes from viewer.html are preserved.
-   *
-   * Also resets the sidebar drawer, its scrim, every toggle's aria-expanded
-   * state, and the outline drawer's dataset — so the next open starts from
-   * a clean, closed state.
-   *
-   * @returns {void}
-   */
   destroy() {
     if (this._destroying) return;
     if (!this._state) return;
@@ -873,81 +617,50 @@ export class ViewerCore {
     try {
       this._bus.emit(Events.DOCUMENT_DESTROYING, {});
 
-      // 1. Cancel all scheduler work.
       try {
         const scheduler = this._render && this._render.scheduler;
         if (scheduler && typeof scheduler.cancelAll === 'function') {
           const result = scheduler.cancelAll();
-          if (result && typeof result.catch === 'function') {
-            result.catch(() => {});
-          }
+          if (result && typeof result.catch === 'function') result.catch(() => {});
         }
       } catch { /* ignore */ }
 
-      // 2. Abort any in-flight search.
       try {
         if (this._managers && this._managers.search && this._managers.search.cancel) {
           this._managers.search.cancel();
         }
       } catch { /* ignore */ }
 
-      // 3. Release cached canvases BEFORE engine destroy (safe ordering).
       try {
         if (this._managers && this._managers.cache && this._managers.cache.evictAll) {
           this._managers.cache.evictAll();
         }
       } catch { /* ignore */ }
 
-      // 4. Revoke all blob URLs (registered via utils.createObjectURL).
-      try {
-        revokeAllObjectURLs();
-      } catch { /* ignore */ }
+      try { revokeAllObjectURLs(); } catch { /* ignore */ }
 
-      // 5. Destroy the engine (releases PDF.js document + worker).
       try {
         if (this._engine && this._engine.destroy) {
           const result = this._engine.destroy();
-          if (result && typeof result.catch === 'function') {
-            result.catch(() => {});
-          }
+          if (result && typeof result.catch === 'function') result.catch(() => {});
         }
       } catch { /* ignore */ }
 
-      // 6. Terminate workers.
       try {
         if (this._workers && this._workers.terminateAll) {
           this._workers.terminateAll('document destroyed');
         }
       } catch { /* ignore */ }
 
-      // 7. Unmount UI chrome (only has an effect in embedded mode; safe always).
-      try {
-        unmountChrome(this);
-      } catch { /* ignore */ }
-
-      // 7b. Clear the viewer DOM so the next document starts from a blank
-      //     slate. Preserves the four static chrome nodes declared in
-      //     viewer.html: #viewer-loading, #viewer-progress, #viewer-content,
-      //     #viewer-text-layer.
-      try {
-        clearViewerContent();
-      } catch { /* ignore */ }
-
-      // 7c. Reset sidebar / scrim / toggle ARIA state.
+      try { unmountChrome(this); } catch { /* ignore */ }
+      try { clearViewerContent(); } catch { /* ignore */ }
       this._resetSidebarState();
 
-      // 8. Core's own cross-module subscriptions (in `_teardowns`) and the
-      //    native bridge subscriptions are VIEWER-LIFETIME. They must survive
-      //    a document switch so the RENDER_COMPLETE handler and the back
-      //    button handler remain live.
-
-      // 9. Reset state.
       this._state.reset();
       this._state.set('isDestroyed', false);
       this._state.set('rotation', 0);
       this._pageSizePreloadStarted = false;
 
-      // 10. Notify.
       this._bus.emit(Events.DOCUMENT_DESTROYED, {});
     } finally {
       this._destroying = false;
@@ -955,179 +668,76 @@ export class ViewerCore {
   }
 
   /**
-   * Re-render the current layout. Delegates structural DOM work to core and
-   * canvas production to the render pipeline.
-   *
-   * When the document is in blocked-preview mode, the banner is re-rendered
-   * instead of a layout — no pages, no wrappers, no canvases.
-   *
-   * @returns {Promise<void>}
+   * Re-render the current layout. Emits LAYOUT_CHANGED after the DOM is
+   * built so that interaction.js finds a live .page-container.
    */
   async renderCurrentLayout() {
     if (!this._state) return;
 
-    // Blocked preview — no layout is possible. Re-render the banner.
     if (this._state.get('previewBlocked')) {
       this._renderPreviewBlocked();
       return;
     }
 
     const viewMode = this._state.get('viewMode');
-    this._bus.emit(Events.LAYOUT_CHANGED, { mode: viewMode });
 
     if (viewMode === 'scroll') {
       await this._renderScrollLayout();
     } else {
       await this._renderPageLayout();
     }
+
+    this._bus.emit(Events.LAYOUT_CHANGED, { mode: viewMode });
   }
 
   // ── Subsystem getters ─────────────────────────────────────────────────────
-  //
-  // IMPORTANT: these getters are called by subsystem factories DURING init(),
-  // before `_initialised` becomes true. Each getter therefore checks its own
-  // resource — not the global `_initialised` flag — so that factories can
-  // read state/flags and subscribe to the bus while the pipeline is still
-  // assembling.
 
-  /** @returns {EventBus} */
   getBus() {
-    if (!this._bus) {
-      throw new Error('ViewerCore bus is not ready yet.');
-    }
+    if (!this._bus) throw new Error('ViewerCore bus is not ready yet.');
     return this._bus;
   }
 
-  /** @returns {ViewerState} */
   getState() {
-    if (!this._state) {
-      throw new Error('ViewerCore state is not ready yet.');
-    }
+    if (!this._state) throw new Error('ViewerCore state is not ready yet.');
     return this._state;
   }
 
-  /** @returns {any} */
   getEngine() {
-    if (!this._engine) {
-      throw new Error('ViewerCore engine is not ready yet.');
-    }
+    if (!this._engine) throw new Error('ViewerCore engine is not ready yet.');
     return this._engine;
   }
 
-  /** @returns {any} */
-  getScheduler() {
-    return this._render ? this._render.scheduler : null;
-  }
+  getScheduler() { return this._render ? this._render.scheduler : null; }
+  getTileManager() { return this._render ? this._render.tileManager : null; }
+  getRenderer() { return this._render ? this._render.renderer : null; }
+  getCache() { return this._managers ? this._managers.cache : null; }
+  getMemory() { return this._managers ? this._managers.memory : null; }
+  getSearch() { return this._managers ? this._managers.search : null; }
+  getOutline() { return this._managers ? this._managers.outline : null; }
+  getManagers() { return this._managers; }
 
-  /** @returns {any} */
-  getTileManager() {
-    return this._render ? this._render.tileManager : null;
-  }
+  getScroll() { return this._interaction ? this._interaction.scroll : null; }
+  getZoom() { return this._interaction ? this._interaction.zoom : null; }
+  getPan() { return this._interaction ? this._interaction.pan : null; }
+  getGestures() { return this._interaction ? this._interaction.gestures : null; }
 
-  /** @returns {any} */
-  getRenderer() {
-    return this._render ? this._render.renderer : null;
-  }
+  getWorkers() { return this._workers; }
 
-  /** @returns {any} */
-  getCache() {
-    return this._managers ? this._managers.cache : null;
-  }
-
-  /** @returns {any} */
-  getMemory() {
-    return this._managers ? this._managers.memory : null;
-  }
-
-  /** @returns {any} */
-  getSearch() {
-    return this._managers ? this._managers.search : null;
-  }
-
-  /** @returns {any} */
-  getOutline() {
-    return this._managers ? this._managers.outline : null;
-  }
-
-  /**
-   * The full managers aggregate. Exposes `dispatchPanel(panel)` so ui-internal
-   * can force a panel render after opening the sidebar.
-   *
-   * @returns {any}
-   */
-  getManagers() {
-    return this._managers;
-  }
-
-  /** @returns {any} */
-  getScroll() {
-    return this._interaction ? this._interaction.scroll : null;
-  }
-
-  /** @returns {any} */
-  getZoom() {
-    return this._interaction ? this._interaction.zoom : null;
-  }
-
-  /** @returns {any} */
-  getPan() {
-    return this._interaction ? this._interaction.pan : null;
-  }
-
-  /** @returns {any} */
-  getGestures() {
-    return this._interaction ? this._interaction.gestures : null;
-  }
-
-  /** @returns {any} */
-  getWorkers() {
-    return this._workers;
-  }
-
-  /**
-   * Effective page count for layout, navigation, and render scheduling.
-   * Returns the preview limit when in fractional preview mode, otherwise
-   * the real total. When blocked, returns 1 so callers that expect a
-   * positive number do not break — the blocked placeholder is the only
-   * "page" and it is not navigable. Zero is never returned.
-   *
-   * @returns {number}
-   */
   getEffectivePageLimit() {
     if (!this._state) return 1;
-
     if (this._state.get('previewBlocked')) return 1;
-
     const limit = this._state.get('previewPageLimit');
     if (limit > 0) return limit;
-
     const total = this._state.get('numPages');
     return typeof total === 'number' && total > 0 ? total : 1;
   }
 
-  /**
-   * @param {number} pageNum
-   * @returns {boolean} true if the page may be rendered and navigated to.
-   */
   isPageAllowed(pageNum) {
     if (!Number.isFinite(pageNum)) return false;
     if (this._state && this._state.get('previewBlocked')) return false;
     return pageNum >= 1 && pageNum <= this.getEffectivePageLimit();
   }
 
-  /**
-   * Facade exposing ui-internal functions that consumers may need to drive.
-   *
-   * @returns {{
-   *   mountChrome: () => void,
-   *   unmountChrome: () => void,
-   *   refreshElementCache: () => any,
-   *   injectViewerStyles: () => void,
-   *   showHeaderFooter: () => void,
-   *   hideHeaderFooter: () => void,
-   *   resetAutoHideTimer: () => void,
-   * }}
-   */
   getUI() {
     const core = this;
     return {
@@ -1135,43 +745,30 @@ export class ViewerCore {
       unmountChrome: () => unmountChrome(core),
       refreshElementCache: () => refreshElementCache(),
       injectViewerStyles: () => injectViewerStyles(),
-      showHeaderFooter: () => {
-        core.getBus().emit(Events.INTERACTION_ACTIVITY, {});
-      },
-      hideHeaderFooter: () => { /* no-op facade stub */ },
-      resetAutoHideTimer: () => {
-        core.getBus().emit(Events.INTERACTION_ACTIVITY, {});
-      },
+      showHeaderFooter: () => { core.getBus().emit(Events.INTERACTION_ACTIVITY, {}); },
+      hideHeaderFooter: () => { /* no-op */ },
+      resetAutoHideTimer: () => { core.getBus().emit(Events.INTERACTION_ACTIVITY, {}); },
     };
   }
 
   // ── Private: lifecycle ────────────────────────────────────────────────────
 
   async _doInit() {
-    // 1. Environment check — pdfjsLib must be present.
     this._assertPdfjsLibPresent();
 
-    // 2. Create the event bus.
     this._bus = new EventBus();
-
-    // 3. Create the state container.
     this._state = new ViewerState(this._bus);
 
-    // 4. Apply feature-flag snapshot (URL overrides in dev).
     const flags = this._applyUrlFlagOverrides(CONFIG.FEATURES);
     this._state.set('flags', flags);
 
-    // 5. Compute device profile (delegates to platform.js).
     this._state.set('deviceProfile', this._detectDeviceProfile());
 
-    // 6. Inject CSS + refresh element cache.
     injectViewerStyles();
     refreshElementCache();
 
-    // 7. Dev assertion of element IDs.
     this._assertElementIdsPresent();
 
-    // 8. Instantiate subsystems in dependency order.
     const created = [];
     try {
       this._workers = createWorkers(this);
@@ -1206,7 +803,6 @@ export class ViewerCore {
         }
       });
     } catch (err) {
-      // Roll back any subsystems already created.
       for (let i = created.length - 1; i >= 0; i--) {
         try { created[i](); } catch { /* ignore */ }
       }
@@ -1219,35 +815,24 @@ export class ViewerCore {
       throw err;
     }
 
-    // 9. Initialise the engine (async).
     if (this._engine && this._engine.initialize) {
       await this._engine.initialize();
     }
 
-    // 10. Wire UI.
     setupControls(this);
     setupAutoHideListeners(this);
     setupDPRListener(this);
     bindCoreEvents(this);
-
-    // 10b. Watch for #viewer-main width changes and re-apply fit-to-width
-    //      when the user hasn't manually overridden the zoom. Handles
-    //      rotation and window resize.
     setupFitWidthObserver(this);
 
-    // 11. Wire core-level cross-module subscriptions.
     this._wireCrossModuleEvents();
 
-    // 12. Wire native bridge (Android back button, immersive mode, keep-awake,
-    //     file intents). Web fallbacks are used in `npm run dev` — Escape key
-    //     proxies the back button, visibilitychange proxies app state, etc.
     try {
       this._nativeTeardown = setupNativeBridge(this);
     } catch {
       this._nativeTeardown = null;
     }
 
-    // 13. Mark ready.
     this._state.set('initTimestamp', Date.now());
     this._initialised = true;
     this._bus.emit(Events.CORE_READY, { timestamp: this._state.get('initTimestamp') });
@@ -1256,7 +841,7 @@ export class ViewerCore {
   _wireCrossModuleEvents() {
     const bus = this._bus;
 
-    // Memory pressure → cancel low-priority render work.
+    // ── Memory pressure → cancel low-priority render work ─────────────────
     this._teardowns.push(bus.on(Events.MEMORY_PRESSURE, (payload) => {
       if (!payload || payload.level !== 'critical') return;
       try {
@@ -1267,41 +852,48 @@ export class ViewerCore {
       } catch { /* ignore */ }
     }));
 
-    // Render completion → insert canvas + adopt rendered size on wrapper.
+    // ── RENDER_COMPLETE → install page into its slot ──────────────────────
     this._teardowns.push(bus.on(Events.RENDER_COMPLETE, (payload) => {
       this._onRenderComplete(payload);
     }));
 
-    // Page visibility → track current page.
+    // ── PAGE_VISIBLE → track current page AND slide the pyramid window ────
+    //
+    // Every navigation path (scroll, page-jump, swipe, outline click, search
+    // match) converges on PAGE_VISIBLE. Sliding the pyramid here means the
+    // window always tracks the current page regardless of how the user got
+    // there, and it guarantees the +5 page is already enqueued by the time
+    // the user's next scroll frame begins.
     this._teardowns.push(bus.on(Events.PAGE_VISIBLE, (payload) => {
       if (!payload || typeof payload.pageNum !== 'number') return;
+
       const prev = this._state.get('currentPage');
       if (prev === payload.pageNum) return;
+
       this._state.set('currentPage', payload.pageNum);
+
+      // Slide the ring boundaries. Five pages change ring per step — all
+      // five upgrades fire in the same tick through the scheduler.
+      try { this._applyPyramidWindow(payload.pageNum); } catch { /* ignore */ }
     }));
 
-    // Scale applied → mirror into state.
+    // ── SCALE_APPLIED → resize every slot, then re-evaluate X-axis lock ───
     this._teardowns.push(bus.on(Events.SCALE_APPLIED, (payload) => {
       if (!payload || typeof payload.scale !== 'number') return;
+
       const prev = this._state.get('scale');
-      if (prev === payload.scale) return;
-      this._state.set('scale', payload.scale);
+      if (prev !== payload.scale) {
+        this._state.set('scale', payload.scale);
+      }
+
+      this._syncSlotDimensions();
+      this._updateXAxisLock();
+
+      // Re-render the visible ring at the new scale.
+      try { this._applyPyramidWindow(this._state.get('currentPage') || 1); } catch { /* ignore */ }
     }));
 
-    // ── Document loaded → hand the outline tree to OutlineManager ────────
-    //
-    // `_loadPdf` patches `state.outline` from the engine's getOutline()
-    // result, but nothing was forwarding that data to the OutlineManager.
-    // The panel rendered "No outline available" even when the PDF had a
-    // full tree because the manager's `_items` cache stayed empty.
-    //
-    // Document_loaded carries the outline in its payload, so we read it
-    // from there rather than from state — the payload is the authoritative
-    // source and avoids any ordering dependency on the state patch above.
-    //
-    // NOTE: this subscriber is a SIBLING of the ROTATE_REQUESTED subscriber
-    // below, not nested inside it. A previous paste accidentally inlined it
-    // into the rotation handler; that has been corrected.
+    // ── DOCUMENT_LOADED → hand outline to OutlineManager ──────────────────
     this._teardowns.push(bus.on(Events.DOCUMENT_LOADED, (payload) => {
       if (!payload || !Array.isArray(payload.outline)) return;
       try {
@@ -1312,7 +904,7 @@ export class ViewerCore {
       } catch { /* ignore */ }
     }));
 
-    // Rotation requested → update state, emit applied, re-render visible.
+    // ── ROTATE_REQUESTED → update state, rebuild layout ───────────────────
     this._teardowns.push(bus.on(Events.ROTATE_REQUESTED, (payload) => {
       const current = this._state.get('rotation') || 0;
       let next;
@@ -1326,27 +918,21 @@ export class ViewerCore {
       if (next === current) return;
       this._state.set('rotation', next);
       this._bus.emit(Events.ROTATION_APPLIED, { rotation: next });
-      // Force a layout rebuild so page wrappers pick up the new dimensions
-      // (rotation swaps width and height for 90° / 270°).
       Promise.resolve()
         .then(() => this.renderCurrentLayout())
         .catch(() => { /* ignore */ });
     }));
 
-    // Search lifecycle.
+    // ── Search lifecycle ──────────────────────────────────────────────────
     this._teardowns.push(bus.on(Events.SEARCH_STARTED, () => {
       this._state.set('isSearching', true);
     }));
     this._teardowns.push(bus.on(Events.SEARCH_COMPLETED, (payload) => {
       this._state.set('isSearching', false);
-      this._state.set(
-        'searchMatches',
-        payload && Array.isArray(payload.matches) ? payload.matches : [],
-      );
-      this._state.set(
-        'currentMatchIndex',
-        payload && typeof payload.currentIndex === 'number' ? payload.currentIndex : -1,
-      );
+      this._state.set('searchMatches',
+        payload && Array.isArray(payload.matches) ? payload.matches : []);
+      this._state.set('currentMatchIndex',
+        payload && typeof payload.currentIndex === 'number' ? payload.currentIndex : -1);
     }));
     this._teardowns.push(bus.on(Events.SEARCH_CLEARED, () => {
       this._state.set('isSearching', false);
@@ -1359,19 +945,7 @@ export class ViewerCore {
       this._state.set('currentMatchIndex', payload.index);
     }));
 
-    // ── View-mode change → persist AND rebuild the layout ─────────────
-    //
-    // Two responsibilities:
-    //
-    //   1. Persist the user's choice to localStorage so the next session
-    //      starts in the same mode.
-    //
-    //   2. Rebuild the layout. `state.set('viewMode', 'page')` alone only
-    //      mutates state — it does not touch the DOM. The toggle in
-    //      ui-internal.js emits LAYOUT_CHANGED on click, but that event is
-    //      informational; nothing subscribes to it to trigger a rebuild.
-    //
-    //      This subscriber IS the rebuild trigger.
+    // ── View-mode change → persist AND rebuild layout ─────────────────────
     this._teardowns.push(this._state.subscribe('viewMode', (payload) => {
       try {
         localStorage.setItem(CONFIG.VIEW_MODE_STORAGE_KEY, payload.next);
@@ -1382,10 +956,20 @@ export class ViewerCore {
         .catch(() => { /* ignore */ });
     }));
 
-    // Document destroy → reset preload flag.
     this._teardowns.push(bus.on(Events.DOCUMENT_DESTROYED, () => {
       this._pageSizePreloadStarted = false;
     }));
+
+    // ── Window resize → re-evaluate X-axis lock ───────────────────────────
+    if (typeof window !== 'undefined') {
+      const onResize = () => {
+        try { this._updateXAxisLock(); } catch { /* ignore */ }
+      };
+      window.addEventListener('resize', onResize, { passive: true });
+      this._teardowns.push(() => {
+        try { window.removeEventListener('resize', onResize); } catch { /* ignore */ }
+      });
+    }
   }
 
   // ── Private: document kind detection & loaders ────────────────────────────
@@ -1400,17 +984,13 @@ export class ViewerCore {
       m === 'text/csv' ||
       m === 'application/rtf' ||
       m === 'application/vnd.oasis.opendocument.text'
-    ) {
-      return 'text';
-    }
+    ) return 'text';
     if (
       m.includes('vnd.openxmlformats-officedocument') ||
       m === 'application/msword' ||
       m === 'application/vnd.ms-powerpoint' ||
       m === 'application/vnd.ms-excel'
-    ) {
-      return 'office';
-    }
+    ) return 'office';
     return 'unsupported';
   }
 
@@ -1432,8 +1012,6 @@ export class ViewerCore {
       scale: 1.0,
     });
 
-    // Clear the sidebar drawer's content so the new document's outline
-    // renders into a clean shell.
     try {
       const drawer = document.getElementById('viewer-outline-drawer');
       if (drawer) {
@@ -1442,20 +1020,11 @@ export class ViewerCore {
       }
     } catch { /* ignore */ }
 
-    // Apply the preview policy. Decides between fractional preview
-    // (>= PREVIEW_MIN_PAGES_FOR_FRACTIONAL pages) and fully blocked
-    // (< min pages). Must run BEFORE DOCUMENT_LOADED fires so ui-internal
-    // reads the correct state.
     this._applyPreviewPolicy(numPages);
 
-    // ── Fit-to-width ────────────────────────────────────────────────────
-    // Skipped when blocked — the banner is sized from cached metadata, and
-    // no page rendering is going to happen.
     if (!this._state.get('previewBlocked')) {
       await this._applyFitToWidth();
     } else {
-      // Ensure page 1 metadata is cached so _renderPreviewBlocked can
-      // size the placeholder correctly.
       await this._ensurePageMetadata(1);
     }
 
@@ -1467,7 +1036,6 @@ export class ViewerCore {
       previewBlocked: this._state.get('previewBlocked') === true,
     });
 
-    // Blocked — render the banner instead of the actual document.
     if (this._state.get('previewBlocked')) {
       this._renderPreviewBlocked();
       return;
@@ -1486,11 +1054,9 @@ export class ViewerCore {
       this._renderPreviewBlocked();
       if (els.footer) els.footer.style.display = 'none';
       this._bus.emit(Events.DOCUMENT_LOADED, {
-        numPages: 1,
-        outline: [],
+        numPages: 1, outline: [],
         mimeType: this._state.get('mimeType'),
-        documentKind: 'image',
-        previewBlocked: true,
+        documentKind: 'image', previewBlocked: true,
       });
       return;
     }
@@ -1500,29 +1066,29 @@ export class ViewerCore {
     main.classList.add('page-view');
     this._clearViewerMainPreservingChrome();
 
-    const wrapper = document.createElement('div');
-    wrapper.style.width = '100%';
-    wrapper.style.height = '100%';
-    wrapper.style.display = 'flex';
-    wrapper.style.alignItems = 'center';
-    wrapper.style.justifyContent = 'center';
-    wrapper.style.transformOrigin = 'center center';
+    // The image IS the page — wrap it in .page-container so zoom/pan attach.
+    const container = document.createElement('div');
+    container.className = CONFIG.PAGE_CONTAINER_CLASS;
 
     const img = document.createElement('img');
+    img.className = CONFIG.PAGE_CLASS;
     img.src = createObjectURL(blob);
     img.style.maxWidth = 'none';
     img.style.maxHeight = 'none';
     img.style.objectFit = 'contain';
     img.style.transformOrigin = 'center center';
+    img.style.display = 'block';
 
-    wrapper.appendChild(img);
-    main.appendChild(wrapper);
+    container.appendChild(img);
+    main.appendChild(container);
 
     if (els.footer) els.footer.style.display = 'none';
 
+    this._updateXAxisLock();
+    this._bus.emit(Events.LAYOUT_CHANGED, { mode: 'page', container });
+
     this._bus.emit(Events.DOCUMENT_LOADED, {
-      numPages: 1,
-      outline: [],
+      numPages: 1, outline: [],
       mimeType: this._state.get('mimeType'),
       documentKind: 'image',
     });
@@ -1538,11 +1104,9 @@ export class ViewerCore {
       this._renderPreviewBlocked();
       if (els.footer) els.footer.style.display = 'none';
       this._bus.emit(Events.DOCUMENT_LOADED, {
-        numPages: 1,
-        outline: [],
+        numPages: 1, outline: [],
         mimeType: this._state.get('mimeType'),
-        documentKind: 'text',
-        previewBlocked: true,
+        documentKind: 'text', previewBlocked: true,
       });
       return;
     }
@@ -1557,18 +1121,22 @@ export class ViewerCore {
     pre.style.fontFamily = 'var(--font-mono, monospace)';
     pre.style.fontSize = '0.95rem';
     pre.style.lineHeight = '1.5';
-    pre.style.overflow = 'auto';
-    pre.style.height = '100%';
     pre.style.boxSizing = 'border-box';
 
     this._clearViewerMainPreservingChrome();
-    els.main.appendChild(pre);
+
+    const container = document.createElement('div');
+    container.className = CONFIG.PAGE_CONTAINER_CLASS;
+    container.appendChild(pre);
+    els.main.appendChild(container);
 
     if (els.footer) els.footer.style.display = 'none';
 
+    this._updateXAxisLock();
+    this._bus.emit(Events.LAYOUT_CHANGED, { mode: 'scroll', container });
+
     this._bus.emit(Events.DOCUMENT_LOADED, {
-      numPages: 1,
-      outline: [],
+      numPages: 1, outline: [],
       mimeType: this._state.get('mimeType'),
       documentKind: 'text',
     });
@@ -1584,11 +1152,9 @@ export class ViewerCore {
       this._renderPreviewBlocked();
       if (els.footer) els.footer.style.display = 'none';
       this._bus.emit(Events.DOCUMENT_LOADED, {
-        numPages: 1,
-        outline: [],
+        numPages: 1, outline: [],
         mimeType: this._state.get('mimeType'),
-        documentKind: 'office',
-        previewBlocked: true,
+        documentKind: 'office', previewBlocked: true,
       });
       return;
     }
@@ -1599,15 +1165,24 @@ export class ViewerCore {
     iframe.style.width = '100%';
     iframe.style.height = '100%';
     iframe.style.border = 'none';
+    iframe.style.display = 'block';
 
     this._clearViewerMainPreservingChrome();
-    els.main.appendChild(iframe);
+
+    const container = document.createElement('div');
+    container.className = CONFIG.PAGE_CONTAINER_CLASS;
+    container.style.width = '100%';
+    container.style.height = '100%';
+    container.appendChild(iframe);
+    els.main.appendChild(container);
 
     if (els.footer) els.footer.style.display = 'none';
 
+    this._updateXAxisLock();
+    this._bus.emit(Events.LAYOUT_CHANGED, { mode: 'page', container });
+
     this._bus.emit(Events.DOCUMENT_LOADED, {
-      numPages: 1,
-      outline: [],
+      numPages: 1, outline: [],
       mimeType: this._state.get('mimeType'),
       documentKind: 'office',
     });
@@ -1623,11 +1198,9 @@ export class ViewerCore {
       this._renderPreviewBlocked();
       if (els.footer) els.footer.style.display = 'none';
       this._bus.emit(Events.DOCUMENT_LOADED, {
-        numPages: 1,
-        outline: [],
+        numPages: 1, outline: [],
         mimeType: this._state.get('mimeType'),
-        documentKind: 'unsupported',
-        previewBlocked: true,
+        documentKind: 'unsupported', previewBlocked: true,
       });
       return;
     }
@@ -1637,21 +1210,321 @@ export class ViewerCore {
     this._clearViewerMainPreservingChrome();
 
     const container = document.createElement('div');
-    container.className = 'unsupported';
-    container.innerHTML = `
+    container.className = CONFIG.PAGE_CONTAINER_CLASS;
+    const inner = document.createElement('div');
+    inner.className = 'unsupported';
+    inner.innerHTML = `
       <p>Preview not available for this file type (${safeMime}).</p>
       <a href="${url}" download class="btn-primary">Download to view locally</a>
     `;
+    container.appendChild(inner);
     els.main.appendChild(container);
 
     if (els.footer) els.footer.style.display = 'none';
 
+    this._updateXAxisLock();
+    this._bus.emit(Events.LAYOUT_CHANGED, { mode: 'scroll', container });
+
     this._bus.emit(Events.DOCUMENT_LOADED, {
-      numPages: 1,
-      outline: [],
+      numPages: 1, outline: [],
       mimeType: this._state.get('mimeType'),
       documentKind: 'unsupported',
     });
+  }
+
+  // ── Private: slot factory and sizing ─────────────────────────────────────
+
+  /**
+   * Create a <div class="cover"> for the given page.
+   *
+   * If metadata is cached, the cover is sized exactly to the eventual
+   * canvas. If not, it reserves a generic min-height and is resized by
+   * _applySlotSize once metadata arrives.
+   *
+   * NOTE: the fallback deliberately leaves `width` UNSET. A `width: 100%`
+   * fallback would be circular against .page-container's `width:
+   * fit-content` — the container's intrinsic width depends on its
+   * children's widths, which depend on the container. The container's
+   * width comes from the first child that has an explicit width, which
+   * arrives with page 1's metadata.
+   */
+  _makeCover(pageNum) {
+    const el = document.createElement('div');
+    el.className = CONFIG.COVER_CLASS;
+    el.dataset.page = String(pageNum);
+
+    const cache = this.getCache();
+    const meta = cache && cache.getPageViewport ? cache.getPageViewport(pageNum) : null;
+
+    if (meta && meta.width > 0 && meta.height > 0) {
+      this._applySlotSize(el, meta);
+    } else {
+      el.style.minHeight = '200px';
+      // width intentionally unset — resolved by the container once page 1
+      // metadata arrives.
+    }
+    return el;
+  }
+
+  /**
+   * Size a slot to natural × displayScale, and record the naturals on the
+   * slot so subsequent resizes (on zoom settle) don't need metadata again.
+   *
+   * Rotation-aware: swaps naturals for 90° / 270°.
+   */
+  _applySlotSize(el, meta) {
+    const scale = this._state.get('scale') || 1;
+    const rotation = this._state.get('rotation') || 0;
+    const swapped = rotation === 90 || rotation === 270;
+    const naturalW = swapped ? meta.height : meta.width;
+    const naturalH = swapped ? meta.width : meta.height;
+
+    el.dataset.naturalWidth = String(naturalW);
+    el.dataset.naturalHeight = String(naturalH);
+
+    const w = naturalW * scale;
+    const h = naturalH * scale;
+    el.style.width = `${w}px`;
+    el.style.height = `${h}px`;
+    el.style.minHeight = `${h}px`;
+  }
+
+  /**
+   * Resize every slot (cover or canvas) to natural × displayScale.
+   * Called on zoom settle, after metadata arrives, and after rotation.
+   * Never touches the bitmap — resolution is the renderer's concern.
+   */
+  _syncSlotDimensions() {
+    const els = getViewerElements();
+    if (!els || !els.main) return;
+
+    const scale = this._state.get('scale') || 1;
+
+    const slots = els.main.querySelectorAll(`.${CONFIG.PAGE_CLASS}, .${CONFIG.COVER_CLASS}`);
+    slots.forEach((slot) => {
+      const natW = Number(slot.dataset.naturalWidth);
+      const natH = Number(slot.dataset.naturalHeight);
+      if (!natW || !natH) return;
+
+      const w = natW * scale;
+      const h = natH * scale;
+      slot.style.width = `${w}px`;
+      slot.style.height = `${h}px`;
+      slot.style.minHeight = `${h}px`;
+    });
+
+    try {
+      const scroll = this.getScroll();
+      if (scroll && scroll.markLayoutDirty) scroll.markLayoutDirty();
+    } catch { /* ignore */ }
+  }
+
+  /**
+   * Toggle the .x-scroll class on #viewer-main.
+   *
+   * CSS rule: #viewer-main is overflow-x: hidden by default, which locks
+   * X and lets margin: 0 auto centre the page. When the page is wider than
+   * the viewport, we add .x-scroll and the browser gives a native X
+   * scrollbar.
+   */
+  _updateXAxisLock() {
+    const els = getViewerElements();
+    if (!els || !els.main) return;
+    const main = els.main;
+
+    if (this._state.get('previewBlocked')) {
+      main.classList.add(CONFIG.X_SCROLL_CLASS);
+      return;
+    }
+
+    const container = main.querySelector('.' + CONFIG.PAGE_CONTAINER_CLASS);
+    if (!container) {
+      main.classList.remove(CONFIG.X_SCROLL_CLASS);
+      return;
+    }
+
+    const contentW = container.scrollWidth || container.offsetWidth;
+    const viewportW = main.clientWidth;
+
+    if (contentW > viewportW + 1) {
+      main.classList.add(CONFIG.X_SCROLL_CLASS);
+    } else {
+      main.classList.remove(CONFIG.X_SCROLL_CLASS);
+      if (main.scrollLeft !== 0) main.scrollLeft = 0;
+    }
+  }
+
+  // ── Private: resolution pyramid ──────────────────────────────────────────
+
+  /**
+   * Slide the resolution pyramid so the window is centred on `centerPage`.
+   *
+   * Forward rings (distance d from the centre):
+   *   d = 0..5   → 100%   (full resolution)
+   *   d = 6..9   →  80%
+   *   d = 10..12 →  60%
+   *   d = 13..14 →  40%
+   *   d = 15     →  20%
+   *   d ≥ 16     → plain cover (canvas released)
+   *
+   * Behind rings:
+   *   d = -1     → 100%   (one page kept warm for quick scroll-back)
+   *   d = -2..-3 →  40%
+   *   d ≤ -4     → plain cover
+   *
+   * Because every page's resolution depends only on its distance from the
+   * centre, a single page step moves the ring boundaries by one — so exactly
+   * five pages change ring per step:
+   *
+   *   +6  80%   → 100%
+   *   +10 60%   →  80%
+   *   +13 40%   →  60%
+   *   +15 20%   →  40%
+   *   +16 cover →  20%
+   *
+   * All five upgrades are enqueued in the same tick. Concurrency is
+   * RENDER_CONCURRENCY (up to 6). Every upgrade is a re-render of a page
+   * whose PDF.js operator list is already cached, so each completes in
+   * roughly 40–90 ms on desktop. The +5 page (the page the user is about
+   * to scroll onto) is sharp well within 150 ms.
+   *
+   * Idempotent: calling it twice with the same centre is a no-op.
+   *
+   * @private
+   * @param {number} centerPage
+   */
+  _applyPyramidWindow(centerPage) {
+    if (!Number.isFinite(centerPage)) return;
+    if (this._state.get('previewBlocked')) return;
+
+    const els = getViewerElements();
+    const container = els && els.main
+      ? els.main.querySelector('.' + CONFIG.PAGE_CONTAINER_CLASS)
+      : null;
+    if (!container) return;
+
+    const limit = this.getEffectivePageLimit();
+    const displayScale = this._state.get('scale') || 1;
+    const rotation = this._state.get('rotation') || 0;
+    const scheduler = this.getScheduler();
+
+    const MAX_AHEAD = CONFIG.PYRAMID_MAX_AHEAD;
+    const MAX_BEHIND = CONFIG.PYRAMID_MAX_BEHIND;
+
+    for (let d = -MAX_BEHIND; d <= MAX_AHEAD; d++) {
+      const pageNum = centerPage + d;
+      if (pageNum < 1 || pageNum > limit) continue;
+
+      const desiredRes = this._ringResolutionForDistance(d);
+      const slot = container.querySelector(`[data-page="${pageNum}"]`);
+      if (!slot) continue;
+
+      const isCanvas = slot.classList.contains(CONFIG.PAGE_CLASS);
+      const currentRes = isCanvas ? Number(slot.dataset.res || 0) : 0;
+
+      // Already at the correct resolution — no-op.
+      if (Math.abs(currentRes - desiredRes) < 0.01) continue;
+
+      // Desired 0 → release the canvas and drop back to a plain cover.
+      if (desiredRes === 0) {
+        if (isCanvas) {
+          try {
+            if (scheduler && scheduler.cancelPage) scheduler.cancelPage(pageNum);
+          } catch { /* ignore */ }
+
+          // Unregister from MemoryManager before the element is dropped.
+          try {
+            const memory = this.getMemory();
+            if (memory && memory.unregisterCanvas) memory.unregisterCanvas(slot);
+          } catch { /* ignore */ }
+
+          const cover = this._makeCover(pageNum);
+          slot.replaceWith(cover);
+        }
+        continue;
+      }
+
+      // Cancel any in-flight render for this page at the old ring — the
+      // pyramid wants exactly one render per page at a time.
+      try {
+        if (scheduler && scheduler.cancelPage) scheduler.cancelPage(pageNum);
+      } catch { /* ignore */ }
+
+      // renderScale is the BITMAP density. The slot's DISPLAY size stays
+      // natural × displayScale (see _syncSlotDimensions / _applySlotSize).
+      const renderScale = displayScale * desiredRes;
+
+      let priority;
+      if (desiredRes >= 1.00) priority = PRIORITY.VISIBLE;
+      else if (desiredRes >= 0.60) priority = PRIORITY.ADJACENT;
+      else priority = PRIORITY.MARGIN;
+
+      this._enqueueRingRender(pageNum, renderScale, desiredRes, rotation, priority);
+    }
+  }
+
+  /**
+   * Resolve a signed distance-from-centre to a bitmap resolution, or 0 for
+   * "release to cover".
+   *
+   * @private
+   * @param {number} d
+   * @returns {number}
+   */
+  _ringResolutionForDistance(d) {
+    const abs = Math.abs(d);
+
+    if (d >= 0) {
+      // Forward-biased pyramid.
+      if (abs <= 5)  return 1.00;
+      if (abs <= 9)  return 0.80;
+      if (abs <= 12) return 0.60;
+      if (abs <= 14) return 0.40;
+      if (abs <= 15) return 0.20;
+      return 0;
+    }
+
+    // Behind: one page at full res for scroll-back, two at 40%, rest freed.
+    if (abs <= 1) return 1.00;
+    if (abs <= 3) return 0.40;
+    return 0;
+  }
+
+  /**
+   * Enqueue a page render at a specific ring resolution.
+   *
+   * Job shape matches _enqueuePageRender but carries `ringRes` so
+   * _onRenderComplete can record it on the slot's dataset. The job id
+   * includes the render scale and rotation — but NOT the ringRes — so
+   * re-enqueueing the same page at a different ring is naturally
+   * de-duplicated against a still-running older render at the same scale
+   * (which the pyramid has already cancelled via scheduler.cancelPage).
+   *
+   * @private
+   * @param {number} pageNum
+   * @param {number} renderScale
+   * @param {number} ringRes
+   * @param {number} rotation
+   * @param {number} priority
+   */
+  _enqueueRingRender(pageNum, renderScale, ringRes, rotation, priority) {
+    const scheduler = this.getScheduler();
+    if (!scheduler || !scheduler.enqueue) return;
+
+    const job = {
+      id: `page:${pageNum}:${renderScale}:${rotation}`,
+      kind: 'page',
+      pageNum,
+      scale: renderScale,
+      ringRes,
+      rotation,
+      tileRect: null,
+      priority,
+      onComplete: () => { /* handled via RENDER_COMPLETE */ },
+      onError: () => { /* handled via RENDER_ERROR */ },
+      onCancel: () => { /* handled via RENDER_CANCELLED */ },
+    };
+    try { scheduler.enqueue(job); } catch { /* ignore */ }
   }
 
   // ── Private: layout builders ──────────────────────────────────────────────
@@ -1665,6 +1538,7 @@ export class ViewerCore {
     main.classList.remove('page-view');
 
     let container = main.querySelector('.' + CONFIG.PAGE_CONTAINER_CLASS);
+
     if (!container) {
       this._clearViewerMainPreservingChrome();
       container = document.createElement('div');
@@ -1677,17 +1551,9 @@ export class ViewerCore {
         : totalPages;
 
       for (let i = 1; i <= visibleCount; i++) {
-        const wrapper = document.createElement('div');
-        wrapper.className = CONFIG.CANVAS_WRAPPER_CLASS;
-        wrapper.dataset.page = String(i);
-        // A minimum height reserves space before the first render so the
-        // scrollbar doesn't jump. The wrapper is later resized to the exact
-        // canvas dimensions in _onRenderComplete.
-        wrapper.style.minHeight = '200px';
-        container.appendChild(wrapper);
+        container.appendChild(this._makeCover(i));
       }
 
-      // Preview mode: append the subscribe CTA after the last preview page.
       if (previewLimit > 0 && totalPages > previewLimit) {
         container.appendChild(this._buildPreviewCTA(previewLimit, totalPages));
       }
@@ -1700,8 +1566,10 @@ export class ViewerCore {
         const tm = this.getTileManager();
         if (tm && tm.invalidateAll) tm.invalidateAll();
       } catch { /* ignore */ }
-      this._syncWrapperDimensions();
+      this._syncSlotDimensions();
     }
+
+    this._updateXAxisLock();
 
     try {
       const scroll = this.getScroll();
@@ -1710,9 +1578,7 @@ export class ViewerCore {
 
     try {
       const scroll = this.getScroll();
-      if (scroll && scroll.refreshVisible) {
-        scroll.refreshVisible();
-      }
+      if (scroll && scroll.refreshVisible) scroll.refreshVisible();
     } catch { /* ignore */ }
   }
 
@@ -1729,7 +1595,6 @@ export class ViewerCore {
     container.className = CONFIG.PAGE_CONTAINER_CLASS;
     main.appendChild(container);
 
-    // Clamp the page to the preview limit defensively.
     const rawPageNum = this._state.get('currentPage');
     const pageNum = this.isPageAllowed(rawPageNum)
       ? rawPageNum
@@ -1739,23 +1604,20 @@ export class ViewerCore {
       this._state.set('currentPage', pageNum);
     }
 
-    // ── Create the wrapper for this page ──────────────────────────────────
-    // Without this, _syncWrapperDimensionsSingle and _onRenderComplete both
-    // find no wrapper and bail silently. The page renders blank.
-    const wrapper = document.createElement('div');
-    wrapper.className = CONFIG.CANVAS_WRAPPER_CLASS;
-    wrapper.dataset.page = String(pageNum);
-    wrapper.style.minHeight = '200px';
-    container.appendChild(wrapper);
+    const meta = await this._ensurePageMetadata(pageNum);
+    const cover = this._makeCover(pageNum);
+    if (meta) this._applySlotSize(cover, meta);
+    container.appendChild(cover);
 
-    await this._ensurePageMetadata(pageNum);
-    this._syncWrapperDimensionsSingle(pageNum);
-
+    this._updateXAxisLock();
     this._enqueuePageRender(pageNum, PRIORITY.VISIBLE);
   }
 
+  /**
+   * Single-page render enqueue (page-view mode, single-shot navigation).
+   * The pyramid drives scroll-mode rendering; this drives page-mode.
+   */
   _enqueuePageRender(pageNum, priority) {
-    // Preview mode: refuse to schedule renders for locked pages.
     if (!this.isPageAllowed(pageNum)) return;
 
     const scheduler = this.getScheduler();
@@ -1763,18 +1625,17 @@ export class ViewerCore {
     const rotation = this._state.get('rotation') || 0;
 
     const job = {
-      // Include rotation in the ID so a rotation change produces a new job
-      // rather than being deduplicated against the previous rotation.
       id: `page:${pageNum}:${scale}:${rotation}`,
       kind: 'page',
       pageNum,
       scale,
+      ringRes: 1.0,
       rotation,
       tileRect: null,
       priority,
-      onComplete: () => { /* handled via RENDER_COMPLETE event */ },
-      onError: () => { /* handled via RENDER_ERROR event */ },
-      onCancel: () => { /* handled via RENDER_CANCELLED event */ },
+      onComplete: () => { /* handled via RENDER_COMPLETE */ },
+      onError: () => { /* handled via RENDER_ERROR */ },
+      onCancel: () => { /* handled via RENDER_CANCELLED */ },
     };
 
     try {
@@ -1788,6 +1649,7 @@ export class ViewerCore {
             (result) => this._onRenderComplete({
               pageNum: result.pageNum,
               scale: result.scale,
+              ringRes: 1.0,
               kind: 'page',
               canvas: result.canvas,
             }),
@@ -1799,49 +1661,84 @@ export class ViewerCore {
   }
 
   /**
-   * RENDER_COMPLETE handler.
+   * RENDER_COMPLETE handler — the ONLY place a slot transitions from cover
+   * to canvas.
    *
-   * Inserts the freshly-rendered canvas into its wrapper AND adopts the
-   * canvas's rendered CSS size on the wrapper.
-   *
-   * @private
-   * @param {any} payload
+   * Invariants enforced here:
+   *   • The slot's rendered size is natural × displayScale — the same for
+   *     cover, thumbnail, and full canvas.
+   *   • Swapping a cover for a canvas is a paint event, not a layout event.
+   *     Same size, same position, no scroll jump.
+   *   • The rendered bitmap density differs by ring; the CSS size does
+   *     not. `data-res` records the ring this bitmap belongs to so
+   *     _applyPyramidWindow can decide whether the slot needs upgrading.
    */
   _onRenderComplete(payload) {
     if (!payload || !payload.canvas) return;
     const { pageNum, scale, canvas, kind } = payload;
-    if (kind === 'thumbnail' || kind === 'metadata') return;
-    if (kind === 'tile') return;
+    if (kind === 'thumbnail' || kind === 'metadata' || kind === 'tile') return;
 
     const els = getViewerElements();
     if (!els || !els.main) return;
-    const wrapper = els.main.querySelector(
-      `.${CONFIG.CANVAS_WRAPPER_CLASS}[data-page="${pageNum}"]`,
-    );
-    if (!wrapper) return;
 
-    wrapper.innerHTML = '';
-    wrapper.appendChild(canvas);
-    wrapper.dataset.renderedScale = String(scale);
+    const slot = els.main.querySelector(`[data-page="${pageNum}"]`);
+    if (!slot) return;
 
-    // Adopt the canvas's own CSS size on the wrapper.
-    const cw = canvas.style.width;
-    const ch = canvas.style.height;
-    if (cw) wrapper.style.width = cw;
-    if (ch) {
-      wrapper.style.height = ch;
-      wrapper.style.minHeight = ch;
+    const displayScale = this._state.get('scale') || scale;
+    const natW = Number(slot.dataset.naturalWidth);
+    const natH = Number(slot.dataset.naturalHeight);
+
+    // Reuse the slot if it's already a canvas; otherwise create one and
+    // swap it in place (same dimensions, same data-page).
+    let page = slot;
+    if (!page.classList.contains(CONFIG.PAGE_CLASS)) {
+      page = document.createElement('canvas');
+      page.className = CONFIG.PAGE_CLASS;
+      page.dataset.page = String(pageNum);
+      page.dataset.res = '0';
+      if (natW) page.dataset.naturalWidth = String(natW);
+      if (natH) page.dataset.naturalHeight = String(natH);
     }
 
-    // Mark layout dirty (do NOT recompute synchronously).
+    // Adopt the freshly-rendered bitmap.
+    page.width = canvas.width;
+    page.height = canvas.height;
+    const ctx = page.getContext('2d');
+    ctx.clearRect(0, 0, page.width, page.height);
+    ctx.drawImage(canvas, 0, 0);
+
+    // Displayed size is ALWAYS natural × displayScale.
+    if (natW && natH) {
+      const w = natW * displayScale;
+      const h = natH * displayScale;
+      page.style.width = `${w}px`;
+      page.style.height = `${h}px`;
+      page.style.minHeight = `${h}px`;
+    } else if (canvas.style.width && canvas.style.height) {
+      page.style.width = canvas.style.width;
+      page.style.height = canvas.style.height;
+      page.style.minHeight = page.style.height;
+    }
+
+    page.dataset.renderedScale = String(scale);
+
+    // Record the RING resolution. This is what _applyPyramidWindow reads
+    // to decide whether the slot is already at the right level.
+    if (typeof payload.ringRes === 'number') {
+      page.dataset.res = String(payload.ringRes);
+    }
+
+    // Swap cover → canvas. Same slot, same dimensions — paint only.
+    if (slot !== page) {
+      slot.replaceWith(page);
+    }
+
     try {
       const scroll = this.getScroll();
-      if (scroll && scroll.markLayoutDirty) {
-        scroll.markLayoutDirty();
-      } else if (scroll && scroll.recomputeLayout) {
-        scroll.recomputeLayout();
-      }
+      if (scroll && scroll.markLayoutDirty) scroll.markLayoutDirty();
     } catch { /* ignore */ }
+
+    this._updateXAxisLock();
   }
 
   // ── Private: metadata prefetch & sizing ───────────────────────────────────
@@ -1860,13 +1757,6 @@ export class ViewerCore {
     }
   }
 
-  /**
-   * Eagerly fetch metadata for the first N pages so the initial scrollbar
-   * geometry is approximately correct. Pages past N are fetched on demand.
-   *
-   * @private
-   * @returns {Promise<void>}
-   */
   async _preloadPageSizes() {
     if (this._pageSizePreloadStarted) return;
     this._pageSizePreloadStarted = true;
@@ -1891,7 +1781,14 @@ export class ViewerCore {
         try {
           const meta = await this._engine.getPageMetadata(pageNum);
           if (cache && cache.setPageViewport) cache.setPageViewport(pageNum, meta);
-          this._syncWrapperDimensionsSingle(pageNum, meta);
+
+          const els = getViewerElements();
+          if (els && els.main) {
+            const slot = els.main.querySelector(`[data-page="${pageNum}"]`);
+            if (slot && slot.classList.contains(CONFIG.COVER_CLASS)) {
+              this._applySlotSize(slot, meta);
+            }
+          }
         } catch {
           // ignore individual failures
         }
@@ -1904,67 +1801,28 @@ export class ViewerCore {
     }
     await Promise.allSettled(workers);
 
-    // Metadata for the first screen is now cached. Recompute once so the
-    // scrollbar reflects the true document height.
     try {
       const scroll = this.getScroll();
       if (scroll && scroll.recomputeLayout) scroll.recomputeLayout();
       if (scroll && scroll.refreshVisible) scroll.refreshVisible();
     } catch { /* ignore */ }
-  }
 
-  _syncWrapperDimensions() {
-    const els = getViewerElements();
-    if (!els || !els.main) return;
-    const wrappers = els.main.querySelectorAll('.' + CONFIG.CANVAS_WRAPPER_CLASS);
-    const scale = this._state.get('scale');
-    wrappers.forEach((wrapper) => {
-      // Skip wrappers that already hold a rendered canvas at the current
-      // scale — those were sized correctly by _onRenderComplete.
-      const rendered = wrapper.dataset.renderedScale;
-      if (rendered && Number(rendered) === scale) return;
-
-      const pageNum = parseInt(wrapper.dataset.page, 10);
-      if (!Number.isFinite(pageNum)) return;
-      this._syncWrapperDimensionsSingle(pageNum, undefined, wrapper, scale);
-    });
-  }
-
-  _syncWrapperDimensionsSingle(pageNum, metaOverride, wrapperOverride, scaleOverride) {
-    const cache = this.getCache();
-    const meta = metaOverride || (cache && cache.getPageViewport ? cache.getPageViewport(pageNum) : null);
-    if (!meta) return;
-    const scale = typeof scaleOverride === 'number' ? scaleOverride : this._state.get('scale');
-    const rotation = this._state.get('rotation') || 0;
-    const els = getViewerElements();
-    if (!els || !els.main) return;
-    const wrapper = wrapperOverride
-      || els.main.querySelector(`.${CONFIG.CANVAS_WRAPPER_CLASS}[data-page="${pageNum}"]`);
-    if (!wrapper) return;
-
-    // Swap width/height for 90° / 270° rotations.
-    const swapped = rotation === 90 || rotation === 270;
-    const naturalW = swapped ? meta.height : meta.width;
-    const naturalH = swapped ? meta.width : meta.height;
-    const w = naturalW * scale;
-    const h = naturalH * scale;
-    wrapper.style.width = `${w}px`;
-    wrapper.style.height = `${h}px`;
-    wrapper.style.minHeight = `${h}px`;
-
-    // Mark scroll layout dirty so the wrapper cache rebuilds on the next
-    // frame. This avoids a synchronous forced layout per wrapper.
-    try {
-      const scroll = this.getScroll();
-      if (scroll && scroll.markLayoutDirty) scroll.markLayoutDirty();
-    } catch { /* ignore */ }
+    this._updateXAxisLock();
   }
 
   /**
    * Compute the fit-to-width scale for page 1 and install it in state.
    *
-   * @private
-   * @returns {Promise<void>}
+   * Called:
+   *   • Once from _loadPdf before the first layout (scale installed,
+   *     no slots exist yet → the sync/apply calls are no-ops).
+   *   • Again from setupFitWidthObserver every time #viewer-main's width
+   *     changes (rotation, window resize, viewer becoming visible).
+   *
+   * The second call is what closes the "viewer was hidden at init" gap —
+   * slots may already exist from a layout that ran at the default scale,
+   * and this method MUST resize them in place. Setting state.scale alone
+   * is not enough.
    */
   async _applyFitToWidth() {
     try {
@@ -1990,10 +1848,7 @@ export class ViewerCore {
       }
       if (!meta || !(meta.width > 0)) return;
 
-      const usable = Math.max(
-        availableWidth - CONFIG.FIT_WIDTH_H_PADDING_PX,
-        100,
-      );
+      const usable = Math.max(availableWidth - CONFIG.FIT_WIDTH_H_PADDING_PX, 100);
       const fitScale = clamp(usable / meta.width, CONFIG.MIN_ZOOM, CONFIG.MAX_ZOOM);
 
       this._state.set('scale', fitScale);
@@ -2001,23 +1856,23 @@ export class ViewerCore {
       if (zoom && typeof zoom.syncScale === 'function') {
         zoom.syncScale(fitScale);
       }
+
+      // Resize every slot that already exists. A no-op the first time
+      // (no slots yet). This is what makes the "viewer was hidden during
+      // initial load, then shown" path end up fit-to-width instead of
+      // stuck at the default scale.
+      this._syncSlotDimensions();
+      this._updateXAxisLock();
+
+      // Recompute the pyramid so the +5 window renders at the new scale.
+      try { this._applyPyramidWindow(this._state.get('currentPage') || 1); } catch { /* ignore */ }
     } catch { /* keep the default scale */ }
   }
 
-  /**
-   * Resolve with `element.clientWidth` once it becomes non-zero, or after
-   * `timeoutMs` elapses.
-   *
-   * @private
-   * @param {HTMLElement} element
-   * @param {number} timeoutMs
-   * @returns {Promise<number>}
-   */
   _waitForViewerWidth(element, timeoutMs) {
     return new Promise((resolve) => {
       let done = false;
       let timer = null;
-      /** @type {ResizeObserver|null} */
       let ro = null;
 
       const finish = (w) => {
@@ -2033,13 +1888,11 @@ export class ViewerCore {
           timer = setTimeout(() => finish(element.clientWidth), timeoutMs);
           return;
         }
-
         ro = new ResizeObserver(() => {
           const w = element.clientWidth;
           if (w > 0) finish(w);
         });
         ro.observe(element);
-
         timer = setTimeout(() => finish(element.clientWidth), timeoutMs);
       } catch {
         finish(element.clientWidth);
@@ -2047,13 +1900,6 @@ export class ViewerCore {
     });
   }
 
-  /**
-   * Remove every direct child of #viewer-main except the four static chrome
-   * nodes declared in viewer.html.
-   *
-   * @private
-   * @returns {void}
-   */
   _clearViewerMainPreservingChrome() {
     const els = getViewerElements();
     if (!els || !els.main) return;
@@ -2074,13 +1920,6 @@ export class ViewerCore {
     }
   }
 
-  /**
-   * Reset the sidebar drawer, its scrim, and every toggle's aria-expanded
-   * state to a clean, closed state.
-   *
-   * @private
-   * @returns {void}
-   */
   _resetSidebarState() {
     try {
       const drawer = document.getElementById('viewer-outline-drawer');
@@ -2094,8 +1933,6 @@ export class ViewerCore {
       const scrim = document.getElementById('viewer-drawer-scrim');
       if (scrim) scrim.classList.remove('open');
 
-      // Header dropdown menu — the hamburger is the only toggle in the
-      // new header. Its aria-expanded reflects whether the menu is open.
       const menuBtn = document.getElementById('viewer-menu-btn');
       if (menuBtn) menuBtn.setAttribute('aria-expanded', 'false');
 
@@ -2105,7 +1942,6 @@ export class ViewerCore {
       const searchBar = document.getElementById('viewer-search-bar');
       if (searchBar) searchBar.classList.remove('active');
 
-      // Legacy top-level toggles (present only in the old header).
       const outlineBtn = document.getElementById('viewer-outline-btn');
       if (outlineBtn) outlineBtn.setAttribute('aria-expanded', 'false');
       const searchBtn = document.getElementById('viewer-search-btn');
@@ -2117,23 +1953,6 @@ export class ViewerCore {
 
   // ── Private: preview policy ───────────────────────────────────────────────
 
-  /**
-   * Apply the preview policy for a document with `numPages` pages.
-   *
-   * Two outcomes:
-   *   • numPages >= CONFIG.PREVIEW_MIN_PAGES_FOR_FRACTIONAL
-   *       Set `previewPageLimit = floor(numPages * PREVIEW_PAGE_FRACTION)`
-   *       (min 1). Normal fractional preview.
-   *   • numPages < CONFIG.PREVIEW_MIN_PAGES_FOR_FRACTIONAL
-   *       Set `previewBlocked = true`. Nothing renders; a banner replaces
-   *       the first page. Applies to every document kind.
-   *
-   * When not in preview mode, both flags are cleared.
-   *
-   * @private
-   * @param {number} numPages
-   * @returns {void}
-   */
   _applyPreviewPolicy(numPages) {
     if (!this._state.get('previewMode')) {
       this._state.set('previewPageLimit', 0);
@@ -2149,28 +1968,16 @@ export class ViewerCore {
       this._state.set('previewPageLimit', limit);
       this._state.set('previewBlocked', false);
     } else {
-      // Fewer than `minPages` — block the entire document.
       this._state.set('previewPageLimit', 0);
       this._state.set('previewBlocked', true);
     }
   }
 
-  /**
-   * Render the blocked-preview view. Replaces the viewer's content with a
-   * page-shaped placeholder carrying a centered subscribe banner. No page
-   * wrappers, no canvases, no navigation targets.
-   *
-   * @private
-   * @returns {void}
-   */
   _renderPreviewBlocked() {
     const els = getViewerElements();
     if (!els || !els.main) return;
 
     const main = els.main;
-    // Drop both layout modifiers so #viewer-main returns to its default
-    // overflow: auto — the blocked placeholder may exceed the viewport on
-    // short screens and must be scrollable.
     main.classList.remove('scroll-view');
     main.classList.remove('page-view');
     this._clearViewerMainPreservingChrome();
@@ -2179,38 +1986,30 @@ export class ViewerCore {
     container.className = CONFIG.PAGE_CONTAINER_CLASS + ' preview-blocked';
     main.appendChild(container);
 
-    // Size the placeholder: page 1 dimensions × current scale for PDFs;
-    // a generic A4-ish shape for everything else.
     const cache = this.getCache();
     const meta = cache && cache.getPageViewport ? cache.getPageViewport(1) : null;
     const scale = this._state.get('scale') || 1;
     const naturalW = meta && meta.width > 0 ? meta.width : 600;
     const naturalH = meta && meta.height > 0 ? meta.height : 800;
 
-    // Cap to the available viewport so the placeholder is never wider
-    // than the screen.
     const availW = Math.max(main.clientWidth - 32, 200);
     const availH = Math.max(main.clientHeight - 32, 260);
     const w = Math.min(naturalW * scale, availW);
     const h = Math.min(naturalH * scale, availH);
 
     const placeholder = document.createElement('div');
-    placeholder.className = CONFIG.CANVAS_WRAPPER_CLASS + ' preview-blocked-placeholder';
+    placeholder.className = `${CONFIG.COVER_CLASS} preview-blocked-placeholder`;
     placeholder.style.width = `${w}px`;
     placeholder.style.height = `${h}px`;
     placeholder.style.minHeight = `${h}px`;
     placeholder.appendChild(this._buildPreviewBlockedBanner());
     container.appendChild(placeholder);
+
+    main.classList.remove(CONFIG.X_SCROLL_CLASS);
+
+    this._bus.emit(Events.LAYOUT_CHANGED, { mode: 'page', container });
   }
 
-  /**
-   * Build the blocked-preview banner. Emits PREVIEW_SUBSCRIBE_REQUESTED on
-   * the bus when the subscribe button is clicked; viewer.js handles that
-   * event and routes to the subscription page.
-   *
-   * @private
-   * @returns {HTMLElement}
-   */
   _buildPreviewBlockedBanner() {
     const minPages = CONFIG.PREVIEW_MIN_PAGES_FOR_FRACTIONAL;
 
@@ -2255,17 +2054,6 @@ export class ViewerCore {
     return banner;
   }
 
-  /**
-   * Build the preview-mode subscribe call-to-action card (fractional
-   * preview). Emits PREVIEW_SUBSCRIBE_REQUESTED on the bus when the button
-   * is clicked; viewer.js handles that event and routes to the subscription
-   * page.
-   *
-   * @private
-   * @param {number} previewLimit
-   * @param {number} totalPages
-   * @returns {HTMLElement}
-   */
   _buildPreviewCTA(previewLimit, totalPages) {
     const lockedCount = totalPages - previewLimit;
     const cta = document.createElement('div');
@@ -2312,13 +2100,6 @@ export class ViewerCore {
 
   // ── Private: environment detection ────────────────────────────────────────
 
-  /**
-   * Build the device profile passed to state and consumed by CacheManager /
-   * MemoryManager for cap sizing.
-   *
-   * @private
-   * @returns {object}
-   */
   _detectDeviceProfile() {
     const base = getDeviceProfile();
     const capMb = (base.isMobile || base.isLowMemory)
@@ -2349,8 +2130,6 @@ export class ViewerCore {
     } catch { /* ignore */ }
     return Object.freeze(flags);
   }
-
-  // ── Private: assertions ───────────────────────────────────────────────────
 
   _assertPdfjsLibPresent() {
     if (typeof window === 'undefined') return;
@@ -2383,14 +2162,8 @@ export class ViewerCore {
 // 7. FACTORY
 // ============================================================================
 
-/** @type {ViewerCore|null} */
 let _singleton = null;
 
-/**
- * Return the singleton ViewerCore instance, constructing it on first call.
- *
- * @returns {ViewerCore}
- */
 export function createCore() {
   if (_singleton) return _singleton;
   _singleton = new ViewerCore();
@@ -2401,12 +2174,6 @@ export function createCore() {
 // 8. TAIL — utilities for tests
 // ============================================================================
 
-/**
- * Test-only: reset the module-level singleton, tearing down the native
- * bridge subscriptions that survive a document switch.
- *
- * @private
- */
 export function __resetCoreSingletonForTests() {
   if (_singleton) {
     try { _singleton.destroy(); } catch { /* ignore */ }

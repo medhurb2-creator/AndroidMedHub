@@ -17,22 +17,51 @@ let $;
  */
 let _fileArrivedHandler = null;
 
+/**
+ * Bound handler for the `native:share-arrived` event. Fired by app.js when
+ * the Android WebView receives a new deep link while this page is already
+ * the current page. Without this listener, a warm-start share would never
+ * be consumed.
+ *
+ * @type {(() => void) | null}
+ */
+let _shareArrivedHandler = null;
+
+/**
+ * Bound handler for browser back/forward onto a share URL. The app uses
+ * query-string routing (`?subject=X&type=Y`), not hash routing, so a
+ * history traversal onto a share link fires `popstate` — not `hashchange`.
+ *
+ * @type {(() => void) | null}
+ */
+let _popStateHandler = null;
+
 export async function init(context) {
   $ = (sel) => context.root.querySelector(sel);
 
   ui.applyTheme();
 
   // ────────────────────────────────────────────────────────────────────
-  // Warm-start listener.
+  // Warm-start listeners.
   //
-  // app.js dispatches `native:file-arrived` when the FileOpen plugin
-  // delivers a payload while this page is already the current page. In
-  // that case the page's init() does not re-run, so the stash would never
-  // be drained without this listener.
+  // Two independent arrival channels, both of which can deliver a payload
+  // while this page is already the current page — in which case `init()`
+  // does not re-run and the payload would otherwise be lost:
   //
-  // The listener is registered first, before the initial pending-file
-  // check, so a file that arrives during the async work below is not lost.
+  //   • `native:file-arrived` — FileOpen plugin delivered a file
+  //   • `native:share-arrived` — deep link / new intent delivered a share
+  //
+  // The `popstate` listener covers the web-side case: the user taps the
+  // browser back button and lands on a share URL from earlier in the
+  // session. The URL changes without a page reload, so a navigation
+  // listener is required to notice it.
+  //
+  // All listeners are registered first, before the initial pending-file
+  // and share checks below, so a payload that arrives during the async
+  // work that follows is not lost.
   // ────────────────────────────────────────────────────────────────────
+
+  // ── File arrival ───────────────────────────────────────────────────
   _fileArrivedHandler = () => {
     try {
       const consumed = viewer.openPendingFile() === true;
@@ -44,6 +73,22 @@ export async function init(context) {
     }
   };
   document.addEventListener('native:file-arrived', _fileArrivedHandler);
+
+  // ── Share arrival (native) ─────────────────────────────────────────
+  _shareArrivedHandler = () => {
+    _handleShareIfPresent().catch((err) =>
+      console.warn('[ResourceBrowser] Warm-start share arrival failed:', err)
+    );
+  };
+  document.addEventListener('native:share-arrived', _shareArrivedHandler);
+
+  // ── Share arrival (browser back/forward) ───────────────────────────
+  _popStateHandler = () => {
+    _handleShareIfPresent().catch((err) =>
+      console.warn('[ResourceBrowser] Popstate share check failed:', err)
+    );
+  };
+  window.addEventListener('popstate', _popStateHandler);
 
   // ────────────────────────────────────────────────────────────────────
   // Detect file-open mode.
@@ -141,10 +186,79 @@ export async function init(context) {
   window.showViewer = resourceBrowser.showViewer;
   window.closeViewer = resourceBrowser.closeViewer;
 
-  // ⚡ Force refresh: pass true to skip cache and call backend
+  // ⚡ Force refresh: pass true to skip cache and call backend.
+  //
+  // If the URL also carries a share payload (`?share=1&id=…`), the
+  // resource browser itself consumes it during this call — it resolves
+  // the id (from the loaded page or the backend), injects it into the
+  // grid, opens the viewer, and strips the share params. No extra
+  // handling is needed here for the cold-start case.
   await resourceBrowser.initResourceBrowser(subject, type, true);
 
   console.log('[ResourceBrowser] Initialized (forced fresh load)');
+}
+
+/**
+ * If the current URL is a share link, resolve and open the shared document.
+ *
+ * Called from the `native:share-arrived` warm-start listener and from the
+ * `popstate` listener (browser back/forward onto a share URL).
+ *
+ * On the INITIAL page load this is NOT needed — `init()` above already
+ * calls `initResourceBrowser()`, which itself reads the share params off
+ * the URL and consumes them. This helper exists only for arrivals that
+ * happen AFTER the page is already initialized: the URL changes without
+ * a reload, so `init()` does not run again.
+ *
+ * Auth is required for the catalogue path, matching the cold-start flow.
+ *
+ * @private
+ * @returns {Promise<boolean>} true if a share was detected and handled
+ */
+async function _handleShareIfPresent() {
+  const params = new URLSearchParams(window.location.search);
+
+  // Not a share link → nothing to do.
+  if (params.get('share') !== '1') return false;
+
+  const id = params.get('id');
+  const subject = params.get('subject');
+  const type = params.get('type');
+
+  if (!id || !subject || !type) {
+    // Malformed share link — do not hijack navigation.
+    console.warn('[ResourceBrowser] Share params incomplete:', {
+      id: !!id,
+      subject: !!subject,
+      type: !!type,
+    });
+    return false;
+  }
+
+  // Same auth gate as the cold-start catalogue path.
+  if (!auth.checkAuth()) {
+    router.navigateTo('login');
+    return true;
+  }
+
+  console.log('[ResourceBrowser] Warm-start share detected', { subject, type, id });
+
+  // Re-init the browser against the shared subject/type. This is
+  // idempotent from the caller's perspective: it re-fetches page 1 for
+  // the path (or serves it from cache) and then internally calls
+  // `_consumeSharedDoc`, which resolves the id via the backend if it
+  // isn't already on screen, opens the viewer, and strips the share
+  // params from the URL.
+  //
+  // Subscription state is refreshed by `initResourceBrowser` itself, so
+  // no separate init is needed here.
+  try {
+    await resourceBrowser.initResourceBrowser(subject, type, true);
+  } catch (err) {
+    console.error('[ResourceBrowser] Share re-init failed:', err);
+    ui.showToast('Could not open shared document', 'error');
+  }
+  return true;
 }
 
 /**
@@ -195,14 +309,33 @@ function _enterFileOpenMode() {
 }
 
 export function destroy() {
-  // Remove the warm-start listener. Without this, a second init() on the
-  // same page session would stack a second handler and a warm-start file
-  // would trigger openPendingFile() twice.
+  // Remove the file warm-start listener. Without this, a second init() on
+  // the same page session would stack a second handler and a warm-start
+  // file would trigger openPendingFile() twice.
   if (_fileArrivedHandler) {
     try {
       document.removeEventListener('native:file-arrived', _fileArrivedHandler);
     } catch { /* ignore */ }
     _fileArrivedHandler = null;
+  }
+
+  // Remove the share warm-start listener. Same reasoning: without this a
+  // second init() would stack handlers and a single deep link would
+  // re-init the resource browser twice.
+  if (_shareArrivedHandler) {
+    try {
+      document.removeEventListener('native:share-arrived', _shareArrivedHandler);
+    } catch { /* ignore */ }
+    _shareArrivedHandler = null;
+  }
+
+  // Remove the popstate listener. Without this, back/forward would fire
+  // handlers on pages that no longer exist in the DOM.
+  if (_popStateHandler) {
+    try {
+      window.removeEventListener('popstate', _popStateHandler);
+    } catch { /* ignore */ }
+    _popStateHandler = null;
   }
 
   // The viewer module owns its own lifecycle. Nothing else to tear down here.

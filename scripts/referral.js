@@ -23,7 +23,7 @@ const STORAGE_KEY_REFERRAL_DATA = 'referral_data';
 const STORAGE_KEY_AGENT_DATA = 'agent_data';
 
 // Base URL for referral links (production)
-const BASE_URL = 'https://medvix.co.ke';
+const BASE_URL = 'https://app.medvix.co.ke/signup';
 
 // ==================== TOKEN ERROR HANDLER ====================
 

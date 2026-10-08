@@ -9,6 +9,20 @@
  *   - Downloaded METADATA lives in localStorage (DOWNLOADED_META_KEY) → cards render offline.
  *   - Undownloaded catalogue items are NEVER persisted. Offline you see only what you saved.
  *
+ * Path scoping (subject + category):
+ *   Downloads and favorites are BOUND TO THE PATH THEY WERE CREATED IN.
+ *   A resource downloaded while viewing Anatomy → notes is only ever
+ *   surfaced under Anatomy → notes. It will not appear in Physiology →
+ *   textbooks, nor under any other subject/category combination, neither
+ *   in the "Downloaded" filter nor in the offline-only fallback view.
+ *
+ *   This is enforced in `getDownloadedDocuments()` and `getFavoriteDocuments()`
+ *   by comparing each persisted record's `subject`/`category` against the
+ *   currently-active `currentSubject`/`currentCategory`. The persisted
+ *   record already carries both fields (written verbatim by
+ *   `saveDownloadedMeta`), and `currentCategory` is the same normalized
+ *   value that was written, so the comparison is apples-to-apples.
+ *
  * Sorting:
  *   Documents are sorted alphabetically by title — case-insensitive, locale-
  *   aware, with natural numeric ordering so "Chapter 2" precedes "Chapter 10".
@@ -23,9 +37,9 @@
  * Filter sourcing:
  *   The "Downloaded" and "Favorites" filters do NOT filter the loaded list.
  *   They read directly from their persisted sources (localStorage), so a
- *   download or favorite from page 5 is visible even when only page 1 is
- *   loaded. This fixes the "sometimes nothing, sometimes some, sometimes all"
- *   behaviour where the filter depended on how many pages had been loaded.
+ *   download or favorite from page 5 of the SAME subject/category is visible
+ *   even when only page 1 is loaded. Cross-path leakage is prevented by the
+ *   subject/category scoping described above.
  *
  * Pagination on revisit:
  *   The in-memory catalogue cache (in content.js) preserves cursor and
@@ -61,6 +75,40 @@
  *   handler still call subscription.hasActiveSubscription() themselves and
  *   remain the sole authority on entitlement. The cached flag below is a
  *   presentation hint only.
+ *
+ * Share links (deep link, not a premium or download feature):
+ *   A card's ⋮ menu exposes "🔗 Share". Sharing builds a compact URL from
+ *   the document's identity so the recipient lands directly on it instead
+ *   of browsing for it.
+ *
+ *   URL shape:
+ *     https://app.medvix.co.ke/resource-browser?subject=<s>&type=<t>&share=1&id=<_id>
+ *
+ *   The origin is FIXED to the production domain — not whatever host the
+ *   sharer happens to be browsing from. During local development the app
+ *   runs at localhost:3001, but a link with that origin is useless to the
+ *   recipient. See SHARE_ORIGIN below.
+ *
+ *   Landing flow (no auto-download, no premium decision here):
+ *     1. initResourceBrowser() runs first — routing + page 1 fetch.
+ *     2. Share params consumed:
+ *          • If the id is already in docMap → use the real doc, no
+ *            network call.
+ *          • Miss → content.fetchResourceById(id), which queries
+ *            `resources/queries:getResource` (public, no auth) and
+ *            returns the canonical public shape.
+ *          • Null → toast "Shared document not found", stop.
+ *     3. Inject the doc into allDocuments / docMap, render, open the
+ *        viewer. Nothing else happens.
+ *     4. Strip share params from the URL.
+ *
+ *   Native share (Android):
+ *     Inside the Capacitor Android app the Web Share API is unreliable, so
+ *     `shareResource` prefers the native `MedvixShare` plugin
+ *     (com.medhurb.app.MedvixSharePlugin) when present. The plugin's
+ *     `share({title, text, url, dialogTitle})` method opens the system
+ *     chooser with the link as text/plain. On the web build it falls back
+ *     to navigator.share, then to clipboard copy + toast.
  *
  * Diagnostic logging:
  *   Set localStorage['debugPremium'] = '1' to enable detailed field-level
@@ -141,6 +189,22 @@ function _summariseDoc(d) {
         isStrictTrue: d.isPremium === true,
         keys: Object.keys(d),
     };
+}
+
+// ==================== PATH KEY ====================
+//
+// Normalize the (subject, category) pair used to scope persisted downloads
+// and favorites to the browsing path they were created in. With the current
+// writers this is a no-op, but it protects against a future backend that
+// ever normalizes casing or whitespace differently.
+//
+// @param {any} subject
+// @param {any} category
+// @returns {string}
+function _pathKey(subject, category) {
+    const s = String(subject == null ? '' : subject).trim().toLowerCase();
+    const c = String(category == null ? '' : category).trim().toLowerCase();
+    return `${s}::${c}`;
 }
 
 // ==================== STATE ====================
@@ -267,6 +331,7 @@ function saveDownloadedMeta(doc) {
     _log('save-meta', {
         id: doc._id,
         title: doc.title,
+        pathKey: _pathKey(doc.subject, doc.category),
         incomingIsPremium,
         incomingTypeofIsPremium: typeof incomingIsPremium,
         storedIsPremium,
@@ -300,12 +365,26 @@ function isFavorite(id) {
 //
 // "Downloaded" and "Favorites" read directly from their persisted stores,
 // NOT from the currently-loaded page. This makes both filters complete
-// regardless of pagination.
+// regardless of pagination WITHIN the current subject/category.
+//
+// Both helpers are SCOPED to the path (subject + category) currently being
+// browsed. A download or favorite created in Anatomy → notes is invisible
+// from any other path. The persisted record already carries subject and
+// category (written verbatim by `saveDownloadedMeta`), and `currentCategory`
+// is the same normalized value that was written, so the comparison is
+// apples-to-apples.
 
 function getDownloadedDocuments() {
     const meta = getDownloadedMeta();
     const manifest = content.getDownloadManifest() || {};
-    return Object.values(meta).filter(d => d && manifest[d._id]);
+
+    const pathKey = _pathKey(currentSubject, currentCategory);
+
+    return Object.values(meta).filter(d =>
+        d &&
+        manifest[d._id] &&
+        _pathKey(d.subject, d.category) === pathKey
+    );
 }
 
 function getFavoriteDocuments() {
@@ -313,17 +392,26 @@ function getFavoriteDocuments() {
     if (favs.length === 0) return [];
     const favSet = new Set(favs);
 
+    const pathKey = _pathKey(currentSubject, currentCategory);
+
     /** @type {Map<string, object>} */
     const result = new Map();
+
+    // Source 1: currently loaded catalogue docs. Already path-scoped by
+    // construction (allDocuments is the current subject/category page set).
     allDocuments.forEach(d => {
         if (favSet.has(d._id)) result.set(d._id, d);
     });
 
+    // Source 2: persisted downloaded metadata. Must be path-scoped here,
+    // otherwise a favorite that is ALSO downloaded would leak across paths
+    // (the store is global).
     const meta = getDownloadedMeta();
     const manifest = content.getDownloadManifest() || {};
     Object.values(meta).forEach(d => {
         if (!d || !favSet.has(d._id)) return;
         if (!manifest[d._id]) return;
+        if (_pathKey(d.subject, d.category) !== pathKey) return;
         if (!result.has(d._id)) result.set(d._id, d);
     });
 
@@ -448,6 +536,7 @@ function applyFiltersAndRender() {
         _log('render', {
             currentFilter,
             searchTerm: term,
+            pathKey: _pathKey(currentSubject, currentCategory),
             totalInAllDocuments: allDocuments.length,
             afterFilter: filtered.length,
             premiumInFiltered: filtered.filter(d => d.isPremium === true).length,
@@ -459,11 +548,11 @@ function applyFiltersAndRender() {
     if (filtered.length === 0) {
         let emptyMsg;
         if (currentFilter === 'downloaded') {
-            emptyMsg = 'No downloaded resources yet.';
+            emptyMsg = 'No downloaded resources yet for this section.';
         } else if (currentFilter === 'favorites') {
-            emptyMsg = 'No favorites yet.';
+            emptyMsg = 'No favorites yet for this section.';
         } else if (!navigator.onLine) {
-            emptyMsg = 'You are offline and have no downloaded resources.';
+            emptyMsg = 'You are offline and have no downloaded resources for this section.';
         } else {
             emptyMsg = 'No resources match your criteria.';
         }
@@ -541,6 +630,7 @@ function createResourceCard(doc) {
                     <div class="menu-wrapper">
                         <button class="menu-btn" data-id="${doc._id}">⋮</button>
                         <div class="menu-dropdown" data-id="${doc._id}">
+                            <button class="share-btn" data-id="${doc._id}">🔗 Share</button>
                             <button class="favorite-btn ${isFav ? 'active' : ''}" data-id="${doc._id}">
                                 ${isFav ? '⭐ Remove favorite' : '☆ Add favorite'}
                             </button>
@@ -551,6 +641,240 @@ function createResourceCard(doc) {
             </div>
         </div>
     `;
+}
+
+// ==================== SHARE ====================
+//
+// Share is a deep link, not a premium or download feature. Its only job:
+// land the recipient on the exact document so they don't have to browse
+// for it. Nothing is downloaded, nothing is stored, no premium decision is
+// made here.
+//
+// URL shape:
+//   https://app.medvix.co.ke/resource-browser?subject=<s>&type=<t>&share=1&id=<_id>
+//
+// Origin policy:
+//   The share URL ALWAYS points at the production origin, regardless of
+//   where the app is currently being served from. During local dev the app
+//   runs at http://localhost:3001, but a link with that origin is useless
+//   to the recipient. Change SHARE_ORIGIN only if the app moves.
+//
+// Landing flow:
+//   1. initResourceBrowser() runs first — routing + page 1 fetch as normal.
+//   2. Share params consumed:
+//        • If the id is already in docMap (it landed on a loaded page),
+//          use the real doc. No network call.
+//        • Miss → content.fetchResourceById(id), which queries
+//          `resources/queries:getResource` (public, no auth) and returns
+//          the canonical public shape.
+//        • Null → toast "Shared document not found", stop.
+//   3. Inject the doc into allDocuments / docMap, render, open viewer.
+//   4. Strip share params from the URL.
+//
+// Native share (Android):
+//   Inside the Capacitor Android app, `shareResource` prefers the native
+//   `MedvixShare` plugin (com.medhurb.app.MedvixSharePlugin). Its `share`
+//   method takes {title, text, url, dialogTitle} and opens the system
+//   chooser with the link as text/plain. On web builds it falls back to
+//   navigator.share, then to clipboard copy + toast.
+
+const SHARE_PARAM = 'share';
+const SHARE_ORIGIN = 'https://app.medvix.co.ke';
+const SHARE_PATH = '/resource-browser';
+const SHARE_NATIVE_PLUGIN = 'MedvixShare';
+
+/** Map a category (e.g. 'pastpapers') back to its route `type` ('pastpaper'). */
+function _categoryToType(category) {
+    for (const [type, cat] of Object.entries(CATEGORY_MAP)) {
+        if (cat === category) return type;
+    }
+    return category;
+}
+
+function buildShareUrl(doc) {
+    // Always build against the production origin + route, not whatever
+    // host the sharer happens to be browsing from.
+    const params = new URLSearchParams();
+    params.set('subject', String(doc.subject ?? ''));
+    params.set('type', String(_categoryToType(doc.category)));
+    params.set(SHARE_PARAM, '1');
+    params.set('id', String(doc._id));
+
+    return `${SHARE_ORIGIN}${SHARE_PATH}?${params.toString()}`;
+}
+
+/** Parse the current URL. Returns `{id}` or null. */
+function readSharedDocFromUrl() {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get(SHARE_PARAM) !== '1') return null;
+        const id = params.get('id');
+        if (!id) return null;
+        return { id };
+    } catch (err) {
+        console.warn('[Share] Failed to parse share params:', err);
+        return null;
+    }
+}
+
+/** Strip share params from the URL after consumption. */
+function clearSharedDocFromUrl() {
+    try {
+        const url = new URL(window.location.href);
+        for (const key of [SHARE_PARAM, 'id']) {
+            url.searchParams.delete(key);
+        }
+        const qs = url.searchParams.toString();
+        const next = url.pathname + (qs ? '?' + qs : '') + url.hash;
+        history.replaceState(null, '', next);
+    } catch { /* ignore */ }
+}
+
+/**
+ * Return the native MedvixShare plugin if we're running inside the
+ * Capacitor Android app. Returns null on the web build.
+ */
+function _getNativeSharePlugin() {
+    try {
+        const cap = window.Capacitor;
+        if (!cap || !cap.isNativePlatform || !cap.isNativePlatform()) return null;
+        const plugins = cap.Plugins || {};
+        const plugin = plugins[SHARE_NATIVE_PLUGIN];
+        if (plugin && typeof plugin.share === 'function') return plugin;
+    } catch { /* ignore */ }
+    return null;
+}
+
+async function copyToClipboard(text) {
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+            return true;
+        }
+    } catch { /* fall through */ }
+
+    try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        ta.style.top = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return ok;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Share a card.
+ *
+ * Preference order:
+ *   1. Native MedvixShare plugin (Android app) — reliable in the WebView.
+ *   2. Web Share API (navigator.share) — modern mobile browsers.
+ *   3. Clipboard copy + toast — desktop / older browsers.
+ *
+ * Only needs `_id`, `subject`, and `category`.
+ *
+ * @param {object} doc
+ */
+async function shareResource(doc) {
+    if (!doc) {
+        ui.showToast('Unable to share: document not found', 'warning');
+        return;
+    }
+
+    const url = buildShareUrl(doc);
+    const shareTitle = doc.title || 'Shared document';
+    const shareText = `Check out this resource: ${doc.title || ''}`;
+
+    if (_dbg()) {
+        _logLine('share', `id=${doc._id} url=${url}`, 'info');
+    }
+
+    // ── 1. Native plugin ───────────────────────────────────────────
+    const native = _getNativeSharePlugin();
+    if (native) {
+        try {
+            await native.share({
+                title: shareTitle,
+                text: shareText,
+                url,
+                dialogTitle: 'Share document',
+            });
+            if (_dbg()) _logLine('share', 'native plugin invoked', 'ok');
+            return;
+        } catch (err) {
+            if (_dbg()) _logLine('share', `native plugin failed: ${err && err.message}`, 'warn');
+            // fall through
+        }
+    }
+
+    // ── 2. Web Share API ───────────────────────────────────────────
+    if (navigator.share) {
+        try {
+            await navigator.share({
+                title: shareTitle,
+                text: shareText,
+                url,
+            });
+            return;
+        } catch (err) {
+            if (err && err.name === 'AbortError') return;
+            // fall through
+        }
+    }
+
+    // ── 3. Clipboard ───────────────────────────────────────────────
+    const ok = await copyToClipboard(url);
+    if (ok) {
+        ui.showToast('Share link copied to clipboard', 'success');
+    } else {
+        try { window.prompt('Copy this link to share:', url); } catch { /* ignore */ }
+    }
+}
+
+/**
+ * Resolve a shared id to a real document and open it in the viewer.
+ * No download, no persistence — just metadata fetch + viewer handoff.
+ *
+ * @param {{id: string}} share
+ */
+async function _consumeSharedDoc(share) {
+    let doc = docMap.get(share.id);
+
+    if (!doc) {
+        // Ask the backend for exactly this one document.
+        // getResource takes only resourceId; subject/category were only
+        // needed for routing (already done by initResourceBrowser).
+        doc = await content.fetchResourceById(share.id);
+    }
+
+    clearSharedDocFromUrl();
+
+    if (!doc) {
+        ui.showToast('Shared document not found', 'error');
+        return;
+    }
+
+    // Inject and render as a real card if it isn't already on screen.
+    docMap.set(doc._id, doc);
+    if (!allDocuments.some(d => d._id === doc._id)) {
+        allDocuments = [doc, ...allDocuments];
+        await hydrateThumbnailCache([doc]);
+        applyFiltersAndRender();
+    }
+
+    if (_dbg()) {
+        _logLine('share-open', `id=${doc._id} title="${doc.title}"`, 'info');
+    }
+
+    ui.showToast(`Shared: ${doc.title}`, 'info');
+    viewer.openDocument(doc._id, doc.title, doc.fileType);
 }
 
 // ==================== EVENT LISTENERS ====================
@@ -654,6 +978,18 @@ function attachCardEventListeners() {
                 if (m !== menu) m.classList.remove('open');
             });
             menu.classList.toggle('open');
+        });
+    });
+
+    // ── SHARE ──────────────────────────────────────────────────────
+    document.querySelectorAll('.share-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const id = btn.dataset.id;
+            const doc = docMap.get(id);
+            const dropdown = btn.closest('.menu-dropdown');
+            if (dropdown) dropdown.classList.remove('open');
+            await shareResource(doc);
         });
     });
 
@@ -876,7 +1212,9 @@ async function startDownload(resourceId) {
         };
         content.setDownloadManifest(manifest);
 
-        // Persisted metadata — this is where isPremium is written.
+        // Persisted metadata — this is where isPremium AND the path
+        // (subject/category) are written. Without these the record would
+        // be unreachable from any future browsing path.
         saveDownloadedMeta(doc);
 
         // Full re-render: the card's sort position may change, and if the
@@ -885,7 +1223,8 @@ async function startDownload(resourceId) {
 
         _logLine(
             'download-complete',
-            `id=${resourceId} size=${blob.size} thumbnail=${thumbnailDownloaded} ` +
+            `id=${resourceId} path=${_pathKey(doc && doc.subject, doc && doc.category)} ` +
+            `size=${blob.size} thumbnail=${thumbnailDownloaded} ` +
             `premiumWritten=${doc ? doc.isPremium === true : false}`,
             'ok'
         );
@@ -916,7 +1255,10 @@ async function startDownload(resourceId) {
 // ==================== OFFLINE LOADING ====================
 
 /**
- * Build the resource list from what has actually been downloaded.
+ * Build the resource list from what has actually been downloaded, SCOPED
+ * TO THE CURRENT PATH (subject + category). A download made in Anatomy →
+ * notes is invisible here while browsing Physiology → textbooks.
+ *
  * Sorting and filtering are applied by `applyFiltersAndRender`.
  */
 function loadOfflineResources() {
@@ -924,6 +1266,7 @@ function loadOfflineResources() {
 
     if (_dbg()) {
         _log('offline-load', {
+            pathKey: _pathKey(currentSubject, currentCategory),
             downloadedCount: docs.length,
             titles: docs.map(d => d.title),
         });
@@ -1002,6 +1345,7 @@ async function loadResources(reset = true) {
                     source: result && result.source,
                     subject: currentSubject,
                     category: currentCategory,
+                    pathKey: _pathKey(currentSubject, currentCategory),
                     reset,
                     cursor: currentCursor,
                     hasMore: result && result.hasMore,
@@ -1114,7 +1458,12 @@ export async function initResourceBrowser(subject, type, forceRefresh = false) {
     }
 
     if (_dbg()) {
-        _logLine('init', `subject=${subject} category=${currentCategory} debug=ON`, 'info');
+        _logLine(
+            'init',
+            `subject=${subject} category=${currentCategory} ` +
+            `pathKey=${_pathKey(currentSubject, currentCategory)} debug=ON`,
+            'info'
+        );
     }
 
     // Resolve entitlement before the first render so subscribers never see
@@ -1123,6 +1472,13 @@ export async function initResourceBrowser(subject, type, forceRefresh = false) {
     await refreshSubscriptionState();
 
     await loadResources(true);
+
+    // ── Shared-doc landing ─────────────────────────────────────────
+    // If the URL carries a share payload, resolve it to a real document
+    // (backend by id if not already loaded) and open it in the viewer.
+    // No download, no persistence — just navigation.
+    const share = readSharedDocFromUrl();
+    if (share) await _consumeSharedDoc(share);
 
     if (searchEl) {
         searchEl.oninput = null;

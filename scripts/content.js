@@ -35,6 +35,16 @@
  *   failure and switch to its offline-only view (`loadOfflineResources`).
  *   Silently returning an empty result set was the root cause of the
  *   "downloads don't show offline" bug.
+ *
+ * Single-document fetch:
+ *   `fetchResourceById(resourceId)` fetches ONE document from the public
+ *   catalogue by id. Backed by `resources/queries:getResource`, which is
+ *   public (no auth required) and already:
+ *     • returns null for missing or inactive resources;
+ *     • applies the canonical `toPublicDocument()` shape.
+ *   Used by the share-landing flow in resource-browser.js — a share link
+ *   carries only an id, and this is how the recipient resolves it to a
+ *   real card without paginating.
  */
 
 import * as db from './db.js';
@@ -124,6 +134,56 @@ function setDownloadManifest(manifest) {
   utils.setLocalStorage(DOWNLOAD_MANIFEST_KEY, manifest);
 }
 
+// ==================== SHARED DOCUMENT SHAPE ====================
+
+/**
+ * Project a raw public document (from any of the getResources / getResource
+ * queries) onto the canonical shape consumed by the frontend.
+ *
+ * The backend already returns essentially this shape via `toPublicDocument`,
+ * but keeping one map here means every fetch path in this module produces an
+ * identical field set, so downstream consumers (card renderer, open handler,
+ * download handler, saveDownloadedMeta) never have to branch on origin.
+ *
+ * @param {object} doc
+ * @returns {object}
+ */
+function _toPublicDoc(doc) {
+  return {
+    // Identity
+    _id: doc._id,
+    title: doc.title,
+    subject: doc.subject,
+    category: doc.category,
+
+    // Attribution
+    author: doc.author,
+    year: doc.year,
+
+    // Entitlement — REQUIRED by the Open and Download handlers
+    isPremium: doc.isPremium === true,
+
+    // Content metadata
+    fileType: doc.fileType,
+    fileSize: doc.fileSize,
+    description: doc.description,
+    tags: doc.tags,
+
+    // Media
+    thumbnailUrl: doc.thumbnailUrl,
+    r2ThumbnailKey: doc.r2ThumbnailKey,
+
+    // Counters / versioning
+    downloadCount: doc.downloadCount,
+    viewCount: doc.viewCount,
+    version: doc.version,
+
+    // Timestamps
+    uploadedAt: doc.uploadedAt,
+    updatedAt: doc.updatedAt,
+  };
+}
+
 // ==================== FETCH RESOURCES ====================
 
 /**
@@ -189,45 +249,7 @@ export async function fetchResources(subject, category, cursor = null, filters =
   try {
     const result = await convexHttpClient.query('resources/queries:getResources', queryParams);
 
-    // ────────────────────────────────────────────────────────────────
-    // IMPORTANT: This map must preserve EVERY field the caller relies on.
-    // A narrowing map here silently drops fields for every downstream
-    // consumer (cards, open handler, download handler). Do not remove
-    // fields from this shape without auditing every consumer.
-    // ────────────────────────────────────────────────────────────────
-    const documents = result.documents.map((doc) => ({
-      // Identity
-      _id: doc._id,
-      title: doc.title,
-      subject: doc.subject,
-      category: doc.category,
-
-      // Attribution
-      author: doc.author,
-      year: doc.year,
-
-      // Entitlement — REQUIRED by the Open and Download handlers
-      isPremium: doc.isPremium === true,
-
-      // Content metadata
-      fileType: doc.fileType,
-      fileSize: doc.fileSize,
-      description: doc.description,
-      tags: doc.tags,
-
-      // Media
-      thumbnailUrl: doc.thumbnailUrl,
-      r2ThumbnailKey: doc.r2ThumbnailKey,
-
-      // Counters / versioning
-      downloadCount: doc.downloadCount,
-      viewCount: doc.viewCount,
-      version: doc.version,
-
-      // Timestamps
-      uploadedAt: doc.uploadedAt,
-      updatedAt: doc.updatedAt,
-    }));
+    const documents = result.documents.map(_toPublicDoc);
 
     // Write the cache on first-page fetches, including cursor and hasMore
     // so a subsequent cache hit continues pagination correctly.
@@ -263,6 +285,37 @@ export async function fetchResources(subject, category, cursor = null, filters =
     // No cache to serve from. Re-throw so the caller can switch to its
     // offline path. This is the fix for "downloads don't show offline".
     throw err;
+  }
+}
+
+// ==================== FETCH ONE ====================
+
+/**
+ * Fetch a single resource by id from the public catalogue.
+ *
+ * Backed by `resources/queries:getResource`, which:
+ *   • is public (no auth required);
+ *   • returns null for missing or inactive resources;
+ *   • applies the canonical `toPublicDocument()` shape.
+ *
+ * Used by the share-landing flow: a share link carries only an id, and
+ * this resolves it to a full public doc — same shape as a `fetchResources`
+ * document — so the caller can inject it into the grid and hand it to the
+ * viewer without any shape adaptation.
+ *
+ * @param {string} resourceId
+ * @returns {Promise<object|null>}
+ */
+export async function fetchResourceById(resourceId) {
+  try {
+    const doc = await convexHttpClient.query('resources/queries:getResource', {
+      resourceId,
+    });
+    if (!doc) return null;
+    return _toPublicDoc(doc);
+  } catch (err) {
+    console.error('[Content] fetchResourceById error:', err);
+    return null;
   }
 }
 

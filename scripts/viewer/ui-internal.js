@@ -21,6 +21,29 @@
  *   • Sidebar (drawer) open / close with scrim + ARIA state + manager dispatch
  *   • Footer visibility per document kind (PDF-only)
  *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * INVARIANTS (do not violate — see project spec):
+ *
+ *   1. #viewer-main is a fixed window. It paints the background colour and
+ *      owns the native scroll box. This file never transforms it, never
+ *      attaches gesture listeners directly to it, and never measures it for
+ *      anything except viewport dimensions.
+ *
+ *   2. .page-container is the ONLY interactive element inside #viewer-main.
+ *      Every slot inside it — a <canvas class="page"> or a <div class="cover">
+ *      — is sized natural × displayScale by core.js. Resolution changes the
+ *      bitmap inside a canvas; it never changes a slot's CSS size.
+ *
+ *   3. Every button, key, and control click emits a bus event
+ *      (PAGE_JUMP_REQUESTED, SCALE_REQUESTED, ROTATE_REQUESTED, SWIPE, …).
+ *      This file never touches the engine, caches, canvases, or workers.
+ *
+ *   4. Because #viewer-main has pointer-events: none in CSS, clicks on the
+ *      background never reach the click listener attached here. Events from
+ *      .page-container and its descendants bubble up to that listener; taps
+ *      on empty space do nothing. The page is the only interactive surface.
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
  * Exports (20):
  *   injectViewerStyles, refreshElementCache, setupControls,
  *   setupAutoHideListeners, showHeaderFooter, hideHeaderFooter,
@@ -34,7 +57,6 @@
  *   • Only file (besides viewer.js) permitted to query the DOM by element ID,
  *     inject styles, or attach click/change/input/keydown listeners.
  *   • Never attaches scroll / pointer / wheel / touch listeners (interaction).
- *   • Never touches the engine, caches, canvases, or workers.
  *   • Only writes `viewMode` and `dpr` to ViewerState.
  *   • Does NOT import `router`. The preview-mode subscribe CTA is built in
  *     core.js and emits PREVIEW_SUBSCRIBE_REQUESTED on the bus; viewer.js
@@ -46,11 +68,12 @@
  *   • `./native-bridge.js` — fullscreen (platform-aware).
  *
  * CSS ownership:
- *   The bulk of viewer styling — page container, canvas wrapper, viewer main
- *   overflow, sidebar, scrim, safe-area insets, dark-mode variables, tap
- *   targets — lives in the page stylesheet (`resource-browser.css`). Only the
- *   header/footer slide animations are injected here, because they're an
- *   intrinsic part of the auto-hide state machine that this file owns.
+ *   The bulk of viewer styling — the page container, the .page and .cover
+ *   slots, viewer-main overflow and the .x-scroll toggle, sidebar, scrim,
+ *   safe-area insets, dark-mode variables, tap targets — lives in the page
+ *   stylesheet (`resource-browser.css`). Only the header/footer slide
+ *   animations are injected here, because they are the visual half of the
+ *   auto-hide state machine that this file owns.
  *
  * Footer visibility:
  *   #viewer-footer holds the page counter, page-jump input, prev/next
@@ -62,6 +85,7 @@
  *     PDF              → display: flex  (footer visible)
  *     image / text     → display: none  (footer hidden)
  *     office / other   → display: none  (footer hidden)
+ *     blocked preview  → display: none  (no pages to navigate)
  *
  * Preview-mode CTA:
  *   core.js's _buildPreviewCTA() appends a card after the last preview page
@@ -74,9 +98,13 @@
  *   effective limit so the UI matches what the render pipeline will display.
  *
  * Document clearing (clearViewerContent):
- *   Removes every DOM node the viewer created for the previous document while
- *   preserving the four static chrome nodes declared in viewer.html:
+ *   Removes every DOM node the viewer created for the previous document
+ *   while preserving the four static chrome nodes declared in viewer.html:
  *   #viewer-loading, #viewer-progress, #viewer-content, #viewer-text-layer.
+ *
+ *   What is removed: the .page-container, every <canvas class="page"> and
+ *   every <div class="cover"> inside it, the preview CTA, the error
+ *   container, and any other non-static direct child of #viewer-main.
  *
  * Tap-sequence behaviour (Android convention):
  *   • Single tap  → toggle header/footer visibility.
@@ -97,9 +125,7 @@
  *
  *   `_openSidebar()` sets `data-panel` and adds `.open`, then calls
  *   `core.getManagers().dispatchPanel(panel)` to trigger the right manager
- *   to render its content. Managers also observe `data-panel` via
- *   MutationObserver, so the dispatch call here is a redundant safety net
- *   for the "panel already selected, drawer re-opened" case.
+ *   to render its content.
  *
  * Fit-to-width observer:
  *   `setupFitWidthObserver()` watches #viewer-main for width changes and
@@ -233,9 +259,9 @@ function _getEls() {
  * Inject the viewer's animation-only CSS into `<head>` exactly once.
  *
  * The rest of the viewer's styling lives in the page stylesheet
- * (`resource-browser.css`): page container, canvas wrapper, viewer-main
- * overflow, sidebar, scrim, safe-area insets, dark-mode variables, tap
- * targets.
+ * (`resource-browser.css`): the page container, the .page and .cover slots,
+ * viewer-main overflow and the .x-scroll toggle, sidebar, scrim, safe-area
+ * insets, dark-mode variables, tap targets.
  *
  * Only the header/footer slide animations are injected here, because they
  * are the visual half of the auto-hide state machine owned by this file.
@@ -422,9 +448,6 @@ export function toggleFullscreen() {
   } else {
     enterFullscreen().catch(() => { /* ignore */ });
   }
-  // Sync the button label after the browser's fullscreen state settles.
-  // On Android immersive mode there is no `fullscreenchange` event, so we
-  // always sync eagerly.
   Promise.resolve().then(_syncFullscreenLabel);
 }
 
@@ -608,18 +631,14 @@ function _openSidebar(core, panel) {
   drawer.setAttribute('aria-hidden', 'false');
   if (scrim) scrim.classList.add('open');
 
-  // Update aria-expanded on every toggle that targets a panel.
   _setToggleExpanded('viewer-outline-btn', safePanel === 'outline');
   _setToggleExpanded('viewer-search-btn', safePanel === 'search');
   _setToggleExpanded('viewer-more-btn', safePanel === 'more');
 
-  // The drawer owns the search UI when open — hide the inline bar so we
-  // don't have two search inputs fighting for focus.
   if (safePanel === 'search' && els.searchBar) {
     els.searchBar.classList.remove('active');
   }
 
-  // Ask managers to render the panel content into the drawer.
   try {
     const managers = (typeof core.getManagers === 'function') ? core.getManagers() : null;
     if (managers && typeof managers.dispatchPanel === 'function') {
@@ -803,61 +822,59 @@ export function setupControls(core) {
   if (!els || !els.container) return;
 
   // ── Menu (hamburger → dropdown) ────────────────────────────────────────
-const menuBtn = document.getElementById('viewer-menu-btn');
-const menuPanel = document.getElementById('viewer-menu');
-if (menuBtn && menuPanel) {
-  const closeMenu = () => {
-    if (menuPanel.hidden) return;
-    menuPanel.hidden = true;
-    menuBtn.setAttribute('aria-expanded', 'false');
-  };
-
-  const openMenu = () => {
-    menuPanel.hidden = false;
-    menuBtn.setAttribute('aria-expanded', 'true');
-
-    // Close on outside click, Escape, or after any item is picked.
-    const onOutside = (e) => {
-      if (menuPanel.contains(e.target)) return;
-      if (menuBtn.contains(e.target)) return;
-      closeMenu();
-      cleanup();
-    };
-    const onKey = (e) => {
-      if (e.key !== 'Escape') return;
-      closeMenu();
-      cleanup();
-    };
-    const cleanup = () => {
-      document.removeEventListener('click', onOutside, true);
-      document.removeEventListener('keydown', onKey, true);
+  const menuBtn = document.getElementById('viewer-menu-btn');
+  const menuPanel = document.getElementById('viewer-menu');
+  if (menuBtn && menuPanel) {
+    const closeMenu = () => {
+      if (menuPanel.hidden) return;
+      menuPanel.hidden = true;
+      menuBtn.setAttribute('aria-expanded', 'false');
     };
 
-    // Defer attachment so the same click that opened the menu doesn't
-    // immediately close it via the outside-click handler.
-    setTimeout(() => {
-      document.addEventListener('click', onOutside, true);
-      document.addEventListener('keydown', onKey, true);
-    }, 0);
-  };
+    const openMenu = () => {
+      menuPanel.hidden = false;
+      menuBtn.setAttribute('aria-expanded', 'true');
 
-  _addListener(menuBtn, 'click', (e) => {
-    e.stopPropagation();
-    if (menuPanel.hidden) openMenu();
-    else closeMenu();
-  });
+      // Close on outside click, Escape, or after any item is picked.
+      const onOutside = (e) => {
+        if (menuPanel.contains(e.target)) return;
+        if (menuBtn.contains(e.target)) return;
+        closeMenu();
+        cleanup();
+      };
+      const onKey = (e) => {
+        if (e.key !== 'Escape') return;
+        closeMenu();
+        cleanup();
+      };
+      const cleanup = () => {
+        document.removeEventListener('click', onOutside, true);
+        document.removeEventListener('keydown', onKey, true);
+      };
 
-  // Any item click closes the menu after the item's own handler runs.
-  _addListener(menuPanel, 'click', (e) => {
-    const item = e.target.closest('.viewer-menu-item');
-    if (!item) return;
-    setTimeout(closeMenu, 0);
-  });
-}
+      // Defer attachment so the same click that opened the menu doesn't
+      // immediately close it via the outside-click handler.
+      setTimeout(() => {
+        document.addEventListener('click', onOutside, true);
+        document.addEventListener('keydown', onKey, true);
+      }, 0);
+    };
+
+    _addListener(menuBtn, 'click', (e) => {
+      e.stopPropagation();
+      if (menuPanel.hidden) openMenu();
+      else closeMenu();
+    });
+
+    // Any item click closes the menu after the item's own handler runs.
+    _addListener(menuPanel, 'click', (e) => {
+      const item = e.target.closest('.viewer-menu-item');
+      if (!item) return;
+      setTimeout(closeMenu, 0);
+    });
+  }
 
   const hasSidebar = _hasSidebar();
-
-  // ── View-mode toggle ────────────────────────────────────────────────────
 
   // ── View-mode toggle ────────────────────────────────────────────────────
   if (els.toggleViewBtn) {
@@ -1311,6 +1328,10 @@ if (menuBtn && menuPanel) {
   }
 
   // ── Tap sequence (single → chrome, double → zoom) ──────────────────────
+  //
+  // Attached to #viewer-main, but that element has pointer-events: none in
+  // CSS. Only events bubbling up from .page-container (and its descendants)
+  // ever reach this listener. Taps on the background do nothing.
   if (els.main) {
     _addListener(els.main, 'click', (e) => {
       const target = e.target;
@@ -1391,11 +1412,13 @@ export function bindCoreEvents(core) {
     let current = 1;
     let total = 1;
     let documentKind = null;
+    let blocked = false;
     try {
       const s = core.getState();
       current = s.get('currentPage') || 1;
       total = s.get('numPages') || 1;
       documentKind = s.get('documentKind');
+      blocked = s.get('previewBlocked') === true;
       _currentPage = current;
       _currentTotalPages = total;
       _currentViewMode = s.get('viewMode') || 'scroll';
@@ -1404,12 +1427,11 @@ export function bindCoreEvents(core) {
 
     _currentEffectiveLimit = effectiveLimit();
 
-  if (els.footer) {
-  let blocked = false;
-  try { blocked = core.getState().get('previewBlocked') === true; } catch {}
-  els.footer.style.display =
-    (documentKind === 'pdf' && !blocked) ? 'flex' : 'none';
-}
+    // Footer is shown only for PDFs that have at least one visible page.
+    if (els.footer) {
+      els.footer.style.display =
+        (documentKind === 'pdf' && !blocked) ? 'flex' : 'none';
+    }
 
     _applyPageNumbers(current, total);
     updateZoomDisplay();
@@ -1810,7 +1832,8 @@ export function teardownControls() {
  *   • #viewer-text-layer    — reserved container
  *
  * WHAT IS REMOVED:
- *   • Every .page-container, .canvas-wrapper, canvas, img, iframe
+ *   • The .page-container and every <canvas class="page"> and
+ *     <div class="cover"> inside it
  *   • Every .search-layer, .error-container, .viewer-preview-cta
  *   • Any <pre> from a text-document load
  *   • Every other direct child of #viewer-main not on the survive list
@@ -1855,6 +1878,9 @@ export function clearViewerContent() {
         els.progress.value = 0;
         els.progress.style.display = 'none';
       }
+
+      // The .x-scroll class may be present from a previous document.
+      main.classList.remove('x-scroll');
     }
 
     if (els.outlineDrawer) {

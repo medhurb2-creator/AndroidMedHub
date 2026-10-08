@@ -8,6 +8,76 @@ import * as router from '../router.js';
 
 let $;
 
+// ==================== CANONICAL DOMAIN ====================
+// Always use the production domain for share links,
+// regardless of where the app is currently running.
+const SHARE_BASE_URL = 'https://app.medvix.co.ke';
+
+function buildShareUrl(token) {
+  if (!token) return SHARE_BASE_URL;
+  return `${SHARE_BASE_URL}/shared-note?token=${encodeURIComponent(token)}`;
+}
+
+// ==================== NATIVE SHARE + FALLBACKS ====================
+function nativeShare(shareData) {
+  const data = {
+    title: shareData.title || 'MedVix Note',
+    text: shareData.text || '',
+    url: shareData.url || '',
+    dialogTitle: shareData.dialogTitle || 'Share'
+  };
+
+  // 1. Prefer custom MedvixShare plugin
+  if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.MedvixShare) {
+    window.Capacitor.Plugins.MedvixShare.share(data)
+      .catch(() => fallbackShare(data));
+  }
+  // 2. Web Share API
+  else if (navigator.share) {
+    navigator.share(data).catch(() => fallbackShare(data));
+  }
+  // 3. Final fallback: copy to clipboard
+  else {
+    fallbackShare(data);
+  }
+}
+
+function fallbackShare(shareData) {
+  const url = shareData.url || shareData.text || '';
+  if (!url) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(() => {
+      ui.showToast('Link copied to clipboard!', 'success');
+    }).catch(() => {
+      fallbackCopy(url);
+    });
+  } else {
+    fallbackCopy(url);
+  }
+}
+
+function fallbackCopy(text) {
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  textarea.style.pointerEvents = 'none';
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    const success = document.execCommand('copy');
+    if (success) {
+      ui.showToast('Link copied to clipboard!', 'success');
+    } else {
+      ui.showToast('Failed to copy link. Please copy manually.', 'error');
+    }
+  } catch (e) {
+    ui.showToast('Failed to copy link. Please copy manually.', 'error');
+  }
+  document.body.removeChild(textarea);
+}
+
+// ==================== INIT ====================
 export async function init(context) {
   $ = (sel) => context.root.querySelector(sel);
 
@@ -60,6 +130,9 @@ export async function init(context) {
     return;
   }
 
+  // Canonical share URL (always app.medvix.co.ke)
+  const canonicalUrl = buildShareUrl(token);
+
   try {
     const note = await db.getNoteByShareToken(token);
     if (!note) {
@@ -80,6 +153,7 @@ export async function init(context) {
         <div class="note-content">${note.content}</div>
         <div class="note-actions">
           <button id="copyLinkBtn" class="btn-secondary">🔗 Copy Link</button>
+          <button id="shareNoteBtn" class="btn-secondary">📤 Share</button>
     `;
 
     if (isLoggedIn) {
@@ -92,14 +166,31 @@ export async function init(context) {
     `;
     container.innerHTML = html;
 
-    // Copy link button
+    // Copy link button — uses canonical URL, not window.location
     const copyLinkBtn = $('#copyLinkBtn');
     if (copyLinkBtn) {
       copyLinkBtn.addEventListener('click', () => {
-        navigator.clipboard.writeText(window.location.href).then(() => {
-          ui.showToast('Link copied!', 'success');
-        }).catch(() => {
-          prompt('Copy this link:', window.location.href);
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(canonicalUrl).then(() => {
+            ui.showToast('Link copied!', 'success');
+          }).catch(() => {
+            fallbackCopy(canonicalUrl);
+          });
+        } else {
+          fallbackCopy(canonicalUrl);
+        }
+      });
+    }
+
+    // Share button — uses custom plugin with fallbacks
+    const shareNoteBtn = $('#shareNoteBtn');
+    if (shareNoteBtn) {
+      shareNoteBtn.addEventListener('click', () => {
+        nativeShare({
+          title: note.title || 'MedVix Note',
+          text: `Check out this MedVix note: ${note.title || 'Untitled'}`,
+          url: canonicalUrl,
+          dialogTitle: 'Share Note'
         });
       });
     }
