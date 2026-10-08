@@ -12,7 +12,7 @@
  * Backend contracts used here:
  *   system/queries:getAppConfig                    → plans + settings
  *   subscriptions/queries:getSubscriptionStatus    → active subscription + devices
- *   subscriptions/queries:checkTrialEligibility    → { token, deviceId, deviceInfo? }
+ *   subscriptions/queries:checkTrialEligibility    → { token, deviceId? }
  *   subscriptions/actions:startFreeTrial           → { token, deviceId, deviceInfo }
  *   subscriptions/actions:purchaseSubscription     → { token, planId, phoneNumber,
  *                                                       deviceId, deviceInfo,
@@ -431,7 +431,14 @@ export async function isPaidSubscription() {
 
 /**
  * Check trial eligibility via the backend.
- * Backend contract: { token, deviceId?, deviceFingerprint? }
+ *
+ * Backend contract (strict validator):
+ *   { token, deviceId?, deviceFingerprint? }
+ *
+ * The backend only needs ONE identifier to run its cross-account
+ * trial-abuse checks. We send `deviceId` (the canonical value);
+ * `deviceInfo` is intentionally NOT sent — it's not part of the
+ * validator and isn't used by the eligibility logic.
  */
 export async function checkTrialEligibility() {
     requireOnline();
@@ -439,11 +446,11 @@ export async function checkTrialEligibility() {
         const token = getToken();
         if (!token) throw new Error('Not authenticated');
 
-        const { deviceId, deviceInfo } = await security.buildDeviceIdentity();
+        const { deviceId } = await security.buildDeviceIdentity();
 
         const result = await convexHttpClient.action(
             'subscriptions/queries:checkTrialEligibility',
-            { token, deviceId, deviceInfo }
+            { token, deviceId }
         );
 
         if (!result.success) {

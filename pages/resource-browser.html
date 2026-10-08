@@ -88,74 +88,92 @@
 
        ui-internal.js::_openSidebar(panel) sets the attribute and
        dispatches to managers so the correct panel renders.
+
+       Header layout (matches pages/viewer.html):
+         Row 1: [Back]  [Title]  [☰ Menu]
+         Row 2 (on toggle): inline search bar
+         Dropdown menu on the ☰ button contains:
+           Outline · Search text · Page view · Open file
+           Fit to width · Reset zoom · Fullscreen
+
+       Footer contains only navigation and continuous zoom:
+         [◀ Previous]  [Page #/total]  [Next ▶]
+         [−] [zoom %] [+]
+
+       Fit and Reset live ONLY in the menu — no duplicate IDs.
+       The menu IDs match pages/viewer.html so ui-internal.js works
+       identically on both pages.
        ============================================================ -->
   <div id="viewer" style="display: none;">
     <div class="viewer-container">
 
       <!-- ─── Header ──────────────────────────────────────────────── -->
       <header class="viewer-header" id="viewer-header">
-        <div class="left-group">
-          <!-- Toggle 1: outline drawer -->
-          <button
-            id="viewer-outline-btn"
-            class="btn-icon"
-            type="button"
-            title="Document outline"
-            aria-label="Open document outline"
-            aria-controls="viewer-outline-drawer"
-            aria-expanded="false"
-          >☰</button>
-
-          <button id="viewer-back-btn" class="btn-back" type="button" aria-label="Back to resources">
+        <div class="viewer-header-main">
+          <button id="viewer-back-btn" class="btn-back" type="button" aria-label="Close document">
             <span aria-hidden="true">←</span> Back
           </button>
 
           <div class="viewer-title" id="viewer-title">Loading…</div>
+
+          <button
+            id="viewer-menu-btn"
+            class="btn-icon btn-menu"
+            type="button"
+            title="Menu"
+            aria-label="Open menu"
+            aria-haspopup="menu"
+            aria-expanded="false"
+            aria-controls="viewer-menu"
+          >☰</button>
         </div>
 
-        <div class="right-group">
-          <!-- Toggle 2: search drawer -->
-          <button
-            id="viewer-search-btn"
-            class="btn-icon"
-            type="button"
-            title="Search"
-            aria-label="Search document"
-            aria-controls="viewer-search-bar"
-            aria-expanded="false"
-          >🔍</button>
+        <!-- ─── Dropdown menu ──────────────────────────────────────
+             Every viewer action that used to be a top-level header
+             button lives here now. IDs are unchanged so existing
+             handlers in ui-internal.js continue to work. -->
+        <div class="viewer-menu" id="viewer-menu" role="menu" hidden>
+          <button class="viewer-menu-item" id="viewer-outline-btn" type="button" role="menuitem">
+            <span class="viewer-menu-icon" aria-hidden="true">☰</span>
+            <span class="viewer-menu-label">Outline</span>
+          </button>
 
-          <!-- Toggle 3: more drawer (document info + actions) -->
-          <button
-            id="viewer-more-btn"
-            class="btn-icon"
-            type="button"
-            title="More"
-            aria-label="More options"
-            aria-controls="viewer-outline-drawer"
-            aria-expanded="false"
-          >⋮</button>
+          <button class="viewer-menu-item" id="viewer-search-btn" type="button" role="menuitem">
+            <span class="viewer-menu-icon" aria-hidden="true">🔍</span>
+            <span class="viewer-menu-label">Search text</span>
+          </button>
 
-          <!-- View mode toggle (page ↔ scroll). Not a drawer opener — it
-               switches the layout directly. -->
-          <button
-            id="viewer-toggle-view"
-            class="btn-icon"
-            type="button"
-            title="Toggle view mode"
-            aria-label="Toggle page or scroll view"
-          >📄 Page View</button>
+          <button class="viewer-menu-item" id="viewer-toggle-view" type="button" role="menuitem">
+            <span class="viewer-menu-icon" aria-hidden="true">📄</span>
+            <span class="viewer-menu-label" id="viewer-toggle-view-label">Page view</span>
+          </button>
 
-          <button id="viewer-open-local" class="btn-icon" type="button" title="Open local file" aria-label="Open local file">📂</button>
-          <button id="viewer-fullscreen-btn" class="btn-icon" type="button" title="Fullscreen" aria-label="Toggle fullscreen" aria-pressed="false">⛶</button>
+          <button class="viewer-menu-item" id="viewer-open-local" type="button" role="menuitem">
+            <span class="viewer-menu-icon" aria-hidden="true">📂</span>
+            <span class="viewer-menu-label">Open file</span>
+          </button>
+
+          <div class="viewer-menu-divider" role="separator"></div>
+
+          <button class="viewer-menu-item" id="viewer-zoom-fit" type="button" role="menuitem">
+            <span class="viewer-menu-icon" aria-hidden="true">↔</span>
+            <span class="viewer-menu-label">Fit to width</span>
+          </button>
+
+          <button class="viewer-menu-item" id="viewer-zoom-reset" type="button" role="menuitem">
+            <span class="viewer-menu-icon" aria-hidden="true">1:1</span>
+            <span class="viewer-menu-label">Reset zoom</span>
+          </button>
+
+          <button class="viewer-menu-item" id="viewer-fullscreen-btn" type="button" role="menuitem" aria-pressed="false">
+            <span class="viewer-menu-icon" aria-hidden="true">⛶</span>
+            <span class="viewer-menu-label">Fullscreen</span>
+          </button>
         </div>
       </header>
 
-      <!-- ─── Inline search bar ────────────────────────────────────
-           Legacy / header-embedded search input. In sidebar mode,
-           ui-internal hides this bar and opens the drawer's search
-           panel instead. The markup stays so the header UI keeps its
-           existing look on wide screens and in older code paths. -->
+      <!-- ─── Search bar (appears below the header when toggled) ────
+           Toggled by the Search text item in the dropdown menu. -->
       <div class="search-bar" id="viewer-search-bar" role="search">
         <input
           type="text"
@@ -214,12 +232,13 @@
           <button id="viewer-next-page" type="button" disabled aria-label="Next page">Next ▶</button>
         </div>
 
+        <!-- Zoom controls: continuous zoom in/out only.
+             Fit and Reset have moved to the dropdown menu so the two
+             surfaces do not share IDs. -->
         <div class="zoom-controls">
           <button id="viewer-zoom-out" type="button" title="Zoom out" aria-label="Zoom out">−</button>
           <span id="viewer-zoom-level" aria-live="polite">100%</span>
           <button id="viewer-zoom-in" type="button" title="Zoom in" aria-label="Zoom in">+</button>
-          <button id="viewer-zoom-fit" type="button" title="Fit to width" aria-label="Fit to width">⛶</button>
-          <button id="viewer-zoom-reset" type="button" title="Reset zoom" aria-label="Reset zoom to 100%">1:1</button>
         </div>
       </footer>
 
@@ -232,16 +251,7 @@
       <!-- ─── Drawer / sidebar ─────────────────────────────────────
            One shell, multiple panels. `data-panel` selects which panel's
            content is shown. ui-internal.js toggles `.open` and calls
-           managers.dispatchPanel(panel) to render the right panel.
-
-           Panels:
-             outline → document outline tree (nested hyperlinks)
-             search  → input + case/word toggles + result list
-             more    → document info + rotate/fit/print/download actions
-                     + keyboard shortcut reference (web only)
-
-           `role="complementary"` because the drawer hosts navigation,
-           search, AND informational panels — not just navigation. -->
+           managers.dispatchPanel(panel) to render the right panel. -->
       <aside
         class="outline-drawer"
         id="viewer-outline-drawer"

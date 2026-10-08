@@ -2147,6 +2147,18 @@ export function createManagers(core) {
     search.renderHighlights();
   }));
 
+  // Document loaded → hand the outline tree to OutlineManager.
+//
+// core.js patches state.outline from the engine's getOutline() result,
+// but nothing was populating the manager's `_items` cache. The panel
+// rendered "No outline available" even when the PDF had a full tree.
+teardowns.push(bus.on(Events.DOCUMENT_LOADED, (payload) => {
+  if (!payload || !Array.isArray(payload.outline)) return;
+  try {
+    outline.build(payload.outline);
+  } catch { /* ignore */ }
+})); 
+
   // Document destroyed → clear all state, including the MorePanel cache.
   teardowns.push(bus.on(Events.DOCUMENT_DESTROYED, () => {
     try { search.clear(); } catch { /* ignore */ }

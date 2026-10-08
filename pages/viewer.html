@@ -23,69 +23,89 @@
        resource-browser.html's embedded viewer overlay. They never
        route here.
 
-       The chrome below is identical to resource-browser.html's
-       embedded viewer. Both pages mount the same viewer.js module,
-       which is page-agnostic — it just needs a #viewer element with
-       the 32 element IDs below.
+       Header layout:
+         Row 1: [Back]  [Title]  [☰ Menu]
+         Row 2 (on toggle): inline search bar
+         Dropdown menu contains every viewer action:
+           Outline · Search text · Page view · Open file
+           Fullscreen · Reset zoom · Fit to width
+
+       Footer contains only navigation and continuous zoom:
+         [◀ Previous]  [Page #/total]  [Next ▶]
+         [−] [zoom %] [+]
+
+       Fit / Reset live in the menu (not the footer) so the two
+       surfaces never share an ID. The same IDs the ui-internal.js
+       handlers already look up are preserved.
        ============================================================ -->
   <div id="viewer">
     <div class="viewer-container">
 
       <!-- ─── Header ──────────────────────────────────────────────── -->
       <header class="viewer-header" id="viewer-header">
-        <div class="left-group">
-          <button
-            id="viewer-outline-btn"
-            class="btn-icon"
-            type="button"
-            title="Document outline"
-            aria-label="Open document outline"
-            aria-controls="viewer-outline-drawer"
-            aria-expanded="false"
-          >☰</button>
-
+        <div class="viewer-header-main">
           <button id="viewer-back-btn" class="btn-back" type="button" aria-label="Close document">
             <span aria-hidden="true">←</span> Back
           </button>
 
           <div class="viewer-title" id="viewer-title">Loading…</div>
+
+          <button
+            id="viewer-menu-btn"
+            class="btn-icon btn-menu"
+            type="button"
+            title="Menu"
+            aria-label="Open menu"
+            aria-haspopup="menu"
+            aria-expanded="false"
+            aria-controls="viewer-menu"
+          >☰</button>
         </div>
 
-        <div class="right-group">
-          <button
-            id="viewer-search-btn"
-            class="btn-icon"
-            type="button"
-            title="Search"
-            aria-label="Search document"
-            aria-controls="viewer-search-bar"
-            aria-expanded="false"
-          >🔍</button>
+        <!-- ─── Dropdown menu ──────────────────────────────────────
+             Houses every viewer action. IDs are unchanged so the
+             existing handlers in ui-internal.js continue to work. -->
+        <div class="viewer-menu" id="viewer-menu" role="menu" hidden>
+          <button class="viewer-menu-item" id="viewer-outline-btn" type="button" role="menuitem">
+            <span class="viewer-menu-icon" aria-hidden="true">☰</span>
+            <span class="viewer-menu-label">Outline</span>
+          </button>
 
-          <button
-            id="viewer-more-btn"
-            class="btn-icon"
-            type="button"
-            title="More"
-            aria-label="More options"
-            aria-controls="viewer-outline-drawer"
-            aria-expanded="false"
-          >⋮</button>
+          <button class="viewer-menu-item" id="viewer-search-btn" type="button" role="menuitem">
+            <span class="viewer-menu-icon" aria-hidden="true">🔍</span>
+            <span class="viewer-menu-label">Search text</span>
+          </button>
 
-          <button
-            id="viewer-toggle-view"
-            class="btn-icon"
-            type="button"
-            title="Toggle view mode"
-            aria-label="Toggle page or scroll view"
-          >📄 Page View</button>
+          <button class="viewer-menu-item" id="viewer-toggle-view" type="button" role="menuitem">
+            <span class="viewer-menu-icon" aria-hidden="true">📄</span>
+            <span class="viewer-menu-label" id="viewer-toggle-view-label">Page view</span>
+          </button>
 
-          <button id="viewer-open-local" class="btn-icon" type="button" title="Open local file" aria-label="Open local file">📂</button>
-          <button id="viewer-fullscreen-btn" class="btn-icon" type="button" title="Fullscreen" aria-label="Toggle fullscreen" aria-pressed="false">⛶</button>
+          <button class="viewer-menu-item" id="viewer-open-local" type="button" role="menuitem">
+            <span class="viewer-menu-icon" aria-hidden="true">📂</span>
+            <span class="viewer-menu-label">Open file</span>
+          </button>
+
+          <div class="viewer-menu-divider" role="separator"></div>
+
+          <button class="viewer-menu-item" id="viewer-zoom-fit" type="button" role="menuitem">
+            <span class="viewer-menu-icon" aria-hidden="true">↔</span>
+            <span class="viewer-menu-label">Fit to width</span>
+          </button>
+
+          <button class="viewer-menu-item" id="viewer-zoom-reset" type="button" role="menuitem">
+            <span class="viewer-menu-icon" aria-hidden="true">1:1</span>
+            <span class="viewer-menu-label">Reset zoom</span>
+          </button>
+
+          <button class="viewer-menu-item" id="viewer-fullscreen-btn" type="button" role="menuitem" aria-pressed="false">
+            <span class="viewer-menu-icon" aria-hidden="true">⛶</span>
+            <span class="viewer-menu-label">Fullscreen</span>
+          </button>
         </div>
       </header>
 
-      <!-- ─── Inline search bar ──────────────────────────────────── -->
+      <!-- ─── Search bar (appears below the header when toggled) ──── -->
       <div class="search-bar" id="viewer-search-bar" role="search">
         <input
           type="text"
@@ -142,8 +162,6 @@
           <button id="viewer-zoom-out" type="button" title="Zoom out" aria-label="Zoom out">−</button>
           <span id="viewer-zoom-level" aria-live="polite">100%</span>
           <button id="viewer-zoom-in" type="button" title="Zoom in" aria-label="Zoom in">+</button>
-          <button id="viewer-zoom-fit" type="button" title="Fit to width" aria-label="Fit to width">⛶</button>
-          <button id="viewer-zoom-reset" type="button" title="Reset zoom" aria-label="Reset zoom to 100%">1:1</button>
         </div>
       </footer>
 

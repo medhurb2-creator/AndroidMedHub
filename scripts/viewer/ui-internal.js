@@ -802,7 +802,62 @@ export function setupControls(core) {
   const els = _getEls();
   if (!els || !els.container) return;
 
+  // ── Menu (hamburger → dropdown) ────────────────────────────────────────
+const menuBtn = document.getElementById('viewer-menu-btn');
+const menuPanel = document.getElementById('viewer-menu');
+if (menuBtn && menuPanel) {
+  const closeMenu = () => {
+    if (menuPanel.hidden) return;
+    menuPanel.hidden = true;
+    menuBtn.setAttribute('aria-expanded', 'false');
+  };
+
+  const openMenu = () => {
+    menuPanel.hidden = false;
+    menuBtn.setAttribute('aria-expanded', 'true');
+
+    // Close on outside click, Escape, or after any item is picked.
+    const onOutside = (e) => {
+      if (menuPanel.contains(e.target)) return;
+      if (menuBtn.contains(e.target)) return;
+      closeMenu();
+      cleanup();
+    };
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      closeMenu();
+      cleanup();
+    };
+    const cleanup = () => {
+      document.removeEventListener('click', onOutside, true);
+      document.removeEventListener('keydown', onKey, true);
+    };
+
+    // Defer attachment so the same click that opened the menu doesn't
+    // immediately close it via the outside-click handler.
+    setTimeout(() => {
+      document.addEventListener('click', onOutside, true);
+      document.addEventListener('keydown', onKey, true);
+    }, 0);
+  };
+
+  _addListener(menuBtn, 'click', (e) => {
+    e.stopPropagation();
+    if (menuPanel.hidden) openMenu();
+    else closeMenu();
+  });
+
+  // Any item click closes the menu after the item's own handler runs.
+  _addListener(menuPanel, 'click', (e) => {
+    const item = e.target.closest('.viewer-menu-item');
+    if (!item) return;
+    setTimeout(closeMenu, 0);
+  });
+}
+
   const hasSidebar = _hasSidebar();
+
+  // ── View-mode toggle ────────────────────────────────────────────────────
 
   // ── View-mode toggle ────────────────────────────────────────────────────
   if (els.toggleViewBtn) {
@@ -810,7 +865,14 @@ export function setupControls(core) {
       try {
         const state = core.getState();
         const mode = state.get('viewMode') || 'scroll';
-        els.toggleViewBtn.textContent = mode === 'scroll' ? '📄 Page View' : '📜 Scroll View';
+        const label = document.getElementById('viewer-toggle-view-label');
+        if (label) {
+          label.textContent = mode === 'scroll' ? 'Page view' : 'Scroll view';
+        }
+        // Fallback for older DOM where the toggle was a top-level button.
+        if (!label && els.toggleViewBtn) {
+          els.toggleViewBtn.textContent = mode === 'scroll' ? '📄 Page View' : '📜 Scroll View';
+        }
       } catch { /* ignore */ }
     };
     labelSync();
@@ -1342,9 +1404,12 @@ export function bindCoreEvents(core) {
 
     _currentEffectiveLimit = effectiveLimit();
 
-    if (els.footer) {
-      els.footer.style.display = (documentKind === 'pdf') ? 'flex' : 'none';
-    }
+  if (els.footer) {
+  let blocked = false;
+  try { blocked = core.getState().get('previewBlocked') === true; } catch {}
+  els.footer.style.display =
+    (documentKind === 'pdf' && !blocked) ? 'flex' : 'none';
+}
 
     _applyPageNumbers(current, total);
     updateZoomDisplay();

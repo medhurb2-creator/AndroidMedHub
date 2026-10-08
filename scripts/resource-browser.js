@@ -51,6 +51,17 @@
  *   CONFIG.PREVIEW_PAGE_FRACTION (10% by default) and appends a subscribe
  *   call-to-action after the last preview page.
  *
+ * Premium badge display policy:
+ *   The 🔒 Premium badge is INFORMATIONAL ONLY. It is rendered on a card
+ *   only when the resource is premium AND the user currently has no active
+ *   subscription or free trial. Subscribers and trial users do not see it,
+ *   since the badge would be misleading (they already have access).
+ *
+ *   This never affects functionality: the Open handler and the Download
+ *   handler still call subscription.hasActiveSubscription() themselves and
+ *   remain the sole authority on entitlement. The cached flag below is a
+ *   presentation hint only.
+ *
  * Diagnostic logging:
  *   Set localStorage['debugPremium'] = '1' to enable detailed field-level
  *   logging at every point where `isPremium` is received, mapped, persisted,
@@ -145,6 +156,44 @@ export const docMap = new Map();
 
 // resourceId -> object URL (thumbnail blobs we've hydrated or downloaded)
 const thumbnailCache = new Map();
+
+// ==================== SUBSCRIPTION STATE (DISPLAY ONLY) ====================
+//
+// The premium badge on a card is purely informational. We cache the user's
+// entitlement here so the synchronous card renderer can decide whether to
+// render the badge. This value NEVER gates functionality:
+//   • the Open handler still calls subscription.hasActiveSubscription()
+//     itself before choosing preview mode;
+//   • the Download handler still calls it before allowing a premium fetch.
+//
+// Keeping a separate copy here means the two handlers remain the single
+// authority on entitlement, and this is only a presentation hint.
+
+let userHasActiveSubscription = false;
+
+/**
+ * Refresh the cached entitlement flag.
+ * Swallows errors and keeps the previous value on failure, so a transient
+ * offline blip never flips the badge on for a paying subscriber.
+ *
+ * @returns {Promise<boolean>} the (possibly stale on failure) flag
+ */
+async function refreshSubscriptionState() {
+    try {
+        userHasActiveSubscription =
+            (await subscription.hasActiveSubscription()) === true;
+    } catch {
+        // Keep last known value.
+    }
+    if (_dbg()) {
+        _logLine(
+            'sub-state',
+            `userHasActiveSubscription=${userHasActiveSubscription}`,
+            userHasActiveSubscription ? 'ok' : 'warn'
+        );
+    }
+    return userHasActiveSubscription;
+}
 
 // ==================== PERSISTED DOWNLOADED METADATA ====================
 function getDownloadedMeta() {
@@ -402,6 +451,7 @@ function applyFiltersAndRender() {
             totalInAllDocuments: allDocuments.length,
             afterFilter: filtered.length,
             premiumInFiltered: filtered.filter(d => d.isPremium === true).length,
+            userHasActiveSubscription,
             firstFiveTitles: filtered.slice(0, 5).map(d => d.title),
         });
     }
@@ -447,6 +497,13 @@ function createResourceCard(doc) {
     const sizeStr = doc.fileSize ? content.formatFileSize(doc.fileSize) : '';
     const isPremium = doc.isPremium === true;
 
+    // ── Display-only gate ───────────────────────────────────────────
+    // The 🔒 Premium badge is shown ONLY when the resource is premium AND
+    // the user currently lacks an active subscription / free trial.
+    // This is cosmetic; it does not affect the Open or Download handlers,
+    // which each re-check entitlement via subscription.hasActiveSubscription().
+    const showPremiumBadge = isPremium && !userHasActiveSubscription;
+
     let mainBtnHtml = '';
     if (isDownloaded) {
         mainBtnHtml = `<button class="main-btn btn-open" data-id="${doc._id}" data-title="${doc.title}" data-type="${doc.fileType}">Open</button>`;
@@ -476,7 +533,7 @@ function createResourceCard(doc) {
                 </div>
                 <div class="card-stats">
                     <span>${sizeStr}</span>
-                    ${isPremium ? '<span class="premium-badge">🔒 Premium</span>' : ''}
+                    ${showPremiumBadge ? '<span class="premium-badge">🔒 Premium</span>' : ''}
                     ${isDownloaded ? '<span class="downloaded-badge">✅ Downloaded</span>' : ''}
                 </div>
                 <div class="card-actions">
@@ -1016,7 +1073,10 @@ function attachConnectivityListeners() {
     window.addEventListener('online', () => {
         ui.showToast('Back online', 'success');
         isLoading = false;
-        loadResources(true);
+        // Refresh entitlement before re-rendering so the premium badge
+        // reflects the latest subscription state (a plan may have been
+        // purchased or expired while we were offline).
+        refreshSubscriptionState().then(() => loadResources(true));
     });
 
     window.addEventListener('offline', () => {
@@ -1056,6 +1116,11 @@ export async function initResourceBrowser(subject, type, forceRefresh = false) {
     if (_dbg()) {
         _logLine('init', `subject=${subject} category=${currentCategory} debug=ON`, 'info');
     }
+
+    // Resolve entitlement before the first render so subscribers never see
+    // a flash of the premium badge. Best-effort: on failure we keep the
+    // previous value (default false on cold start).
+    await refreshSubscriptionState();
 
     await loadResources(true);
 

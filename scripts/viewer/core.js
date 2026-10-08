@@ -35,16 +35,21 @@
  *   disable them. To disable a flag permanently, edit the value in CONFIG.
  *
  * Preview-mode support:
- *   When `loadDocument(blob, fileType, title, { previewMode: true })` is
- *   called, the PDF path caps the render pipeline to
- *   CONFIG.PREVIEW_PAGE_FRACTION of the total page count and appends a
- *   subscribe call-to-action after the last preview page. Navigation,
- *   rendering, and metadata prefetch are all clamped to that limit.
+ *   Two policies, selected by the document's total page count:
+ *
+ *     • numPages >= CONFIG.PREVIEW_MIN_PAGES_FOR_FRACTIONAL
+ *         Render the first floor(numPages × PREVIEW_PAGE_FRACTION) pages
+ *         and append a subscribe CTA after the last preview page.
+ *
+ *     • numPages < CONFIG.PREVIEW_MIN_PAGES_FOR_FRACTIONAL
+ *         Block the entire document. Nothing renders. A page-shaped
+ *         placeholder with a centered subscribe banner replaces the
+ *         first page. This applies to every document kind — PDF, image,
+ *         text, office, unsupported.
  *
  *   Preview mode is scoped to premium catalogue resources opened by
  *   unsubscribed users. External files (file picker, Android intent) and
- *   subscribed users are never affected. See resource-browser.js for the
- *   trigger and viewer.js for the transport.
+ *   subscribed users are never affected.
  *
  * Android / Capacitor posture:
  *   `_doInit` calls `setupNativeBridge(this)`, which wires the Android back
@@ -190,10 +195,15 @@ export const CONFIG = deepFreeze({
 
   // ── Preview mode ──────────────────────────────────────────────────────────
   // When a premium catalogue resource is opened without an active
-  // subscription, only this fraction of the document's pages are rendered.
-  // A subscribe CTA is appended after the last preview page. External files
-  // (file picker, Android intent) are never subject to this limit.
+  // subscription, this fraction of the document's pages are rendered and a
+  // subscribe CTA is appended after the last preview page.
   PREVIEW_PAGE_FRACTION: 0.10,
+
+  // Documents with this many pages or more use the fractional preview cap.
+  // Documents with fewer pages are fully blocked — no content renders, the
+  // first page is replaced by a subscribe banner. Applies to every document
+  // kind, including single-page images / text / office files.
+  PREVIEW_MIN_PAGES_FOR_FRACTIONAL: 10,
 
   // ── Search ────────────────────────────────────────────────────────────────
   SEARCH_DEBOUNCE_MS: 300,
@@ -426,8 +436,8 @@ export const Events = deepFreeze({
   NETWORK_OFFLINE: 'network:offline',
 
   // Preview-mode subscribe CTA. Emitted by the CTA card that core inserts
-  // after the last preview page. Handled by viewer.js, which routes the user
-  // to the subscription page.
+  // after the last preview page, and by the blocked-preview banner. Handled
+  // by viewer.js, which routes the user to the subscription page.
   PREVIEW_SUBSCRIBE_REQUESTED: 'preview:subscribe-requested',
 
   // State change
@@ -552,6 +562,7 @@ const DEFAULT_STATE = Object.freeze({
   documentKind: null,
   previewMode: false,
   previewPageLimit: 0, // 0 = no limit (subscribed, non-PDF, or not a preview)
+  previewBlocked: false, // true = document fully blocked (fewer than N pages)
   isLoading: false,
   error: null,
 
@@ -771,10 +782,11 @@ export class ViewerCore {
    * @param {string|null} [fileType]
    * @param {string} [title]
    * @param {{ previewMode?: boolean }|null} [opts]
-   *   Optional hints. When `previewMode` is true, the PDF path caps the
-   *   rendered pages to CONFIG.PREVIEW_PAGE_FRACTION of the total and appends
-   *   a subscribe call-to-action after the last preview page. Ignored for
-   *   non-PDF documents.
+   *   Optional hints. When `previewMode` is true, the preview policy
+   *   applies: for documents with >= PREVIEW_MIN_PAGES_FOR_FRACTIONAL
+   *   pages, the first fraction is rendered with a subscribe CTA; for
+   *   documents with fewer pages, the entire document is blocked and a
+   *   subscribe banner replaces the first page.
    * @returns {Promise<void>}
    */
   async loadDocument(blob, fileType = null, title = 'Document', opts = null) {
@@ -788,11 +800,13 @@ export class ViewerCore {
     }
 
     // Apply the preview hint AFTER destroy(), because destroy() resets state
-    // and would otherwise clear these fields. Set the limit to 0 here; the
-    // PDF loader computes the actual cap once numPages is known.
+    // and would otherwise clear these fields. Set the initial limits to 0 /
+    // false here; the loaders compute the actual policy once the page count
+    // is known.
     const previewMode = !!(opts && opts.previewMode);
     this._state.set('previewMode', previewMode);
     this._state.set('previewPageLimit', 0);
+    this._state.set('previewBlocked', false);
     this._state.set('rotation', 0);
 
     this._state.set('isLoading', true);
@@ -847,16 +861,7 @@ export class ViewerCore {
    *
    * Also resets the sidebar drawer, its scrim, every toggle's aria-expanded
    * state, and the outline drawer's dataset — so the next open starts from
-   * a clean, closed state. This is what fixes the "second open loses
-   * single/double tap" and "third open blinks and closes" symptoms: a stale
-   * `.open` class on the drawer would leave the scrim capturing taps, and a
-   * stale `.active` on the search bar would leave the input stealing
-   * keyboard events.
-   *
-   * Native bridge subscriptions (back button, app state, color scheme,
-   * network) are VIEWER-LIFETIME and are NOT torn down here — they must
-   * survive a document switch so the drawer close / search close handler
-   * remains live. They are torn down only by `__resetCoreSingletonForTests`.
+   * a clean, closed state.
    *
    * @returns {void}
    */
@@ -928,18 +933,13 @@ export class ViewerCore {
         clearViewerContent();
       } catch { /* ignore */ }
 
-      // 7c. Reset sidebar / scrim / toggle ARIA state. This is the critical
-      //     fix for "second open loses tap handling". A stale `.open` class
-      //     on the drawer leaves the scrim capturing pointer events; a stale
-      //     `.active` on the search bar steals keyboard focus; a stale
-      //     `aria-expanded="true"` on a toggle misinforms assistive tech.
+      // 7c. Reset sidebar / scrim / toggle ARIA state.
       this._resetSidebarState();
 
       // 8. Core's own cross-module subscriptions (in `_teardowns`) and the
       //    native bridge subscriptions are VIEWER-LIFETIME. They must survive
       //    a document switch so the RENDER_COMPLETE handler and the back
-      //    button handler remain live. They die naturally with the JS context
-      //    when the page unloads.
+      //    button handler remain live.
 
       // 9. Reset state.
       this._state.reset();
@@ -958,10 +958,20 @@ export class ViewerCore {
    * Re-render the current layout. Delegates structural DOM work to core and
    * canvas production to the render pipeline.
    *
+   * When the document is in blocked-preview mode, the banner is re-rendered
+   * instead of a layout — no pages, no wrappers, no canvases.
+   *
    * @returns {Promise<void>}
    */
   async renderCurrentLayout() {
     if (!this._state) return;
+
+    // Blocked preview — no layout is possible. Re-render the banner.
+    if (this._state.get('previewBlocked')) {
+      this._renderPreviewBlocked();
+      return;
+    }
+
     const viewMode = this._state.get('viewMode');
     this._bus.emit(Events.LAYOUT_CHANGED, { mode: viewMode });
 
@@ -1076,15 +1086,21 @@ export class ViewerCore {
 
   /**
    * Effective page count for layout, navigation, and render scheduling.
-   * Returns the preview limit when in preview mode, otherwise the real
-   * total. Zero is never returned — a document is always at least 1 page.
+   * Returns the preview limit when in fractional preview mode, otherwise
+   * the real total. When blocked, returns 1 so callers that expect a
+   * positive number do not break — the blocked placeholder is the only
+   * "page" and it is not navigable. Zero is never returned.
    *
    * @returns {number}
    */
   getEffectivePageLimit() {
     if (!this._state) return 1;
+
+    if (this._state.get('previewBlocked')) return 1;
+
     const limit = this._state.get('previewPageLimit');
     if (limit > 0) return limit;
+
     const total = this._state.get('numPages');
     return typeof total === 'number' && total > 0 ? total : 1;
   }
@@ -1095,6 +1111,7 @@ export class ViewerCore {
    */
   isPageAllowed(pageNum) {
     if (!Number.isFinite(pageNum)) return false;
+    if (this._state && this._state.get('previewBlocked')) return false;
     return pageNum >= 1 && pageNum <= this.getEffectivePageLimit();
   }
 
@@ -1271,6 +1288,30 @@ export class ViewerCore {
       this._state.set('scale', payload.scale);
     }));
 
+    // ── Document loaded → hand the outline tree to OutlineManager ────────
+    //
+    // `_loadPdf` patches `state.outline` from the engine's getOutline()
+    // result, but nothing was forwarding that data to the OutlineManager.
+    // The panel rendered "No outline available" even when the PDF had a
+    // full tree because the manager's `_items` cache stayed empty.
+    //
+    // Document_loaded carries the outline in its payload, so we read it
+    // from there rather than from state — the payload is the authoritative
+    // source and avoids any ordering dependency on the state patch above.
+    //
+    // NOTE: this subscriber is a SIBLING of the ROTATE_REQUESTED subscriber
+    // below, not nested inside it. A previous paste accidentally inlined it
+    // into the rotation handler; that has been corrected.
+    this._teardowns.push(bus.on(Events.DOCUMENT_LOADED, (payload) => {
+      if (!payload || !Array.isArray(payload.outline)) return;
+      try {
+        const outline = this.getOutline();
+        if (outline && typeof outline.build === 'function') {
+          outline.build(payload.outline);
+        }
+      } catch { /* ignore */ }
+    }));
+
     // Rotation requested → update state, emit applied, re-render visible.
     this._teardowns.push(bus.on(Events.ROTATE_REQUESTED, (payload) => {
       const current = this._state.get('rotation') || 0;
@@ -1326,14 +1367,11 @@ export class ViewerCore {
     //      starts in the same mode.
     //
     //   2. Rebuild the layout. `state.set('viewMode', 'page')` alone only
-    //      mutates state — it does not touch the DOM. The toggle button in
+    //      mutates state — it does not touch the DOM. The toggle in
     //      ui-internal.js emits LAYOUT_CHANGED on click, but that event is
-    //      informational (it announces that a change occurred); nothing
-    //      subscribes to it to trigger a rebuild.
+    //      informational; nothing subscribes to it to trigger a rebuild.
     //
-    //      This subscriber IS the rebuild trigger. It calls
-    //      renderCurrentLayout(), which tears down the current DOM structure
-    //      and builds the one matching the new mode.
+    //      This subscriber IS the rebuild trigger.
     this._teardowns.push(this._state.subscribe('viewMode', (payload) => {
       try {
         localStorage.setItem(CONFIG.VIEW_MODE_STORAGE_KEY, payload.next);
@@ -1341,7 +1379,7 @@ export class ViewerCore {
 
       Promise.resolve()
         .then(() => this.renderCurrentLayout())
-        .catch(() => { /* ignore — core surfaces errors via document:error */ });
+        .catch(() => { /* ignore */ });
     }));
 
     // Document destroy → reset preload flag.
@@ -1395,8 +1433,7 @@ export class ViewerCore {
     });
 
     // Clear the sidebar drawer's content so the new document's outline
-    // renders into a clean shell. Panel is reset to outline as the default.
-    // The managers will repopulate it when the drawer opens.
+    // renders into a clean shell.
     try {
       const drawer = document.getElementById('viewer-outline-drawer');
       if (drawer) {
@@ -1405,36 +1442,36 @@ export class ViewerCore {
       }
     } catch { /* ignore */ }
 
-    // Preview mode: cap rendered pages to CONFIG.PREVIEW_PAGE_FRACTION of the
-    // total. Always at least 1 so short documents still show something. This
-    // must be set BEFORE DOCUMENT_LOADED fires, because ui-internal reads
-    // `getEffectivePageLimit()` in its DOCUMENT_LOADED subscriber to clamp
-    // the page counter and page input.
-    if (this._state.get('previewMode')) {
-      const fraction = CONFIG.PREVIEW_PAGE_FRACTION;
-      const limit = Math.max(1, Math.floor(numPages * fraction));
-      this._state.set('previewPageLimit', limit);
-    } else {
-      this._state.set('previewPageLimit', 0);
-    }
+    // Apply the preview policy. Decides between fractional preview
+    // (>= PREVIEW_MIN_PAGES_FOR_FRACTIONAL pages) and fully blocked
+    // (< min pages). Must run BEFORE DOCUMENT_LOADED fires so ui-internal
+    // reads the correct state.
+    this._applyPreviewPolicy(numPages);
 
     // ── Fit-to-width ────────────────────────────────────────────────────
-    // Compute the scale that makes page 1 fill the content area width. This
-    // is the default zoom on every Android PDF viewer (Drive, Acrobat,
-    // Xodo). Must run BEFORE DOCUMENT_LOADED so ui-internal's subscriber
-    // reads the correct scale when it refreshes the zoom % display.
-    //
-    // The helper waits for the viewer to have a non-zero width if it hasn't
-    // been mounted yet (clientWidth === 0). This makes the behaviour robust
-    // to any ordering of `mountChrome()` and `loadDocument()`.
-    await this._applyFitToWidth();
+    // Skipped when blocked — the banner is sized from cached metadata, and
+    // no page rendering is going to happen.
+    if (!this._state.get('previewBlocked')) {
+      await this._applyFitToWidth();
+    } else {
+      // Ensure page 1 metadata is cached so _renderPreviewBlocked can
+      // size the placeholder correctly.
+      await this._ensurePageMetadata(1);
+    }
 
     this._bus.emit(Events.DOCUMENT_LOADED, {
       numPages,
       outline,
       mimeType: this._state.get('mimeType'),
       documentKind: 'pdf',
+      previewBlocked: this._state.get('previewBlocked') === true,
     });
+
+    // Blocked — render the banner instead of the actual document.
+    if (this._state.get('previewBlocked')) {
+      this._renderPreviewBlocked();
+      return;
+    }
 
     await this.renderCurrentLayout();
   }
@@ -1442,6 +1479,21 @@ export class ViewerCore {
   _loadImage(blob) {
     const els = getViewerElements();
     if (!els || !els.main) return;
+
+    this._applyPreviewPolicy(1);
+
+    if (this._state.get('previewBlocked')) {
+      this._renderPreviewBlocked();
+      if (els.footer) els.footer.style.display = 'none';
+      this._bus.emit(Events.DOCUMENT_LOADED, {
+        numPages: 1,
+        outline: [],
+        mimeType: this._state.get('mimeType'),
+        documentKind: 'image',
+        previewBlocked: true,
+      });
+      return;
+    }
 
     const main = els.main;
     main.classList.remove('scroll-view');
@@ -1480,6 +1532,21 @@ export class ViewerCore {
     const els = getViewerElements();
     if (!els || !els.main) return;
 
+    this._applyPreviewPolicy(1);
+
+    if (this._state.get('previewBlocked')) {
+      this._renderPreviewBlocked();
+      if (els.footer) els.footer.style.display = 'none';
+      this._bus.emit(Events.DOCUMENT_LOADED, {
+        numPages: 1,
+        outline: [],
+        mimeType: this._state.get('mimeType'),
+        documentKind: 'text',
+        previewBlocked: true,
+      });
+      return;
+    }
+
     const text = await blob.text();
     const pre = document.createElement('pre');
     pre.textContent = text;
@@ -1511,6 +1578,21 @@ export class ViewerCore {
     const els = getViewerElements();
     if (!els || !els.main) return;
 
+    this._applyPreviewPolicy(1);
+
+    if (this._state.get('previewBlocked')) {
+      this._renderPreviewBlocked();
+      if (els.footer) els.footer.style.display = 'none';
+      this._bus.emit(Events.DOCUMENT_LOADED, {
+        numPages: 1,
+        outline: [],
+        mimeType: this._state.get('mimeType'),
+        documentKind: 'office',
+        previewBlocked: true,
+      });
+      return;
+    }
+
     const url = createObjectURL(blob);
     const iframe = document.createElement('iframe');
     iframe.src = url;
@@ -1534,6 +1616,21 @@ export class ViewerCore {
   _loadUnsupported(blob) {
     const els = getViewerElements();
     if (!els || !els.main) return;
+
+    this._applyPreviewPolicy(1);
+
+    if (this._state.get('previewBlocked')) {
+      this._renderPreviewBlocked();
+      if (els.footer) els.footer.style.display = 'none';
+      this._bus.emit(Events.DOCUMENT_LOADED, {
+        numPages: 1,
+        outline: [],
+        mimeType: this._state.get('mimeType'),
+        documentKind: 'unsupported',
+        previewBlocked: true,
+      });
+      return;
+    }
 
     const url = createObjectURL(blob);
     const safeMime = escapeHtml(this._state.get('mimeType') || 'unknown');
@@ -1632,9 +1729,7 @@ export class ViewerCore {
     container.className = CONFIG.PAGE_CONTAINER_CLASS;
     main.appendChild(container);
 
-    // Clamp the page to the preview limit defensively. Navigation requests
-    // are already clamped in interaction.js, but a stale currentPage could
-    // slip through if the caller bypasses destroy().
+    // Clamp the page to the preview limit defensively.
     const rawPageNum = this._state.get('currentPage');
     const pageNum = this.isPageAllowed(rawPageNum)
       ? rawPageNum
@@ -1644,6 +1739,15 @@ export class ViewerCore {
       this._state.set('currentPage', pageNum);
     }
 
+    // ── Create the wrapper for this page ──────────────────────────────────
+    // Without this, _syncWrapperDimensionsSingle and _onRenderComplete both
+    // find no wrapper and bail silently. The page renders blank.
+    const wrapper = document.createElement('div');
+    wrapper.className = CONFIG.CANVAS_WRAPPER_CLASS;
+    wrapper.dataset.page = String(pageNum);
+    wrapper.style.minHeight = '200px';
+    container.appendChild(wrapper);
+
     await this._ensurePageMetadata(pageNum);
     this._syncWrapperDimensionsSingle(pageNum);
 
@@ -1651,9 +1755,7 @@ export class ViewerCore {
   }
 
   _enqueuePageRender(pageNum, priority) {
-    // Preview mode: refuse to schedule renders for locked pages. This is a
-    // belt-and-braces guard — interaction.js already clamps navigation, but
-    // this ensures no code path can enqueue a locked render.
+    // Preview mode: refuse to schedule renders for locked pages.
     if (!this.isPageAllowed(pageNum)) return;
 
     const scheduler = this.getScheduler();
@@ -1700,18 +1802,7 @@ export class ViewerCore {
    * RENDER_COMPLETE handler.
    *
    * Inserts the freshly-rendered canvas into its wrapper AND adopts the
-   * canvas's rendered CSS size on the wrapper. The size adoption is what
-   * keeps the wrapper in sync when the user zooms — without it, the wrapper
-   * stays at its previous scale's dimensions and the enlarged canvas
-   * overflows (clipping it under the old `contain: paint`; now it just
-   * leaves gaps in the scroll geometry).
-   *
-   * Marks the scroll layout dirty via `markLayoutDirty()` rather than
-   * recomputing synchronously. `recomputeLayout` does getBoundingClientRect
-   * on every wrapper — a forced synchronous layout. With 15 pages completing
-   * in one scheduler burst, that's 15 full layout recalcs. Marking dirty is
-   * O(1); the next scroll frame batches the recompute. A single recompute
-   * after `_preloadPageSizes` gives the scrollbar its correct initial height.
+   * canvas's rendered CSS size on the wrapper.
    *
    * @private
    * @param {any} payload
@@ -1733,14 +1824,7 @@ export class ViewerCore {
     wrapper.appendChild(canvas);
     wrapper.dataset.renderedScale = String(scale);
 
-    // ── Adopt the canvas's own CSS size ────────────────────────────────
-    //
-    // The canvas was sized by the engine at the requested scale: its
-    // backing store is `scale × dpr × viewport`, and its CSS size is the
-    // logical (post-DPR) size. Adopting that size on the wrapper makes the
-    // wrapper follow the canvas. Without this, the wrapper can be smaller
-    // than the canvas whenever the render was enqueued at a scale that has
-    // since settled to something else.
+    // Adopt the canvas's own CSS size on the wrapper.
     const cw = canvas.style.width;
     const ch = canvas.style.height;
     if (cw) wrapper.style.width = cw;
@@ -1749,19 +1833,12 @@ export class ViewerCore {
       wrapper.style.minHeight = ch;
     }
 
-    // ── Mark layout dirty (do NOT recompute synchronously) ─────────────
-    //
-    // recomputeLayout() forces a synchronous layout of every wrapper. In a
-    // burst of N renders this would be N full layout passes. markLayoutDirty
-    // is O(1) and defers the recompute to the next scroll frame. The initial
-    // recompute after preload (see `_preloadPageSizes`) covers the at-rest
-    // case where no scroll event will fire to trigger the batch.
+    // Mark layout dirty (do NOT recompute synchronously).
     try {
       const scroll = this.getScroll();
       if (scroll && scroll.markLayoutDirty) {
         scroll.markLayoutDirty();
       } else if (scroll && scroll.recomputeLayout) {
-        // Defensive fallback for a scroll manager without markLayoutDirty.
         scroll.recomputeLayout();
       }
     } catch { /* ignore */ }
@@ -1785,15 +1862,7 @@ export class ViewerCore {
 
   /**
    * Eagerly fetch metadata for the first N pages so the initial scrollbar
-   * geometry is approximately correct. Pages past N are fetched on demand
-   * by `_ensurePageMetadata` when the scroll viewport approaches them.
-   *
-   * Without this cap, a 500-page PDF would launch 500 getPage calls
-   * immediately, saturating the engine queue and delaying the visible page's
-   * render. With the cap, the visible page and its neighbours get the queue
-   * to themselves; the rest stream in as the user scrolls.
-   *
-   * Runs once per document — `_pageSizePreloadStarted` guards re-entry.
+   * geometry is approximately correct. Pages past N are fetched on demand.
    *
    * @private
    * @returns {Promise<void>}
@@ -1836,9 +1905,7 @@ export class ViewerCore {
     await Promise.allSettled(workers);
 
     // Metadata for the first screen is now cached. Recompute once so the
-    // scrollbar reflects the true document height without waiting for the
-    // user to scroll (which is when the deferred recompute would otherwise
-    // fire).
+    // scrollbar reflects the true document height.
     try {
       const scroll = this.getScroll();
       if (scroll && scroll.recomputeLayout) scroll.recomputeLayout();
@@ -1896,13 +1963,6 @@ export class ViewerCore {
   /**
    * Compute the fit-to-width scale for page 1 and install it in state.
    *
-   * If the viewer is not yet laid out (clientWidth === 0), waits for the
-   * first non-zero width via a one-shot ResizeObserver, with a timeout as a
-   * safety net. This makes the fit-to-width behaviour robust to any
-   * ordering of `mountChrome()` and `loadDocument()`.
-   *
-   * Silently no-ops if the width never becomes usable or metadata fails.
-   *
    * @private
    * @returns {Promise<void>}
    */
@@ -1946,9 +2006,7 @@ export class ViewerCore {
 
   /**
    * Resolve with `element.clientWidth` once it becomes non-zero, or after
-   * `timeoutMs` elapses (whichever comes first). Used by `_applyFitToWidth`
-   * to survive the case where the viewer is not yet visible when a document
-   * is loaded.
+   * `timeoutMs` elapses.
    *
    * @private
    * @param {HTMLElement} element
@@ -1972,7 +2030,6 @@ export class ViewerCore {
 
       try {
         if (typeof ResizeObserver !== 'function') {
-          // Browser without ResizeObserver — fall back to a timeout.
           timer = setTimeout(() => finish(element.clientWidth), timeoutMs);
           return;
         }
@@ -1983,7 +2040,6 @@ export class ViewerCore {
         });
         ro.observe(element);
 
-        // Safety timeout — resolve with whatever the current width is.
         timer = setTimeout(() => finish(element.clientWidth), timeoutMs);
       } catch {
         finish(element.clientWidth);
@@ -1993,9 +2049,7 @@ export class ViewerCore {
 
   /**
    * Remove every direct child of #viewer-main except the four static chrome
-   * nodes declared in viewer.html. Used by every loader and by the layout
-   * builders — replaces the old `main.innerHTML = ''` which wiped the
-   * loading spinner and progress bar.
+   * nodes declared in viewer.html.
    *
    * @private
    * @returns {void}
@@ -2022,9 +2076,7 @@ export class ViewerCore {
 
   /**
    * Reset the sidebar drawer, its scrim, and every toggle's aria-expanded
-   * state to a clean, closed state. Called by `destroy()` so a document
-   * switch starts with no stale UI state that could capture taps or
-   * misinform assistive tech.
+   * state to a clean, closed state.
    *
    * @private
    * @returns {void}
@@ -2042,24 +2094,172 @@ export class ViewerCore {
       const scrim = document.getElementById('viewer-drawer-scrim');
       if (scrim) scrim.classList.remove('open');
 
-      const outlineBtn = document.getElementById('viewer-outline-btn');
-      if (outlineBtn) outlineBtn.setAttribute('aria-expanded', 'false');
+      // Header dropdown menu — the hamburger is the only toggle in the
+      // new header. Its aria-expanded reflects whether the menu is open.
+      const menuBtn = document.getElementById('viewer-menu-btn');
+      if (menuBtn) menuBtn.setAttribute('aria-expanded', 'false');
 
-      const searchBtn = document.getElementById('viewer-search-btn');
-      if (searchBtn) searchBtn.setAttribute('aria-expanded', 'false');
-
-      const moreBtn = document.getElementById('viewer-more-btn');
-      if (moreBtn) moreBtn.setAttribute('aria-expanded', 'false');
+      const menuPanel = document.getElementById('viewer-menu');
+      if (menuPanel) menuPanel.hidden = true;
 
       const searchBar = document.getElementById('viewer-search-bar');
       if (searchBar) searchBar.classList.remove('active');
+
+      // Legacy top-level toggles (present only in the old header).
+      const outlineBtn = document.getElementById('viewer-outline-btn');
+      if (outlineBtn) outlineBtn.setAttribute('aria-expanded', 'false');
+      const searchBtn = document.getElementById('viewer-search-btn');
+      if (searchBtn) searchBtn.setAttribute('aria-expanded', 'false');
+      const moreBtn = document.getElementById('viewer-more-btn');
+      if (moreBtn) moreBtn.setAttribute('aria-expanded', 'false');
     } catch { /* ignore */ }
   }
 
+  // ── Private: preview policy ───────────────────────────────────────────────
+
   /**
-   * Build the preview-mode subscribe call-to-action card. Emits
-   * PREVIEW_SUBSCRIBE_REQUESTED on the bus when the button is clicked;
-   * viewer.js handles that event and routes to the subscription page.
+   * Apply the preview policy for a document with `numPages` pages.
+   *
+   * Two outcomes:
+   *   • numPages >= CONFIG.PREVIEW_MIN_PAGES_FOR_FRACTIONAL
+   *       Set `previewPageLimit = floor(numPages * PREVIEW_PAGE_FRACTION)`
+   *       (min 1). Normal fractional preview.
+   *   • numPages < CONFIG.PREVIEW_MIN_PAGES_FOR_FRACTIONAL
+   *       Set `previewBlocked = true`. Nothing renders; a banner replaces
+   *       the first page. Applies to every document kind.
+   *
+   * When not in preview mode, both flags are cleared.
+   *
+   * @private
+   * @param {number} numPages
+   * @returns {void}
+   */
+  _applyPreviewPolicy(numPages) {
+    if (!this._state.get('previewMode')) {
+      this._state.set('previewPageLimit', 0);
+      this._state.set('previewBlocked', false);
+      return;
+    }
+
+    const minPages = CONFIG.PREVIEW_MIN_PAGES_FOR_FRACTIONAL;
+    const total = typeof numPages === 'number' && numPages > 0 ? numPages : 1;
+
+    if (total >= minPages) {
+      const limit = Math.max(1, Math.floor(total * CONFIG.PREVIEW_PAGE_FRACTION));
+      this._state.set('previewPageLimit', limit);
+      this._state.set('previewBlocked', false);
+    } else {
+      // Fewer than `minPages` — block the entire document.
+      this._state.set('previewPageLimit', 0);
+      this._state.set('previewBlocked', true);
+    }
+  }
+
+  /**
+   * Render the blocked-preview view. Replaces the viewer's content with a
+   * page-shaped placeholder carrying a centered subscribe banner. No page
+   * wrappers, no canvases, no navigation targets.
+   *
+   * @private
+   * @returns {void}
+   */
+  _renderPreviewBlocked() {
+    const els = getViewerElements();
+    if (!els || !els.main) return;
+
+    const main = els.main;
+    // Drop both layout modifiers so #viewer-main returns to its default
+    // overflow: auto — the blocked placeholder may exceed the viewport on
+    // short screens and must be scrollable.
+    main.classList.remove('scroll-view');
+    main.classList.remove('page-view');
+    this._clearViewerMainPreservingChrome();
+
+    const container = document.createElement('div');
+    container.className = CONFIG.PAGE_CONTAINER_CLASS + ' preview-blocked';
+    main.appendChild(container);
+
+    // Size the placeholder: page 1 dimensions × current scale for PDFs;
+    // a generic A4-ish shape for everything else.
+    const cache = this.getCache();
+    const meta = cache && cache.getPageViewport ? cache.getPageViewport(1) : null;
+    const scale = this._state.get('scale') || 1;
+    const naturalW = meta && meta.width > 0 ? meta.width : 600;
+    const naturalH = meta && meta.height > 0 ? meta.height : 800;
+
+    // Cap to the available viewport so the placeholder is never wider
+    // than the screen.
+    const availW = Math.max(main.clientWidth - 32, 200);
+    const availH = Math.max(main.clientHeight - 32, 260);
+    const w = Math.min(naturalW * scale, availW);
+    const h = Math.min(naturalH * scale, availH);
+
+    const placeholder = document.createElement('div');
+    placeholder.className = CONFIG.CANVAS_WRAPPER_CLASS + ' preview-blocked-placeholder';
+    placeholder.style.width = `${w}px`;
+    placeholder.style.height = `${h}px`;
+    placeholder.style.minHeight = `${h}px`;
+    placeholder.appendChild(this._buildPreviewBlockedBanner());
+    container.appendChild(placeholder);
+  }
+
+  /**
+   * Build the blocked-preview banner. Emits PREVIEW_SUBSCRIBE_REQUESTED on
+   * the bus when the subscribe button is clicked; viewer.js handles that
+   * event and routes to the subscription page.
+   *
+   * @private
+   * @returns {HTMLElement}
+   */
+  _buildPreviewBlockedBanner() {
+    const minPages = CONFIG.PREVIEW_MIN_PAGES_FOR_FRACTIONAL;
+
+    const banner = document.createElement('div');
+    banner.className = 'viewer-preview-blocked';
+
+    const inner = document.createElement('div');
+    inner.className = 'viewer-preview-blocked-inner';
+
+    const icon = document.createElement('div');
+    icon.className = 'viewer-preview-blocked-icon';
+    icon.textContent = '🔒';
+
+    const title = document.createElement('h3');
+    title.className = 'viewer-preview-blocked-title';
+    title.textContent = 'Preview unavailable';
+
+    const body = document.createElement('p');
+    body.className = 'viewer-preview-blocked-body';
+    body.textContent =
+      `This document has fewer than ${minPages} pages. ` +
+      `Subscribe to view it in full.`;
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'viewer-preview-blocked-btn';
+    btn.textContent = 'Subscribe to Continue';
+    btn.addEventListener('click', () => {
+      try {
+        this._bus.emit(Events.PREVIEW_SUBSCRIBE_REQUESTED, {
+          reason: 'blocked',
+          numPages: this._state.get('numPages'),
+        });
+      } catch { /* ignore */ }
+    });
+
+    inner.appendChild(icon);
+    inner.appendChild(title);
+    inner.appendChild(body);
+    inner.appendChild(btn);
+    banner.appendChild(inner);
+    return banner;
+  }
+
+  /**
+   * Build the preview-mode subscribe call-to-action card (fractional
+   * preview). Emits PREVIEW_SUBSCRIBE_REQUESTED on the bus when the button
+   * is clicked; viewer.js handles that event and routes to the subscription
+   * page.
    *
    * @private
    * @param {number} previewLimit
@@ -2114,9 +2314,7 @@ export class ViewerCore {
 
   /**
    * Build the device profile passed to state and consumed by CacheManager /
-   * MemoryManager for cap sizing. Delegates static device reads to
-   * `platform.js` and adds the memory cap (which depends on CONFIG and
-   * therefore cannot live in platform.js without a cycle).
+   * MemoryManager for cap sizing.
    *
    * @private
    * @returns {object}

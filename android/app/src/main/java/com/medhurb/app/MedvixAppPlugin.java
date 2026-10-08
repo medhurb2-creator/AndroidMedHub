@@ -27,9 +27,30 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  *
  * Same design discipline as MedvixDevicePlugin: no exceptions reach the
  * bridge, no dynamic imports on the JS side, everything resolves.
+ *
+ * ─── BACK BUTTON ────────────────────────────────────────────────────────────
+ * Capacitor v6 does not route the hardware back button through the plugin
+ * base class — there is no `handleOnBackPressed` hook to override. Instead,
+ * the plugin exposes a plain public method `dispatchBackButton()`, and
+ * MainActivity.onBackPressed() calls it. If a JS 'backButton' listener is
+ * registered, the event is dispatched and the method returns true — the
+ * activity consumes the press. Otherwise it returns false and the activity
+ * falls through to Android's default behaviour (WebView history, then
+ * finish).
+ *
+ * The static `sInstance` reference is how MainActivity reaches the live
+ * plugin instance — plugins are created and owned by the Capacitor bridge,
+ * so MainActivity can't construct one itself.
  */
 @CapacitorPlugin(name = "MedvixApp")
 public class MedvixAppPlugin extends Plugin {
+
+    /**
+     * Reference to the currently loaded plugin instance. Set in load(),
+     * cleared in handleOnDestroy(). Used by MainActivity.onBackPressed()
+     * to dispatch back-button events to JS.
+     */
+    public static MedvixAppPlugin sInstance = null;
 
     private String launchUrl = null;
 
@@ -39,12 +60,19 @@ public class MedvixAppPlugin extends Plugin {
 
     @Override
     public void load() {
+        sInstance = this;
         try {
             Intent intent = getActivity() != null ? getActivity().getIntent() : null;
             if (intent != null && intent.getData() != null) {
                 launchUrl = intent.getData().toString();
             }
         } catch (Exception ignored) {}
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        if (sInstance == this) sInstance = null;
+        super.handleOnDestroy();
     }
 
     /**
@@ -93,13 +121,23 @@ public class MedvixAppPlugin extends Plugin {
     }
 
     /**
-     * Hardware back button. If a JS 'backButton' listener is registered,
-     * fires the event and consumes the press. Otherwise returns false,
-     * letting Android's default back behavior run (finish the activity
-     * or navigate WebView history).
+     * Hardware back button — dispatched by MainActivity.onBackPressed().
+     *
+     * If a JS 'backButton' listener is registered, fires the event and
+     * returns true. The caller (MainActivity) should then consume the
+     * press and NOT call super.onBackPressed() — the WebView stays open
+     * and JS gets to decide what to do (close a drawer, exit fullscreen,
+     * dismiss a search bar, etc.).
+     *
+     * If no JS listener is registered, returns false. The caller falls
+     * through to Android's default back behaviour: WebView history back
+     * if there is history, then finish the activity.
+     *
+     * This is a plain public method, not a plugin hook. Capacitor v6 does
+     * not route the back button through the plugin base class — see the
+     * class docstring for why.
      */
-    @Override
-    public boolean handleOnBackPressed() {
+    public boolean dispatchBackButton() {
         if (hasListeners("backButton")) {
             notifyListeners("backButton", new JSObject());
             return true;

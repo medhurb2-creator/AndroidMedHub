@@ -28,7 +28,8 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
         //   • FileOpenPlugin          — files the OS hands to the app via
         //                               the "Open with" chooser.
         //   • MedvixDevicePlugin      — device identity + metadata.
-        //   • MedvixAppPlugin         — deep links, lifecycle, app info.
+        //   • MedvixAppPlugin         — deep links, lifecycle, app info,
+        //                               back-button dispatch.
         //   • MedvixOrientationPlugin — portrait lock during splash.
         //
         //   Viewer-side (scripts/viewer/native-bridge.js):
@@ -158,6 +159,38 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
         // Capacitor's bridge (it walks every registered plugin). Nothing
         // to invoke here — the plugin fires the 'appUrlOpen' event on
         // its own, and app.js's listener dispatches the route.
+    }
+
+    /**
+     * Hardware back button.
+     *
+     * Android calls this when the user presses back and nothing earlier
+     * in the focus chain has consumed the event.
+     *
+     * We give MedvixAppPlugin first refusal. If a JS 'backButton'
+     * listener is registered — the viewer's native-bridge.js attaches
+     * one when the viewer mounts — the plugin fires the event and
+     * returns true, and we consume the press. The WebView stays open,
+     * and JS decides what to do: close a drawer, dismiss the search
+     * bar, exit fullscreen, or navigate back in the SPA router.
+     *
+     * If no JS listener is registered (the user is on a page that
+     * doesn't handle back), the plugin returns false and we fall
+     * through to super.onBackPressed(). Android then does its default
+     * thing — WebView history back if there is history, otherwise
+     * finish the activity.
+     *
+     * Capacitor v6 does not route the back button through the plugin
+     * base class, which is why this explicit dispatch exists. See
+     * MedvixAppPlugin.dispatchBackButton() for the other half.
+     */
+    @Override
+    public void onBackPressed() {
+        if (MedvixAppPlugin.sInstance != null
+                && MedvixAppPlugin.sInstance.dispatchBackButton()) {
+            return;
+        }
+        super.onBackPressed();
     }
 
     /**
