@@ -1,65 +1,71 @@
 // frontend-user/scripts/viewer.js
 
 /**
- * Universal Document Viewer — Entry Point
+ * Universal Document Viewer - Entry Point
  * ============================================================================
  *
- * Public façade of the viewer subsystem. This is the file the rest of the
- * application imports. It is the ONLY file permitted to import the app-level
- * modules (`content.js`, `subscription.js`, `ui.js`, `router.js`), the ONLY
- * file that touches `window.showViewer` / `window.closeViewer` / `window.history`
- * on behalf of the viewer, and the ONLY file that constructs the singleton
- * ViewerCore.
+ * Public facade of the viewer subsystem. Shared by two pages:
+ *
+ *   * pages/viewer.html            - dedicated page for external files.
+ *                                    No auth. Drains a pending file on init.
+ *
+ *   * pages/resource-browser.html  - catalogue page. Opens catalogue
+ *                                    resources in an embedded overlay.
+ *                                    Auth required by the page, not here.
+ *
+ * This module is page-agnostic. It never checks which page it's mounted on.
+ * If the viewer chrome (the #viewer element with its 32 IDs) exists, a file
+ * can be loaded into it.
  *
  * Public exports:
- *   • loadDocumentInPage(docId)                             → Promise<void>
- *   • openDocument(docId, title?, fileType?, opts?)         → Promise<void>
- *   • showEmbeddedViewer(docId, title?, fileType?, opts?)   → void
- *   • closeEmbeddedViewer()                                 → void
- *   • openDocumentModal(docId)                              → Promise<void>  (legacy alias)
- *   • openPendingFile()                                     → boolean       (host-page hook)
+ *   * loadDocumentInPage(docId)                             -> Promise<void>
+ *   * openDocument(docId, title?, fileType?, opts?)         -> Promise<void>
+ *   * showEmbeddedViewer(docId, title?, fileType?, opts?)   -> void
+ *   * closeEmbeddedViewer()                                 -> void
+ *   * openDocumentModal(docId)                              -> Promise<void>  (legacy alias)
+ *   * openPendingFile()                                     -> boolean       (host-page hook)
  *
  * `opts` carries hint flags for the load. Currently only one flag is used:
- *   • previewMode: boolean — cap rendered pages to 10% and append a
+ *   * previewMode: boolean - cap rendered pages to 10% and append a
  *     subscribe CTA after the last preview page. Set by resource-browser.js
  *     for premium catalogue resources opened without an active subscription.
  *     Never set by external-file paths (file picker, Android intent).
  *
  * External file handling:
- *   Three entry points hand files to this module — Android intents, the file
- *   picker, and drag-drop. In every case the file is external: it did not
- *   come from the catalogue and is never subject to auth or the subscription
- *   preview policy. The user chose it; it just opens.
+ *   Two entry points hand external files to this module:
  *
- *   When a file arrives and the viewer DOM is not yet mounted (cold start,
- *   or the app is on a non-viewer page), the payload is stashed and the app
- *   navigates to `resource-browser` — the page that hosts the viewer chrome.
- *   That page's init() calls `openPendingFile()`, which drains the stash and
- *   runs the file through the standard loadDocument pipeline.
+ *     1. Native payloads (Android intents). The FileOpen plugin delivers
+ *        a path-based payload to app.js, which stashes it in
+ *        sessionStorage.pendingFileOpen and routes to pages/viewer.html.
+ *        That page's init() calls openPendingFile(), which drains the
+ *        stash and hands the payload to _openNativeFilePayload().
  *
- *   Both file-open paths (`_loadLocalFileIntoViewer`, `_openNativeFilePayload`)
- *   call `mountChrome()` themselves before handing the blob to the core. The
- *   catalogue path (`showEmbeddedViewer`) has always done this; the file-open
- *   paths previously assumed the caller would, which is wrong for the
- *   stash-drain flow — the resource-browser page's `_enterFileOpenMode()`
- *   hides #app but does not mount the viewer chrome. The viewer chrome is
- *   the viewer subsystem's responsibility.
+ *     2. Local File objects (file picker, drag-drop). These arrive via
+ *        the LOCAL_FILE_OPEN_REQUESTED bus event on whatever page the
+ *        user is on. If the viewer chrome is already mounted (viewer page
+ *        or resource-browser overlay), the file loads directly. Otherwise
+ *        it's stashed in _pendingLocalFile (File objects cannot be
+ *        serialized) and the app routes to pages/viewer.html, whose init
+ *        drains the stash.
+ *
+ *   External files NEVER require auth. The user chose the file; it just
+ *   opens. Internal catalogue resources still route through
+ *   resource-browser.html's embedded viewer overlay - they never reach
+ *   the external-file paths.
  *
  * Document clearing:
- *   Every entry point that starts a new document calls `clearViewerContent()`
- *   from `ui-internal.js`. That removes any DOM the previous document left
- *   behind — page containers, canvas wrappers, canvases, images, iframes,
- *   search-layer overlays, error containers, and the preview-mode CTA — while
- *   preserving the four static chrome nodes declared in the host page
+ *   Every entry point that starts a new document calls clearViewerContent()
+ *   from ui-internal.js. That removes any DOM the previous document left
+ *   behind - page containers, canvas wrappers, canvases, images, iframes,
+ *   search-layer overlays, error containers, and the preview-mode CTA -
+ *   while preserving the four static chrome nodes declared in the host page
  *   (#viewer-loading, #viewer-progress, #viewer-content, #viewer-text-layer).
  *
  * Design constraints:
- *   • Zero import-time side effects EXCEPT one: `_wireNativeFileOpen()` runs
- *     at module load so the Capacitor plugin listener is registered before
- *     the launch intent is dispatched. Silent no-op everywhere except Android.
- *   • Errors are rendered into the viewer chrome, never thrown to callers.
- *   • Every error message is escaped via utils.escapeHtml.
- *   • No reference to pdfjsLib, Worker, localStorage, or rAF.
+ *   * Zero import-time side effects. All wiring happens on demand.
+ *   * Errors are rendered into the viewer chrome, never thrown to callers.
+ *   * Every error message is escaped via utils.escapeHtml.
+ *   * No reference to pdfjsLib, Worker, localStorage, or rAF.
  *
  * @module viewer
  */
@@ -123,6 +129,17 @@ let _coreInitPromise = null;
  * @type {File|null}
  */
 let _pendingLocalFile = null;
+
+/**
+ * sessionStorage key used to stash a native FileOpen payload between the
+ * page that received it and the viewer page that will load it. The same
+ * key is written by app.js when a cold-start or warm-start file intent
+ * arrives before the viewer page has mounted.
+ *
+ * @private
+ * @constant {string}
+ */
+const PENDING_FILE_KEY = 'pendingFileOpen';
 
 // ============================================================================
 // 1. CORE LIFECYCLE
@@ -198,25 +215,6 @@ function _maybeInstallDebugShortcut(_core) {
 // ============================================================================
 
 /**
- * True when the viewer chrome is mounted and reachable. The chrome lives
- * inside `resource-browser.html` — no other page has the 32 element IDs
- * that `refreshElementCache()` looks up.
- *
- * @private
- * @returns {boolean}
- */
-function _isViewerHostPage() {
-  try {
-    const root = document.getElementById('app-root');
-    if (!root) return false;
-    const section = root.querySelector('section[data-page]');
-    return !!(section && section.dataset.page === 'resource-browser');
-  } catch {
-    return false;
-  }
-}
-
-/**
  * True when the DOM is fully parsed and safe to query.
  * @private
  * @returns {boolean}
@@ -238,11 +236,29 @@ function _waitForDom() {
 }
 
 /**
- * Mount the viewer chrome and clear any residue from a previous document.
- * Idempotent. Safe to call before the core is initialised — mountChrome
- * ignores its argument and only touches the DOM.
+ * True when the viewer chrome is mounted and reachable.
  *
- * Used by every file-open path that bypasses `showEmbeddedViewer`.
+ * The chrome lives inside the host page - either pages/viewer.html or the
+ * embedded overlay inside pages/resource-browser.html. Both have the same
+ * #viewer element with the same 32 IDs. If `refreshElementCache()` returns
+ * a main element, the chrome is present and a file can be loaded.
+ *
+ * @private
+ * @returns {boolean}
+ */
+function _chromeMounted() {
+  try {
+    const els = refreshElementCache();
+    return !!(els && els.main);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Mount the viewer chrome and clear any residue from a previous document.
+ * Idempotent. Safe to call before the core is initialised - mountChrome
+ * ignores its argument and only touches the DOM.
  *
  * @private
  * @param {import('./viewer/core.js').ViewerCore|null} core
@@ -257,7 +273,15 @@ function _prepareChromeForFileOpen(core) {
 // ============================================================================
 
 /**
- * The fallback chain for the viewer's back button.
+ * The fallback chain for the viewer's back button. Called from the core's
+ * NAV_BACK_REQUESTED event and from the error container's back button.
+ *
+ * On the viewer page, the page's own back button wires directly to
+ * `router.navigateTo('subjects' | 'welcome')` and never emits NAV_BACK.
+ * On the resource-browser page, the overlay's back button calls
+ * `window.closeViewer()` directly. This chain is the fallback when
+ * neither of those applies - e.g. errors during load.
+ *
  * @private
  */
 function _handleBack() {
@@ -284,19 +308,21 @@ function _handleBack() {
 }
 
 // ============================================================================
-// 4. EXTERNAL FILE — LOCAL FILE OBJECT (file input, drag-drop)
+// 4. EXTERNAL FILE - LOCAL FILE OBJECT (file input, drag-drop)
 // ============================================================================
 
 /**
  * Open a `File` object in the viewer.
  *
- * External files are never subject to the catalogue preview policy. The user
- * chose the file; there is no catalogue resource to upsell. No auth is
- * required and none is checked here.
+ * External files are never subject to the catalogue preview policy. The
+ * user chose the file; there is no catalogue resource to upsell. No auth
+ * is required and none is checked here.
  *
- * If the viewer host page is not mounted, the File is stashed in
- * `_pendingLocalFile` and the app navigates to the host page. That page's
- * init() calls `openPendingFile()`, which drains the stash.
+ * If the viewer chrome is already mounted (viewer page, or the catalogue
+ * page with the overlay active), the file loads in place. Otherwise the
+ * File object is stashed in `_pendingLocalFile` - File objects cannot be
+ * serialized to sessionStorage - and the app routes to `viewer`. That
+ * page's init() calls `openPendingFile()`, which drains the stash.
  *
  * @private
  * @param {File} file
@@ -307,13 +333,14 @@ async function _handleLocalFileOpen(file) {
 
   await _waitForDom();
 
-  const els = refreshElementCache();
-  if (!els || !els.main || !_isViewerHostPage()) {
+  // Chrome not mounted → stash the File and route to the viewer page.
+  if (!_chromeMounted()) {
     _pendingLocalFile = file;
-    try { router.navigateTo('resource-browser'); } catch { /* ignore */ }
+    try { router.navigateTo('viewer'); } catch { /* ignore */ }
     return;
   }
 
+  // Chrome mounted → load directly.
   await _loadLocalFileIntoViewer(file);
 }
 
@@ -321,9 +348,9 @@ async function _handleLocalFileOpen(file) {
  * Perform the actual load of a user-selected File into the viewer.
  *
  * Called from two places:
- *   • Directly, when the file input fires on the resource-browser page.
- *   • From `openPendingFile()`, after the resource-browser page's init()
- *     drains the stash written by `_handleLocalFileOpen`.
+ *   * Directly, when the file input fires on a page with chrome mounted.
+ *   * From `openPendingFile()`, after the viewer page's init() drains the
+ *     stash written by `_handleLocalFileOpen`.
  *
  * Mounts the viewer chrome before loading. The catalogue path calls
  * `mountChrome` from `showEmbeddedViewer`; the file-open path must do the
@@ -356,12 +383,12 @@ async function _loadLocalFileIntoViewer(file) {
 }
 
 // ============================================================================
-// 5. PUBLIC API — loadDocumentInPage
+// 5. PUBLIC API - loadDocumentInPage
 // ============================================================================
 
 /**
  * Load a document identified by `docId` into the current page's viewer
- * chrome. Intended for `viewer.html`, where the 32 viewer element IDs exist.
+ * chrome. Intended for pages that have the 32 viewer element IDs mounted.
  *
  * This is the internal-document path: it keeps the hard subscription gate.
  * Preview mode is NOT applied here.
@@ -414,12 +441,12 @@ export async function loadDocumentInPage(docId) {
 }
 
 // ============================================================================
-// 6. PUBLIC API — openDocument
+// 6. PUBLIC API - openDocument
 // ============================================================================
 
 /**
  * Open a document from another page. Delegates to `window.showViewer` if
- * the host app defines it; otherwise navigates to the viewer host page.
+ * the host app defines it; otherwise navigates to the catalogue page.
  *
  * This is the internal-document path. Auth is enforced by the target page's
  * own logic, not here.
@@ -446,14 +473,14 @@ export async function openDocument(docId, title = 'Document', fileType = null, o
 }
 
 // ============================================================================
-// 7. PUBLIC API — showEmbeddedViewer
+// 7. PUBLIC API - showEmbeddedViewer
 // ============================================================================
 
 /**
  * Open the viewer as a fixed-position overlay.
  *
- * This is the catalogue path. It is called by resource-browser.js when a
- * catalogue resource is opened, and it mounts the chrome itself.
+ * This is the catalogue path. Called by resource-browser.js when a
+ * catalogue resource is opened. Mounts the chrome itself.
  *
  * @param {string} docId
  * @param {string} [title='Document']
@@ -517,11 +544,12 @@ async function _loadDocumentIntoEmbedded(docId, fileType, opts = null) {
 }
 
 // ============================================================================
-// 8. PUBLIC API — closeEmbeddedViewer
+// 8. PUBLIC API - closeEmbeddedViewer
 // ============================================================================
 
 /**
- * Close the embedded viewer overlay and release the current document. Idempotent.
+ * Close the embedded viewer overlay and release the current document.
+ * Idempotent.
  *
  * @returns {void}
  */
@@ -538,10 +566,11 @@ export function closeEmbeddedViewer() {
 
   _currentDocId = null;
   _isLocalFile = false;
+  _pendingLocalFile = null;
 }
 
 // ============================================================================
-// 9. PUBLIC API — openDocumentModal (legacy alias)
+// 9. PUBLIC API - openDocumentModal (legacy alias)
 // ============================================================================
 
 /**
@@ -623,6 +652,7 @@ export const __debug = {
       isLocalFile: _isLocalFile,
       coreInited: _core !== null,
       pendingLocalFile: !!_pendingLocalFile,
+      chromeMounted: _chromeMounted(),
       state: null,
       flags: null,
       scheduler: null,
@@ -661,35 +691,24 @@ export const __debug = {
 };
 
 // ============================================================================
-// 12. NATIVE FILE-OPEN (Capacitor Android)
+// 12. NATIVE FILE PAYLOAD LOADER
 // ============================================================================
 //
-// Two paths converge here:
+// Native payloads (path-based) are the Android intent path. They are
+// delivered to app.js via the FileOpen Java plugin, stashed in
+// sessionStorage.pendingFileOpen, and drained here by the viewer page's
+// init() -> openPendingFile().
 //
-//   Cold start — the OS launched the app to open a file. The plugin stashed
-//     the URI. `getPendingFile()` fetches it after module load.
-//
-//   Warm start — the app is already running. The plugin fires `fileOpen`,
-//     which we handle inline.
-//
-// In either case, if the viewer chrome is not mounted, the payload is
-// stashed in `sessionStorage.pendingFileOpen` and the app navigates to
-// `resource-browser`. That page's init() calls `openPendingFile()`, which
-// reads the stash and calls `_openNativeFilePayload` again — this time with
-// the viewer mounted.
-//
-// Preview mode is deliberately NOT applied: the file is external.
-
-const PENDING_FILE_KEY = 'pendingFileOpen';
+// By the time _openNativeFilePayload runs, the caller has already verified
+// that the chrome is mounted (that's what openPendingFile's caller checks).
+// No stash-and-route logic lives here - if the chrome is somehow missing,
+// log and bail rather than attempt a redirect that could loop.
 
 /**
  * Load a native-provided file payload into the viewer.
  *
- * If the viewer chrome isn't mounted, stash the payload and route to the
- * host page. Otherwise mount the chrome, fetch the file, and load.
- *
  * @private
- * @param {{ path: string, name: string, mimeType: string|null, size?: number }} payload
+ * @param {{ path: string, name?: string, mimeType?: string|null, size?: number }} payload
  * @returns {Promise<void>}
  */
 async function _openNativeFilePayload(payload) {
@@ -697,14 +716,10 @@ async function _openNativeFilePayload(payload) {
 
   await _waitForDom();
 
-  const els = refreshElementCache();
-
-  // Viewer chrome isn't mounted, or we're on the wrong page — stash and route.
-  if (!els || !els.main || !_isViewerHostPage()) {
-    try {
-      sessionStorage.setItem(PENDING_FILE_KEY, JSON.stringify(payload));
-    } catch { /* ignore quota errors */ }
-    try { router.navigateTo('resource-browser'); } catch { /* ignore */ }
+  // The chrome should already be mounted by the page that called us. If
+  // it's not, something upstream is broken - bail rather than redirect.
+  if (!_chromeMounted()) {
+    console.warn('[Viewer] Native file payload arrived but viewer chrome is not mounted.');
     return;
   }
 
@@ -720,9 +735,9 @@ async function _openNativeFilePayload(payload) {
   } catch { /* ignore */ }
 
   try {
-    const capacitor = typeof window !== 'undefined' ? window.Capacitor : null;
-    const fetchUrl = capacitor && typeof capacitor.convertFileSrc === 'function'
-      ? capacitor.convertFileSrc(payload.path)
+    const bridge = typeof window !== 'undefined' ? window.Capacitor : null;
+    const fetchUrl = bridge && typeof bridge.convertFileSrc === 'function'
+      ? bridge.convertFileSrc(payload.path)
       : payload.path;
 
     const response = await fetch(fetchUrl);
@@ -742,69 +757,32 @@ async function _openNativeFilePayload(payload) {
   }
 }
 
-/**
- * Wire the Capacitor FileOpen plugin. Runs once at module load.
- *
- * @private
- */
-function _wireNativeFileOpen() {
-  if (typeof window === 'undefined') return;
-
-  const capacitor = window.Capacitor;
-  if (!capacitor || !capacitor.Plugins) return;
-
-  const plugin = capacitor.Plugins.FileOpen;
-  if (!plugin) return;
-
-  // Warm start — the OS handed us a file while the app was running.
-  try {
-    if (typeof plugin.addListener === 'function') {
-      plugin.addListener('fileOpen', (payload) => {
-        _openNativeFilePayload(payload).catch(() => { /* handled internally */ });
-      });
-    }
-  } catch { /* ignore */ }
-
-  // Cold start — the OS launched the app with a file.
-  try {
-    if (typeof plugin.getPendingFile === 'function') {
-      plugin.getPendingFile()
-        .then((payload) => {
-          if (payload && payload.path) {
-            return _openNativeFilePayload(payload);
-          }
-          return undefined;
-        })
-        .catch(() => { /* ignore */ });
-    }
-  } catch { /* ignore */ }
-}
-
 // ============================================================================
-// 13. PUBLIC API — openPendingFile
+// 13. PUBLIC API - openPendingFile
 // ============================================================================
 
 /**
  * Drain a pending external file and open it in the viewer.
  *
- * Called by the viewer host page (`resource-browser.js`) from its `init()`,
- * once the viewer chrome is mounted. Reads both sources of pending files:
+ * Called by pages/viewer.js from its init(), once the viewer chrome is
+ * mounted. Reads two sources of pending files:
  *
- *   1. `sessionStorage.pendingFileOpen` — native file payloads (path-based).
- *      Set by `_openNativeFilePayload` when the chrome wasn't yet mounted.
+ *   1. sessionStorage.pendingFileOpen - native payloads stashed by app.js
+ *      when a cold-start or warm-start file intent arrived before the
+ *      viewer page mounted.
  *
- *   2. `_pendingLocalFile` — a `File` object from the file picker or
- *      drag-drop. File objects cannot be serialized, so they live in a
- *      module variable until drained.
+ *   2. _pendingLocalFile - a File object from the file picker or drag-drop
+ *      that arrived while the viewer chrome wasn't mounted. File objects
+ *      cannot be serialized, so they live in a module variable.
  *
  * The sessionStorage entry is cleared on read (idempotent). The File
- * reference is nulled on read. Returns `true` if a file was found and the
- * load was initiated, `false` if there was nothing pending.
+ * reference is nulled on read. Returns true if a file was found and its
+ * load was initiated, false if nothing was pending.
  *
  * @returns {boolean}
  */
 export function openPendingFile() {
-  // ── Source 1: native payload ────────────────────────────────────────
+  // -- Source 1: native payload ------------------------------------------
   try {
     const raw = sessionStorage.getItem(PENDING_FILE_KEY);
     if (raw) {
@@ -817,7 +795,7 @@ export function openPendingFile() {
     }
   } catch { /* ignore parse errors */ }
 
-  // ── Source 2: local File object ─────────────────────────────────────
+  // -- Source 2: local File object ---------------------------------------
   if (_pendingLocalFile) {
     const file = _pendingLocalFile;
     _pendingLocalFile = null;
@@ -827,12 +805,3 @@ export function openPendingFile() {
 
   return false;
 }
-
-// ── Self-registration ───────────────────────────────────────────────────────
-//
-// This is the ONLY intentional side effect at module load.
-//
-// `_wireNativeFileOpen()` must run before the browser (or WebView) dispatches
-// the launch event. It is a silent no-op on every non-Android platform.
-
-_wireNativeFileOpen();

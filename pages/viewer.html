@@ -1,0 +1,173 @@
+<section
+  class="page viewer-page"
+  data-page="viewer"
+  data-script="/scripts/pages/viewer.js"
+  data-style="/css/resource-browser.css"
+  data-title="Document"
+  data-auth="none"
+  data-cache="false"
+  data-transition="fade"
+>
+  <!-- ============================================================
+       DEDICATED VIEWER PAGE
+       ============================================================
+       This page displays ONE external file: a PDF, image, or text
+       file the user opened from outside the app (Android intent,
+       file picker, drag-drop, share sheet).
+
+       It contains ONLY the viewer chrome. No catalogue, no auth
+       gate, no resource grid. When this page loads, a file is about
+       to be displayed — that is its entire purpose.
+
+       Internal catalogue resources are still opened through
+       resource-browser.html's embedded viewer overlay. They never
+       route here.
+
+       The chrome below is identical to resource-browser.html's
+       embedded viewer. Both pages mount the same viewer.js module,
+       which is page-agnostic — it just needs a #viewer element with
+       the 32 element IDs below.
+       ============================================================ -->
+  <div id="viewer">
+    <div class="viewer-container">
+
+      <!-- ─── Header ──────────────────────────────────────────────── -->
+      <header class="viewer-header" id="viewer-header">
+        <div class="left-group">
+          <button
+            id="viewer-outline-btn"
+            class="btn-icon"
+            type="button"
+            title="Document outline"
+            aria-label="Open document outline"
+            aria-controls="viewer-outline-drawer"
+            aria-expanded="false"
+          >☰</button>
+
+          <button id="viewer-back-btn" class="btn-back" type="button" aria-label="Close document">
+            <span aria-hidden="true">←</span> Back
+          </button>
+
+          <div class="viewer-title" id="viewer-title">Loading…</div>
+        </div>
+
+        <div class="right-group">
+          <button
+            id="viewer-search-btn"
+            class="btn-icon"
+            type="button"
+            title="Search"
+            aria-label="Search document"
+            aria-controls="viewer-search-bar"
+            aria-expanded="false"
+          >🔍</button>
+
+          <button
+            id="viewer-more-btn"
+            class="btn-icon"
+            type="button"
+            title="More"
+            aria-label="More options"
+            aria-controls="viewer-outline-drawer"
+            aria-expanded="false"
+          >⋮</button>
+
+          <button
+            id="viewer-toggle-view"
+            class="btn-icon"
+            type="button"
+            title="Toggle view mode"
+            aria-label="Toggle page or scroll view"
+          >📄 Page View</button>
+
+          <button id="viewer-open-local" class="btn-icon" type="button" title="Open local file" aria-label="Open local file">📂</button>
+          <button id="viewer-fullscreen-btn" class="btn-icon" type="button" title="Fullscreen" aria-label="Toggle fullscreen" aria-pressed="false">⛶</button>
+        </div>
+      </header>
+
+      <!-- ─── Inline search bar ──────────────────────────────────── -->
+      <div class="search-bar" id="viewer-search-bar" role="search">
+        <input
+          type="text"
+          id="viewer-search-input"
+          placeholder="Find…"
+          autocomplete="off"
+          aria-label="Search text"
+        >
+        <span class="search-results" id="viewer-search-count" aria-live="polite"></span>
+        <button id="viewer-search-prev" class="btn-icon" type="button" title="Previous match" aria-label="Previous match">↑</button>
+        <button id="viewer-search-next" class="btn-icon" type="button" title="Next match" aria-label="Next match">↓</button>
+        <div class="search-options" id="viewer-search-options">
+          <label><input type="checkbox" id="viewer-search-case"> Aa</label>
+          <label><input type="checkbox" id="viewer-search-whole"> “”</label>
+        </div>
+        <button id="viewer-search-close" class="btn-icon" type="button" title="Close search" aria-label="Close search">✕</button>
+      </div>
+
+      <!-- ─── Main viewing area ──────────────────────────────────── -->
+      <main class="viewer-main" id="viewer-main" tabindex="-1">
+        <div class="loading-container" id="viewer-loading">
+          <div class="spinner"></div>
+          <p>Loading document…</p>
+        </div>
+
+        <progress id="viewer-progress" style="display: none;" max="1" value="0"></progress>
+
+        <div id="viewer-text-layer" class="textLayer" aria-hidden="true"></div>
+
+        <div id="viewer-content"></div>
+      </main>
+
+      <!-- ─── Footer ─────────────────────────────────────────────── -->
+      <footer class="viewer-footer" id="viewer-footer" style="display: none;">
+        <div class="page-nav">
+          <button id="viewer-prev-page" type="button" disabled aria-label="Previous page">◀ Previous</button>
+          <div class="page-counter">
+            <label for="viewer-page-input">Page</label>
+            <input
+              type="number"
+              id="viewer-page-input"
+              value="1"
+              min="1"
+              step="1"
+              inputmode="numeric"
+              aria-label="Page number"
+            >
+            <span>of <span id="viewer-page-count">1</span></span>
+          </div>
+          <button id="viewer-next-page" type="button" disabled aria-label="Next page">Next ▶</button>
+        </div>
+
+        <div class="zoom-controls">
+          <button id="viewer-zoom-out" type="button" title="Zoom out" aria-label="Zoom out">−</button>
+          <span id="viewer-zoom-level" aria-live="polite">100%</span>
+          <button id="viewer-zoom-in" type="button" title="Zoom in" aria-label="Zoom in">+</button>
+          <button id="viewer-zoom-fit" type="button" title="Fit to width" aria-label="Fit to width">⛶</button>
+          <button id="viewer-zoom-reset" type="button" title="Reset zoom" aria-label="Reset zoom to 100%">1:1</button>
+        </div>
+      </footer>
+
+      <!-- ─── Drawer scrim ───────────────────────────────────────── -->
+      <div id="viewer-drawer-scrim" aria-hidden="true"></div>
+
+      <!-- ─── Drawer / sidebar ───────────────────────────────────── -->
+      <aside
+        class="outline-drawer"
+        id="viewer-outline-drawer"
+        data-panel="outline"
+        role="complementary"
+        aria-label="Viewer sidebar"
+        aria-hidden="true"
+        tabindex="-1"
+      ></aside>
+
+      <!-- ─── Hidden file input ──────────────────────────────────── -->
+      <input
+        type="file"
+        id="viewer-file-input"
+        class="file-input"
+        accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.docx,.doc,.pptx,.ppt,.txt,.md"
+      >
+    </div>
+  </div>
+</section>

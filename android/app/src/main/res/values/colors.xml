@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Legacy Capacitor defaults. Kept so the base AppTheme compiles. -->
+    <color name="colorPrimary">#2563eb</color>
+    <color name="colorPrimaryDark">#1d4ed8</color>
+    <color name="colorAccent">#3b82f6</color>
+
+    <color name="status_bar_color">#0b1120</color>
+    <color name="window_background">#0b1120</color>
+
+</resources>

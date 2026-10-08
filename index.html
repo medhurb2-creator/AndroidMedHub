@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes" />
-    <meta name="theme-color" content="#ffffff" />
+    <meta name="theme-color" content="#0b1120" />
     <meta name="application-name" content="MedVix" />
     <meta name="description" content="MedVix — Learn. Practice. Connect. Grow. Achieve." />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
@@ -46,6 +46,10 @@
             align-items: center;
             justify-content: flex-end;
             padding-bottom: 60px;
+            /* Solid colour from the very first frame, before the image
+               loads. Matches the theme's window background and the
+               Android status bar colour so the transition is seamless. */
+            background-color: #0b1120;
             background-image: url('/assets/images/splash.png');
             background-size: 100% 100%;
             background-position: center;
@@ -333,7 +337,7 @@
             </div>
         </div>
 
-        <div class="version-info">version 1.0.7</div>
+        <div class="version-info">version 1.0.8</div>
     </div>
 
     <!-- ============================================================
@@ -392,39 +396,32 @@
             frozen: false,
         };
 
-        (function captureDeepLinks() {
-            const CapApp = window.Capacitor
-                && window.Capacitor.Plugins
-                && window.Capacitor.Plugins.App;
-            if (!CapApp) return;
+(function captureDeepLinks() {
+    const CapApp = window.Capacitor
+        && window.Capacitor.Plugins
+        && window.Capacitor.Plugins.MedvixApp;
+    if (!CapApp) return;
 
-            // Cold start: the URL that launched the app.
-            // getLaunchUrl() is idempotent — app.js calls it again as a
-            // backup; multiple calls return the same value.
-            CapApp.getLaunchUrl()
-                .then(function (result) {
-                    if (result && result.url) {
-                        console.log('[DeepLink:early] launch URL:', result.url);
-                        window.__deepLink.launch = result.url;
-                    }
-                })
-                .catch(function () { /* no launch URL */ });
+    // Cold start: the URL that launched the app.
+    // getLaunchUrl() is idempotent — app.js calls it again as a
+    // backup; multiple calls return the same value.
+    CapApp.getLaunchUrl()
+        .then(function (result) {
+            if (result && result.url) {
+                console.log('[DeepLink:early] launch URL:', result.url);
+                window.__deepLink.launch = result.url;
+            }
+        })
+        .catch(function () { /* no launch URL */ });
 
-            // Warm start: URLs that arrive while the app is already running.
-            // Buffer them; app.js drains the queue during bootstrap, then
-            // freezes it. After that point this listener becomes a no-op.
-            CapApp.addListener('appUrlOpen', function (data) {
-                if (!data || !data.url) return;
-
-                // app.js owns dispatch once bootstrap finishes. Without
-                // this guard the queue would accumulate one dead string
-                // per warm-start URL, forever.
-                if (window.__deepLink && window.__deepLink.frozen) return;
-
-                console.log('[DeepLink:early] appUrlOpen:', data.url);
-                window.__deepLink.queue.push(data.url);
-            });
-        })();
+    // Warm start: URLs that arrive while the app is already running.
+    CapApp.addListener('appUrlOpen', function (data) {
+        if (!data || !data.url) return;
+        if (window.__deepLink && window.__deepLink.frozen) return;
+        console.log('[DeepLink:early] appUrlOpen:', data.url);
+        window.__deepLink.queue.push(data.url);
+    });
+})();
     </script>
 
     <!-- ============================================================

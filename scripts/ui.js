@@ -314,6 +314,68 @@ export function hideModal() {
     }
 }
 
+// ==================== STATUS BAR ====================
+
+/**
+ * Sync the native status bar to the current theme.
+ *
+ * Reads --status-bar-bg and --status-bar-icons from the computed CSS,
+ * so the colour values live in exactly one place — common.css, next to
+ * --bg-primary. Everything else reads from there:
+ *
+ *   • The <meta name="theme-color"> tag — Android WebView maps it to
+ *     the status bar background on every navigation and every change.
+ *
+ *   • The MedvixStatusBar native plugin — setColor paints the bar,
+ *     setLightIcons flips the icon style between white and dark. Works
+ *     on WebViews that don't map the meta tag, and on iOS.
+ *
+ * Called by setTheme() whenever the theme flips, by bootstrap() after
+ * applyTheme(), and by any page that wants a per-page status bar
+ * colour (see the per-page override pattern in common.css).
+ *
+ * Reads the computed style on documentElement so a page-level override
+ * (`:root { --status-bar-bg: ... }` in the page's own CSS) is picked
+ * up automatically.
+ *
+ * Safe on web: the plugin calls no-op, the meta tag is harmless.
+ */
+export function syncStatusBar() {
+    try {
+        const root = document.documentElement;
+        const css  = getComputedStyle(root);
+
+        let bg   = (css.getPropertyValue('--status-bar-bg')    || '').trim();
+        let mode = (css.getPropertyValue('--status-bar-icons') || '').trim();
+
+        // Fallbacks in case the tokens aren't declared yet (early boot,
+        // partial CSS load). These match common.css defaults.
+        if (!bg)   bg   = document.body.classList.contains('dark-theme')
+                            ? '#0b1120'
+                            : '#f8fafc';
+        if (!mode) mode = document.body.classList.contains('dark-theme')
+                            ? 'light'
+                            : 'dark';
+
+        // ── Meta tag: modern Android WebViews ─────────────────────────
+        let meta = document.querySelector('meta[name="theme-color"]');
+        if (!meta) {
+            meta = document.createElement('meta');
+            meta.name = 'theme-color';
+            document.head.appendChild(meta);
+        }
+        meta.setAttribute('content', bg);
+
+        // ── Native plugin: WebViews that don't map the meta tag,
+        //    and iOS. Both calls are fire-and-forget. ────────────────
+        const plugin = window.Capacitor?.Plugins?.MedvixStatusBar;
+        if (plugin) {
+            try { plugin.setColor({ color: bg }); } catch { /* ignore */ }
+            try { plugin.setLightIcons({ light: mode === 'light' }); } catch { /* ignore */ }
+        }
+    } catch { /* never let a cosmetic update break a page */ }
+}
+
 // ==================== THEME MANAGEMENT ====================
 
 export function setTheme(theme) {
@@ -327,6 +389,11 @@ export function setTheme(theme) {
     // Update appSettings as well
     appSettings.theme = theme;
     utils.setLocalStorage('appSettings', appSettings);
+
+    // Match the native status bar to the new theme. Reads the CSS tokens
+    // that common.css sets per theme, so the bar colour and icon style
+    // always match --bg-primary.
+    syncStatusBar();
 }
 
 export function getTheme() {
@@ -574,11 +641,12 @@ window.ui = {
     hideLoading,
     showConfirmationDialog,
     hideModal,
-    showModal,           // ✅ Added
+    showModal,
     toggleTheme,
     applyTheme,
     getTheme,
     setTheme,
+    syncStatusBar,       // ← new
     disableForm,
     enableForm,
     resetForm,

@@ -322,6 +322,86 @@ footer {
 }
 
 /* ================================================================
+   STORAGE TAB
+   ================================================================ */
+.storage-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+    margin: 1rem 0 2rem;
+}
+
+.storage-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border);
+}
+.storage-row:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+.storage-row:first-child {
+    padding-top: 0;
+}
+
+.storage-label {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    flex-shrink: 0;
+}
+
+.storage-value {
+    font-size: 0.95rem;
+    color: var(--text-primary);
+    font-weight: 600;
+    text-align: right;
+    word-break: break-all;
+}
+
+.storage-path {
+    font-family: 'Courier New', Consolas, Monaco, monospace;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    background: var(--bg-card);
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    text-align: right;
+    word-break: break-all;
+    max-width: 60%;
+}
+
+.storage-hint {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin: 0.25rem 0 1rem;
+    line-height: 1.5;
+    max-width: 600px;
+}
+
+#deleteAllDataBtn {
+    margin-bottom: 1rem;
+}
+
+/* Small phones */
+@media (max-width: 400px) {
+    .storage-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.25rem;
+    }
+    .storage-path,
+    .storage-value {
+        max-width: 100%;
+        text-align: left;
+    }
+}
+/* ================================================================
    SHIMMER LOADER
    ================================================================ */
 #shimmer-loader {

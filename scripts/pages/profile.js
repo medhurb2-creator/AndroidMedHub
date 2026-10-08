@@ -94,6 +94,9 @@ export async function init(context) {
   // Load statistics
   await loadStatistics();
 
+  // Load storage info (new Storage tab)
+  await loadStorageInfo();
+
   // Set device fingerprint display
   const fpEl = $('#device-fingerprint');
   if (fpEl) {
@@ -311,6 +314,17 @@ function attachEventListeners(context) {
   const backToSubjectsFooterBtn = $('#backToSubjectsFooterBtn');
   if (backToSubjectsFooterBtn) {
     backToSubjectsFooterBtn.addEventListener('click', () => router.navigateTo('subjects'));
+  }
+
+  // ── Storage tab ──────────────────────────────────────────────────
+  const deleteAllDataBtn = $('#deleteAllDataBtn');
+  if (deleteAllDataBtn) {
+    deleteAllDataBtn.addEventListener('click', deleteAllData);
+  }
+
+  const migrateDataBtn = $('#migrateDataBtn');
+  if (migrateDataBtn) {
+    migrateDataBtn.addEventListener('click', migrateData);
   }
 
   const tabs = context.root.querySelectorAll('.tab-button');
@@ -703,6 +717,218 @@ async function deleteAccount() {
     if (error.message !== 'Deletion cancelled') {
       ui.showToast(error.message || 'Operation cancelled', 'info');
     }
+  }
+}
+
+// ==================== STORAGE ====================
+//
+// Two controls, both scoped to this device:
+//
+//   • Migrate — moves all downloaded content to the other storage
+//     location (internal ↔ external). The DB's relative paths are
+//     unchanged, so nothing above this layer notices. Preference is
+//     committed only after every file has landed.
+//
+//   • Delete all data — wipes every IndexedDB store AND the on-disk
+//     content/ and cache/ trees. The user stays logged in. This is a
+//     device-scoped wipe, not an account deletion — the Security tab's
+//     Delete Account remains the account-level action.
+
+/**
+ * Refresh the storage tab's read-only rows and the migrate button's
+ * availability. Called once from init() and again after any action
+ * that changes storage state.
+ */
+async function loadStorageInfo() {
+  const rootTypeEl  = $('#storage-current-root');
+  const rootPathEl  = $('#storage-current-path');
+  const usageEl     = $('#storage-usage');
+  const migrateBtn  = $('#migrateDataBtn');
+  const migrateHint = $('#migrate-hint');
+
+  // Native bridge availability. On web dev this whole panel is inert.
+  if (!window.app?.storageAvailable?.()) {
+    if (rootTypeEl)  rootTypeEl.textContent = 'Not available';
+    if (rootPathEl)  rootPathEl.textContent = '—';
+    if (usageEl)     usageEl.textContent = '—';
+    if (migrateBtn) {
+      migrateBtn.disabled = true;
+      migrateBtn.textContent = 'Migrate to other storage';
+    }
+    if (migrateHint) {
+      migrateHint.textContent =
+        'Storage controls are available only in the installed app.';
+    }
+    return;
+  }
+
+  // Current root.
+  const type = window.app.storageRootType();
+  const path = window.app.storageRoot();
+
+  if (rootTypeEl) {
+    rootTypeEl.textContent = type === 'external' ? 'External' : 'Internal';
+  }
+  if (rootPathEl) {
+    rootPathEl.textContent = path || '—';
+  }
+
+  // Usage.
+  try {
+    const stats = await window.app.storageStats();
+    const bytes = Number(stats?.totalBytes) || 0;
+    const mb = (bytes / 1024 / 1024).toFixed(1);
+    if (usageEl) usageEl.textContent = `${mb} MB`;
+  } catch {
+    if (usageEl) usageEl.textContent = '—';
+  }
+
+  // Migrate availability.
+  let otherRoot = null;
+  try {
+    const roots = window.app.storageAvailableRoots() || [];
+    otherRoot = roots.find(r => r.type !== type && r.available) || null;
+  } catch { /* ignore */ }
+
+  if (migrateBtn) {
+    if (!otherRoot) {
+      migrateBtn.disabled = true;
+      migrateBtn.textContent = 'Migrate to other storage';
+    } else {
+      migrateBtn.disabled = false;
+      migrateBtn.textContent = `Migrate to ${otherRoot.type}`;
+    }
+  }
+
+  if (migrateHint) {
+    migrateHint.textContent = otherRoot
+      ? `Moves all downloaded content to ${otherRoot.type} storage. Do not close the app during the move.`
+      : 'The other storage location is not available on this device.';
+  }
+}
+
+/**
+ * Wipe every IndexedDB store and every on-disk content/ and cache/
+ * directory. User remains logged in.
+ */
+async function deleteAllData() {
+  const confirmed = await ui.showConfirmationDialog(
+    'Delete all data',
+    'This will permanently delete all app data on this device — downloads, cached content, notes, and local settings. Your account on the server is not affected. Continue?',
+    'critical'
+  );
+  if (!confirmed) return;
+
+  ui.showLoading('Deleting all data…');
+  try {
+    // 1. Clear every IndexedDB store. db.clearDatabase() also wipes
+    //    the on-disk content/ and cache/ trees via the native bridge.
+    await db.clearDatabase();
+
+    // 2. Belt-and-braces: if the native bridge exposes the low-level
+    //    directory wipes, call them directly in case a partial IDB
+    //    clear left something behind.
+    try {
+      if (window.MedVixStorage?.deleteDirectory) {
+        window.MedVixStorage.deleteDirectory('content');
+        window.MedVixStorage.deleteDirectory('cache');
+      }
+    } catch { /* ignore */ }
+
+    ui.hideLoading();
+    ui.showToast('All local data has been deleted', 'success');
+
+    await loadStorageInfo();
+  } catch (e) {
+    ui.hideLoading();
+    ui.showToast(e.message || 'Could not delete data', 'error');
+  }
+}
+
+/**
+ * Move every file under content/ from the current root to the other
+ * root, then commit the preference. Reads stay working throughout —
+ * the native bridge checks both roots on every get.
+ */
+async function migrateData() {
+  if (!window.app?.storageAvailable?.()) {
+    ui.showToast('Storage not available on this device', 'warning');
+    return;
+  }
+  if (!window.MedVixStorage?.listFilesInRoot || !window.MedVixStorage?.relocateToOtherRoot) {
+    ui.showToast('Migration not supported in this build', 'warning');
+    return;
+  }
+
+  const from = window.app.storageRootType();
+  let roots = [];
+  try { roots = window.app.storageAvailableRoots() || []; } catch { /* ignore */ }
+  const other = roots.find(r => r.type !== from && r.available);
+
+  if (!other) {
+    ui.showToast('No alternate storage location available', 'warning');
+    return;
+  }
+
+  const confirmed = await ui.showConfirmationDialog(
+    `Migrate to ${other.type} storage`,
+    `All downloaded content will be moved from ${from} to ${other.type}. ` +
+    'Do not close the app during the move. The move runs in the foreground ' +
+    'and may take a while for large libraries.',
+    'info'
+  );
+  if (!confirmed) return;
+
+  ui.showLoading(`Migrating to ${other.type} storage…`);
+
+  try {
+    // Enumerate every file under content/ in the source root.
+    const raw = window.MedVixStorage.listFilesInRoot(from, 'content');
+    let list = [];
+    try { list = JSON.parse(raw || '[]'); } catch { list = []; }
+
+    if (list.length === 0) {
+      // Nothing to move. Commit the preference so future writes go to
+      // the other root.
+      window.MedVixStorage.setPreferredRoot(other.type);
+      ui.hideLoading();
+      ui.showToast(`Switched to ${other.type} storage (no files to move)`, 'success');
+      await loadStorageInfo();
+      return;
+    }
+
+    let moved = 0;
+    let failed = 0;
+
+    for (const rel of list) {
+      const ok = window.MedVixStorage.relocateToOtherRoot(rel);
+      if (ok) moved++;
+      else    failed++;
+    }
+
+    if (failed === 0) {
+      // All files landed. Commit the preference so new writes go to
+      // the other root from now on.
+      window.MedVixStorage.setPreferredRoot(other.type);
+      ui.hideLoading();
+      ui.showToast(`Migrated ${moved} file${moved === 1 ? '' : 's'} to ${other.type}`, 'success');
+    } else {
+      // Partial. Leave the preference unchanged — reads still find
+      // every file because the bridge checks both roots. The user can
+      // retry; already-moved files will be skipped via the dest.exists
+      // guard inside relocateToOtherRoot.
+      ui.hideLoading();
+      ui.showToast(
+        `${moved} moved, ${failed} could not be moved. Preference unchanged.`,
+        'warning',
+        5000
+      );
+    }
+
+    await loadStorageInfo();
+  } catch (e) {
+    ui.hideLoading();
+    ui.showToast(e.message || 'Migration failed', 'error');
   }
 }
 

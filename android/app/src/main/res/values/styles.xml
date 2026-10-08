@@ -1,22 +1,57 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <!-- Base application theme. -->
+    <!-- Base application theme. Not used by any activity — kept for
+         compatibility with any third-party view or dialog that reads
+         it. The Activity actually runs under AppTheme.NoActionBar. -->
     <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
-        <!-- Customize your theme here. -->
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
         <item name="colorAccent">@color/colorAccent</item>
     </style>
 
+    <!-- Main Activity theme. Sets up the window for the WebView and
+         pins the status bar to the app's colour. -->
     <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+
+        <!-- ── Status bar ────────────────────────────────────────────
+             windowTranslucentStatus=false keeps the WebView below the
+             bar. Combined with the WindowCompat.setDecorFitsSystemWindows
+             call in MainActivity, this is what prevents the app's content
+             from running under the battery/time/network icons.
+
+             On Android 15+ the OS forces edge-to-edge by default and
+             ignores this attribute — that's why the Java call exists.
+             Both are needed: this attribute for API < 35, the Java call
+             for API 35+. -->
+        <item name="android:windowTranslucentStatus">false</item>
+        <item name="android:statusBarColor">@color/status_bar_color</item>
+
+        <!-- false = white icons (for dark bars)
+             true  = dark icons (for light bars)
+             Matches the app's dark-theme default. Swapped at runtime
+             by MedvixStatusBarPlugin when the user toggles theme. -->
+        <item name="android:windowLightStatusBar">false</item>
+
+        <!-- Window background. Painted by the OS before the WebView
+             draws its first frame. Matching this to the splash's
+             background colour eliminates the white flash between the
+             launcher and the splash. -->
+        <item name="android:windowBackground">@color/window_background</item>
     </style>
 
-
+    <!-- Launch (splash) theme. Shown by Android between the launcher
+         tap and the first WebView frame. Uses the app's splash drawable
+         as the background, and pins the status bar to the same colour
+         as the main theme so the cold-start sequence is seamless. -->
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
+        <item name="android:statusBarColor">@color/status_bar_color</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowBackground">@color/window_background</item>
     </style>
+
 </resources>

@@ -5,12 +5,23 @@
  *
  * One interface — getDeviceId() / getDeviceInfo() — over three sources:
  *
- *   Android / iOS (Capacitor native) → @capacitor/device → platform identifier
- *   Windows native                   → Windows system identifier (plugin pending)
- *   Web / PWA                        → crypto.randomUUID() persisted locally
+ *   Android (MedvixDevicePlugin)  → ANDROID_ID + Build metadata
+ *   iOS (future)                  → identifierForVendor (plugin pending)
+ *   Web / PWA / Windows           → crypto.randomUUID() persisted locally
  *
- * Capacitor packages are loaded lazily. A pure web build that never installs
- * @capacitor/core or @capacitor/device works unchanged.
+ * ─── WHY A CUSTOM PLUGIN INSTEAD OF @capacitor/device ─────────────────────
+ * @capacitor/device is loaded via `await import('@capacitor/device')`. On
+ * some cold starts — stale APK, missed `cap sync`, WebView asset cache
+ * miss — that dynamic import never resolves. The promise hangs, the
+ * caller hangs, and the auth flow never reaches the network. There is no
+ * timeout that catches it because the timeout wraps the method call, not
+ * the import that precedes it.
+ *
+ * MedvixDevicePlugin is registered directly with the Capacitor bridge in
+ * MainActivity. The JS side reaches it via
+ * `window.Capacitor.Plugins.MedvixDevice` — a synchronous property
+ * lookup. If the plugin isn't registered, the lookup returns undefined
+ * and the fallback runs immediately. No import. No hang.
  *
  * ─── DEVICEINFO SHAPE ─────────────────────────────────────────────────────
  * deviceInfo is deliberately minimal. It exists to power the "which devices
@@ -22,62 +33,40 @@
  *   osVersion   "14" / "17.2" / null
  *   appVersion  "2.4.1" / null
  *
- * Everything else the @capacitor/device plugin returns — manufacturer,
- * architecture, isVirtual, webViewVersion, androidSDKVersion, battery,
- * language — is intentionally dropped. If a future feature needs one of
+ * Everything else the plugin returns — manufacturer, sdkVersion,
+ * isVirtual — is intentionally dropped. If a future feature needs one of
  * those, add it back here; do not re-broaden the default payload.
- *
- * ─── @capacitor/device CONTRACT (verified via node_modules inspection) ────
- * The plugin exposes four asynchronous methods on the `Device` proxy:
- *
- *   Device.getId()            → { identifier: string }
- *   Device.getInfo()          → DeviceInfo
- *   Device.getBatteryInfo()   → BatteryInfo
- *   Device.getLanguageCode()  → { value: string }
- *   Device.getLanguageTag()   → { value: string }
- *
- * Only getId() and getInfo() are used on the primary path. getBatteryInfo()
- * is exposed via getBatteryInfo() below for on-demand callers, but is NOT
- * part of initializeDevice() or buildDeviceIdentity().
- *
- * The plugin is auto-registered by the Capacitor bridge via the
- * @CapacitorPlugin(name = "Device") annotation on DevicePlugin.java — no
- * MainActivity.java edits are required. No AndroidManifest permissions are
- * needed: getInfo() and getId() use public Android APIs.
  *
  * ─── FALLBACK CONTRACT ────────────────────────────────────────────────────
  * getDeviceId() and getDeviceInfo() are *total functions*. They never reject
- * and never return null. If the native bridge is unavailable, unresponsive,
- * or returns empty data, a locally-derived identity is produced instead. The
- * resulting ID lives in the same `dv_…` namespace and is stable across
+ * and never return null. If the native plugin is unavailable, unresponsive,
+ * or returns empty data, a locally-derived identity is produced instead.
+ * The resulting ID lives in the same `dv_…` namespace and is stable across
  * restarts (it is derived from a persisted raw UUID).
  *
  * Every native call is bounded by NATIVE_TIMEOUT_MS. If the bridge does not
- * answer in time — the classic failure mode after a missed `cap sync`, where
- * Device.getId() returns `UNAVAILABLE: "Device" plugin is not implemented on
- * android` — the app continues with the fallback rather than hanging.
+ * answer in time, the app continues with the fallback rather than hanging.
  *
  * ─── IDENTITY STABILITY ───────────────────────────────────────────────────
- * deviceId is a *stable device identity signal* for subscription authorization,
- * not an immutable hardware fingerprint. Platform semantics apply:
+ * deviceId is a *stable device identity signal* for subscription
+ * authorization, not an immutable hardware fingerprint. Platform semantics
+ * apply:
  *
- *   Android: identifier is ANDROID_ID (Build → Settings.Secure.ANDROID_ID).
- *            Changes on app signing-key change (debug vs release!) and on
- *            factory reset.
- *   iOS:     identifier is identifierForVendor. Changes when all vendor apps
- *            are uninstalled, or on device wipe.
+ *   Android: identifier is ANDROID_ID (Settings.Secure.ANDROID_ID), read
+ *            by MedvixDevicePlugin. Changes on app signing-key change
+ *            (debug vs release!) and on factory reset.
+ *   iOS:     identifier is identifierForVendor. Changes when all vendor
+ *            apps are uninstalled, or on device wipe.
  *   Windows: installation identity persisted in local storage. Cleared on
- *            app-data reset. To be replaced by
- *            SystemIdentification.GetSystemIdForPublisher() once the
- *            Windows shell exists.
+ *            app-data reset.
  *   Web:     crypto.randomUUID() persisted in local storage. Cleared when
  *            the user clears site data.
  *
  * The backend MUST tolerate occasional drift — this module does not attempt
  * to hide it.
  *
- * The raw platform identifier never leaves this module. Callers only ever see
- * the derived `dv_…` MedVix ID and the normalized metadata object.
+ * The raw platform identifier never leaves this module. Callers only ever
+ * see the derived `dv_…` MedVix ID and the normalized metadata object.
  */
 
 import * as utils from '../utils.js';
@@ -90,13 +79,14 @@ const INFO_SOURCE_KEY = 'medvix.device.info.source';
 
 const ID_NAMESPACE = 'medvix.device.v1';
 
-// How long to wait for a native bridge call before giving up and using the
-// local fallback. A healthy WebView <-> Java bridge answers in well under
-// 200 ms; 1.5 s is generous headroom and keeps the worst case small enough
-// to be absorbed by the boot splash even on a completely broken bridge.
+// How long to wait for a native plugin call before giving up and using
+// the local fallback. MedvixDevicePlugin answers in under 20 ms on every
+// device we've tested; 1.5 s is generous headroom and keeps the worst
+// case small enough to be absorbed by the boot splash.
 const NATIVE_TIMEOUT_MS = 1500;
 
-// Form guard for cached IDs. Anything else is treated as corrupt and re-derived.
+// Form guard for cached IDs. Anything else is treated as corrupt and
+// re-derived.
 const MEDVIX_ID_RE = /^dv_[0-9a-f]{32}$/;
 
 let _deviceId    = null;
@@ -106,9 +96,9 @@ let _pendingId   = null;
 let _pendingInfo = null;
 
 // Where the current _deviceId / _deviceInfo came from.
-//   'native'   — resolved via @capacitor/device on Android/iOS
+//   'native'   — resolved via MedvixDevicePlugin on Android
 //   'local'    — resolved from browser / OS APIs (expected on web / windows)
-//   'fallback' — we were on a native platform but the native bridge failed
+//   'fallback' — we were on a native platform but the plugin failed
 let _idSource   = null;
 let _infoSource = null;
 
@@ -155,52 +145,45 @@ async function deriveMedvixId(source) {
     return `dv_${hex.slice(0, 32)}`;
 }
 
-// --------------------------------------------------- capacitor lazy load ---
+// --------------------------------------------------- native plugin access ---
 
-let _capacitor;      // undefined = not probed yet, null = unavailable
-let _devicePlugin;   // same convention
-
-async function loadCapacitor() {
-    if (_capacitor !== undefined) return _capacitor;
-
-    if (globalThis.Capacitor) {
-        _capacitor = globalThis.Capacitor;
-        return _capacitor;
-    }
-
+/**
+ * Synchronous access to MedvixDevicePlugin. If the plugin is registered
+ * with the Capacitor bridge, this returns an object with getDeviceId() and
+ * getDeviceInfo(). If not, undefined.
+ *
+ * No dynamic import. No await. No hang path.
+ */
+function getDevicePlugin() {
     try {
-        const mod = await import(/* @vite-ignore */ '@capacitor/core');
-        _capacitor = mod?.Capacitor ?? null;
+        const C = globalThis.Capacitor;
+        if (!C?.isNativePlatform?.()) return null;
+        return C.Plugins?.MedvixDevice ?? null;
     } catch {
-        _capacitor = null;
+        return null;
     }
-    return _capacitor;
 }
 
-async function loadDevicePlugin() {
-    if (_devicePlugin !== undefined) return _devicePlugin;
-
+/**
+ * Synchronous platform detection. Reads the platform tag Capacitor
+ * injects into the WebView before any JS runs. No import, no await.
+ */
+function runtime() {
     try {
-        const mod = await import(/* @vite-ignore */ '@capacitor/device');
-        _devicePlugin = mod?.Device ?? null;
+        const C = globalThis.Capacitor;
+        if (!C?.isNativePlatform?.()) return 'web';
+        return C.getPlatform?.() || 'web';
     } catch {
-        _devicePlugin = null;
+        return 'web';
     }
-    return _devicePlugin;
-}
-
-async function runtime() {
-    const C = await loadCapacitor();
-    if (!C?.isNativePlatform?.()) return 'web';
-    return C.getPlatform?.() || 'web';
 }
 
 // ------------------------------------------------------------- utilities ---
 
 /**
  * Reject a promise if it doesn't settle within `ms`. Used to bound every
- * native bridge call — a hung WebView <-> Java channel must never freeze
- * the app.
+ * native plugin call — a registered plugin with a broken bridge channel
+ * must never freeze the app.
  */
 function withTimeout(promise, ms, label) {
     return new Promise((resolve, reject) => {
@@ -219,8 +202,11 @@ function isValidMedvixId(id) {
     return typeof id === 'string' && MEDVIX_ID_RE.test(id);
 }
 
-/** Safe wrapper for any Device plugin method — never throws. */
-async function safeDeviceCall(label, fn) {
+/**
+ * Bounded call to a MedvixDevicePlugin method. Never throws — returns
+ * null on timeout or error.
+ */
+async function safePluginCall(label, fn) {
     try {
         return await withTimeout(fn(), NATIVE_TIMEOUT_MS, label);
     } catch (err) {
@@ -253,7 +239,7 @@ export function getDeviceInfoSource()  { return _infoSource; }
 //
 // The contract of this module is that getDeviceId() and getDeviceInfo()
 // ALWAYS resolve — never reject, never return null. When the preferred
-// source (native bridge) is unavailable, these helpers produce a locally
+// source (native plugin) is unavailable, these helpers produce a locally
 // derived identity that is stable across restarts and structurally
 // identical to the native-derived one.
 //
@@ -292,7 +278,7 @@ function fallbackDeviceInfo(platformTag, reason) {
         appVersion: getAppVersion(),
         // Diagnostic fields — only present on the fallback path.
         _fallback:       true,
-        _fallbackReason: reason || 'native-bridge-unavailable',
+        _fallbackReason: reason || 'native-plugin-unavailable',
     };
 }
 
@@ -320,8 +306,8 @@ export async function getDeviceId() {
     } else if (isValidMedvixId(cached) && cachedSource === 'fallback') {
         // A previous run fell back on a native platform. Seed the sync
         // accessor with the previous value, but still attempt native
-        // resolution this launch — the bridge may have been fixed (e.g.
-        // after running `npx cap sync android`).
+        // resolution this launch — the plugin may have been registered
+        // since the last run.
         _deviceId = cached;
         _idSource = 'fallback';
     }
@@ -351,46 +337,45 @@ export async function getDeviceId() {
 }
 
 async function resolveDeviceId() {
-    const rt = await runtime();
+    const rt = runtime();
 
-    // Android / iOS — platform identifier via @capacitor/device.
-    // Device.getId() → { identifier: string } per the plugin's TS defs.
-    // On Android this is ANDROID_ID (Settings.Secure.ANDROID_ID); on iOS
-    // it is identifierForVendor. See the stability notes at the top.
-    if (rt === 'android' || rt === 'ios') {
-        const Device = await loadDevicePlugin();
+    // Android — native ANDROID_ID via MedvixDevicePlugin.
+    if (rt === 'android') {
+        const plugin = getDevicePlugin();
 
-        if (Device?.getId) {
-            const res = await safeDeviceCall('Device.getId', () => Device.getId());
+        if (plugin?.getDeviceId) {
+            const res = await safePluginCall('MedvixDevice.getDeviceId',
+                () => plugin.getDeviceId());
 
-            // Some plugin versions return { identifier }, others a raw
-            // string. Handle both defensively.
-            const identifier =
-                typeof res === 'string' ? res : res?.identifier;
-
+            const identifier = res?.deviceId;
             if (typeof identifier === 'string' && identifier.length > 0) {
                 return {
-                    id:     await deriveMedvixId(`${rt}:${identifier}`),
+                    id:     await deriveMedvixId(`android:${identifier}`),
                     source: 'native',
                 };
             }
-            console.warn('[device] Device.getId() returned empty identifier');
+            console.warn('[device] MedvixDevice.getDeviceId() returned empty identifier');
         } else {
-            console.warn('[device] @capacitor/device unavailable, using fallback');
+            console.warn('[device] MedvixDevice plugin not registered, using fallback');
         }
 
         // Native path failed. Fallback keeps the platform tag so the same
         // physical device produces a stable fallback ID in the same namespace.
         return {
-            id:     await fallbackDeviceId(rt),
+            id:     await fallbackDeviceId('android'),
             source: 'fallback',
         };
     }
 
-    // Windows — installation identity fallback. A user uninstall or app-data
-    // reset produces a new deviceId here. Replace with
-    // SystemIdentification.GetSystemIdForPublisher() via a Capacitor plugin
-    // once the Windows shell exists; keep the derivation identical.
+    // iOS — pending plugin. Falls back to local UUID for now.
+    if (rt === 'ios') {
+        return {
+            id:     await fallbackDeviceId('ios'),
+            source: 'fallback',
+        };
+    }
+
+    // Windows — installation identity persisted in local storage.
     if (rt === 'windows') {
         return {
             id:     await fallbackDeviceId('windows'),
@@ -458,30 +443,39 @@ export async function getDeviceInfo() {
 }
 
 async function resolveDeviceInfo() {
-    const rt = await runtime();
+    const rt = runtime();
 
-    if (rt === 'android' || rt === 'ios') {
-        const Device = await loadDevicePlugin();
+    if (rt === 'android') {
+        const plugin = getDevicePlugin();
 
-        if (Device?.getInfo) {
-            // Single bounded call. No supplementary battery/language queries
-            // — those were removed because the device-list UI does not use
-            // them, and they doubled the serial wait on a broken bridge.
-            const info = await safeDeviceCall('Device.getInfo', () => Device.getInfo());
+        if (plugin?.getDeviceInfo) {
+            // Single bounded call. MedvixDevicePlugin returns the full
+            // payload in one bridge round-trip — ID, platform, model,
+            // osName, osVersion, sdkVersion, isVirtual. We trim to the
+            // five fields the UI consumes.
+            const res = await safePluginCall('MedvixDevice.getDeviceInfo',
+                () => plugin.getDeviceInfo());
 
-            if (info && typeof info === 'object') {
+            if (res && typeof res === 'object') {
                 return {
-                    info:   normalizeCapacitorInfo(info, rt),
+                    info:   normalizeNativeInfo(res),
                     source: 'native',
                 };
             }
-            console.warn('[device] Device.getInfo() returned non-object');
+            console.warn('[device] MedvixDevice.getDeviceInfo() returned non-object');
         }
 
         // Native failed — fall back but preserve the platform tag so
-        // downstream code still sees platform:'android' / 'ios'.
+        // downstream code still sees platform:'android'.
         return {
-            info:   fallbackDeviceInfo(rt, 'native-bridge-unavailable'),
+            info:   fallbackDeviceInfo('android', 'native-plugin-unavailable'),
+            source: 'fallback',
+        };
+    }
+
+    if (rt === 'ios') {
+        return {
+            info:   fallbackDeviceInfo('ios', 'native-plugin-unavailable'),
             source: 'fallback',
         };
     }
@@ -494,31 +488,21 @@ async function resolveDeviceInfo() {
 }
 
 /**
- * Normalize the shape returned by @capacitor/device's Device.getInfo() into
+ * Normalize the shape returned by MedvixDevicePlugin.getDeviceInfo() into
  * the minimal MedVix internal info object.
  *
  * Only the five fields needed to render the "which devices are logged in"
- * list are kept. Everything else the plugin returns — manufacturer,
- * architecture, isVirtual, webViewVersion, androidSDKVersion, operatingSystem
- * (redundant with platform), and the supplementary battery/language data — is
- * intentionally dropped. If a future feature needs one of those, add it back
- * here deliberately rather than re-broadening the default payload.
+ * list are kept. The plugin also returns deviceId, manufacturer,
+ * sdkVersion, and isVirtual — those are intentionally dropped here. If a
+ * future feature needs one of them, add it back deliberately rather than
+ * re-broadening the default payload.
  */
-function normalizeCapacitorInfo(info, rt) {
-    const osNameMap = { android: 'Android', ios: 'iOS' };
-
-    // info.platform is the authoritative platform string from the plugin
-    // ('android' | 'ios'). Fall back to `rt` (Capacitor.getPlatform()) if the
-    // plugin omits it — should be identical.
-    const platform = (typeof info.platform === 'string' && info.platform)
-        ? info.platform
-        : rt;
-
+function normalizeNativeInfo(res) {
     return {
-        platform,
-        model:      info.model     ?? null,
-        osName:     osNameMap[platform] ?? info.operatingSystem ?? null,
-        osVersion:  info.osVersion ?? null,
+        platform:   'android',
+        model:      res.model     ?? null,
+        osName:     res.osName    ?? 'Android',
+        osVersion:  res.osVersion ?? null,
         appVersion: getAppVersion(),
     };
 }
@@ -553,33 +537,6 @@ function detectWebOsName() {
     return null;
 }
 
-// ------------------------------------------------------------- battery -----
-
-/**
- * Standalone battery accessor. Not part of the primary initializeDevice()
- * flow — call this lazily when the UI actually needs it (e.g. a power-save
- * banner). Returns null on web, on failure, or if the native bridge is
- * unavailable.
- *
- * Kept as an export so existing callers do not break. Not referenced by
- * resolveDeviceInfo() or buildDeviceIdentity().
- */
-export async function getBatteryInfo() {
-    const rt = await runtime();
-    if (rt !== 'android' && rt !== 'ios') return null;
-
-    const Device = await loadDevicePlugin();
-    if (!Device?.getBatteryInfo) return null;
-
-    const res = await safeDeviceCall('Device.getBatteryInfo', () => Device.getBatteryInfo());
-    if (!res || typeof res !== 'object') return null;
-
-    return {
-        batteryLevel: typeof res.batteryLevel === 'number' ? res.batteryLevel : null,
-        isCharging:   typeof res.isCharging   === 'boolean' ? res.isCharging  : null,
-    };
-}
-
 // -------------------------------------------------------------- lifecycle --
 
 export async function initializeDevice(opts = {}) {
@@ -601,8 +558,8 @@ export async function refreshDeviceInfo() {
  * Clear in-memory state and cached derived artifacts.
  *
  * Does NOT destroy the underlying identity by default:
- *   - native: deviceId comes from the platform identifier, so it survives
- *     (though it may legitimately drift — see ANDROID_ID / IDFV semantics)
+ *   - native: deviceId comes from ANDROID_ID, so it survives
+ *     (though it may legitimately drift — see ANDROID_ID semantics)
  *   - web: the raw UUID in RAW_KEY survives, so the same dv_… regenerates
  *
  * Pass { clearWebIdentity: true } only for an intentional "reset this browser

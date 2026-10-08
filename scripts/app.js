@@ -21,38 +21,56 @@ import * as events from './events.js';
 // === GOOGLE PLAY IN-APP UPDATE ===
 import * as appUpdate from './app-update.js';
 
-// ============================================================
-// CAPACITOR IMPORTS (dynamic, only when available)
-// ============================================================
-let App, ScreenOrientation, FileOpen;
+// === STORAGE ===
+import * as layout        from './db/layout.js';
+import * as contentStore  from './db/content-store.js';
+import * as storage       from './db/app-storage.js';
 
-async function importCapacitor() {
+// ============================================================
+// NATIVE PLUGINS — SYNCHRONOUS LOOKUP (Java-registered)
+// ============================================================
+//
+// All native plugins are accessed via window.Capacitor.Plugins.<Name>.
+// This is a synchronous property lookup — if the plugin isn't
+// registered, the lookup returns undefined and every caller's guard
+// fires. There is no dynamic import() in this file, so there is no
+// code path that can silently hang waiting for a module chunk to load.
+//
+// Registered in MainActivity.onCreate():
+//
+//   AppUpdatePlugin          → not accessed from JS here; used by app-update.js
+//   FileOpenPlugin           → FileOpen
+//   MedvixDevicePlugin       → MedvixDevice (used via security/device.js)
+//   MedvixAppPlugin          → MedvixApp
+//   MedvixOrientationPlugin  → MedvixOrientation
+//
+// window.MedVixStorage is registered via addJavascriptInterface()
+// immediately after super.onCreate() in MainActivity. It is not a
+// Capacitor plugin — see the storage layer for why.
+
+let FileOpen = null;
+let MedvixApp = null;
+let MedvixOrientation = null;
+
+function importCapacitor() {
     if (typeof window.Capacitor === 'undefined') {
-        console.log('[App] Capacitor not available, skipping native modules.');
+        console.log('[App] Native bridge not available, skipping plugin lookup.');
         return;
     }
-    try {
-        const appModule = await import('@capacitor/app');
-        App = appModule.App;
-        const screenModule = await import('@capacitor/screen-orientation');
-        ScreenOrientation = screenModule.ScreenOrientation;
 
-        // FileOpen is a CUSTOM Capacitor plugin, not an npm package.
-        // It registers itself in `window.Capacitor.Plugins.FileOpen` when
-        // the native Android side loads it (via MainActivity + the plugin's
-        // own JS bootstrap). We grab the reference here so every subsequent
-        // call site has a stable handle.
-        FileOpen = (window.Capacitor.Plugins && window.Capacitor.Plugins.FileOpen) || null;
-        if (FileOpen) {
-            console.log('[App] FileOpen plugin available');
-        } else {
-            console.log('[App] FileOpen plugin not registered');
-        }
+    const plugins = window.Capacitor.Plugins || {};
 
-        console.log('[App] Capacitor modules loaded.');
-    } catch (e) {
-        console.warn('[App] Capacitor modules not available:', e);
-    }
+    FileOpen          = plugins.FileOpen          || null;
+    MedvixApp         = plugins.MedvixApp         || null;
+    MedvixOrientation = plugins.MedvixOrientation || null;
+
+    console.log(
+        '[App] Native plugins:',
+        'FileOpen:',          !!FileOpen,
+        'MedvixApp:',         !!MedvixApp,
+        'MedvixOrientation:', !!MedvixOrientation,
+        'MedVixStorage:',     !!window.MedVixStorage,
+    );
 }
 
 // ============================================================
@@ -105,6 +123,311 @@ function warmDeviceIdentity() {
 }
 
 // ============================================================
+// STORAGE — BOOT INIT + LEGACY BLOB MIGRATION
+// ============================================================
+//
+// On Android, blob storage moved from IndexedDB to disk in v13. The
+// DB layer (scripts/db.js) already routes new writes through the
+// native bridge and falls back to IDB automatically. This block
+// handles two things that only the boot sequence can do:
+//
+//   1. Register app-facing namespaces and scaffold the on-disk
+//      directory tree. Synchronous. Runs once at boot.
+//
+//   2. Sweep legacy IDB blobs — anything written before v13 with a
+//      .blob field — out to disk. Async, fire-and-forget with a
+//      small delay so the initial render is not blocked. Marked in
+//      localStorage so it runs at most once per install.
+//
+// Neither step is required for correctness. If the storage bridge is
+// unavailable (web dev build) both are no-ops. If the migration is
+// interrupted, reads still work — db.js's getters check disk first
+// and fall back to IDB, so legacy blobs remain accessible until the
+// next boot retries the sweep.
+
+const MIGRATION_KEY = 'medvix.storage.migrated.v13';
+
+/**
+ * Register app-facing namespaces and scaffold the base directory
+ * tree. Called from bootstrap. Idempotent — re-registering an
+ * existing namespace is a no-op.
+ */
+function initStorageLayout() {
+    // Namespaces for content the app itself manages. The DB layer
+    // registers its own internal namespaces ('files', 'public-assets')
+    // when scripts/db.js is first imported.
+    layout.registerNamespace('resources', {
+        description: 'Learning materials: textbooks, past papers, references',
+    });
+    layout.registerNamespace('media', {
+        description: 'Media: anatomy models, diagrams, audio',
+    });
+    layout.registerNamespace('user', {
+        description: 'User-generated content: exports, notes',
+    });
+
+    if (!storage.isNativeStorageAvailable()) {
+        console.log('[Storage] Native bridge unavailable — storage runs in IDB-only mode');
+        return false;
+    }
+
+    if (layout.scaffoldDirectories()) {
+        layout.persistLayoutDescriptor();
+        console.log(
+            '[Storage] Layout ready v' + layout.getLayoutVersion() +
+            ' (' + storage.getStorageRootType() + ')' +
+            ' — ' + layout.getRegisteredNamespaces().length + ' namespaces'
+        );
+        return true;
+    }
+
+    console.warn('[Storage] Scaffold failed');
+    return false;
+}
+
+/**
+ * One-time sweep of legacy IDB blobs to disk.
+ *
+ * Reads every record in the 'files' and 'publicAssets' stores. Any
+ * record that still holds a raw Blob (written before v13) is re-saved
+ * through db.js's public API, which routes it to disk and replaces
+ * the IDB record with a metadata-only stub.
+ *
+ * Records that are already metadata (location: 'disk') or that have
+ * no .blob field are skipped. So this is idempotent — safe to run
+ * after a partial migration, and safe to call on a fresh install
+ * where there is nothing to migrate.
+ *
+ * Errors on individual records are logged and skipped. The migration
+ * marker is set regardless so a single bad blob doesn't cause the
+ * sweep to re-run on every boot. Reads of un-migrated blobs still
+ * work via the disk-miss → IDB fallback in db.js.
+ */
+async function migrateLegacyBlobs() {
+    // Marker check — only run once per install.
+    if (utils.getLocalStorage(MIGRATION_KEY)) return;
+
+    // Native bridge is required — migration is meaningless without disk.
+    if (!storage.isNativeStorageAvailable()) {
+        utils.setLocalStorage(MIGRATION_KEY, 'web-noop:' + Date.now());
+        return;
+    }
+
+    console.log('[Storage] Starting legacy blob migration (v13)...');
+    const t0 = (typeof performance !== 'undefined' && performance.now)
+        ? performance.now()
+        : Date.now();
+
+    let migratedFiles = 0;
+    let migratedThumbs = 0;
+    let migratedAssets = 0;
+    let failed = 0;
+
+    try {
+        const database = await db.initDatabase();
+
+        // ── Sweep 'files' store ──────────────────────────────────────
+        // Records can be:
+        //   * id starting 'thumb_'    → legacy thumbnail blob
+        //   * id starting anything    → legacy file blob
+        //   * location === 'disk'     → already metadata; skip
+        //   * no .blob field          → already metadata; skip
+        const filesStore = database
+            .transaction('files', 'readonly')
+            .objectStore('files');
+
+        const allFiles = await new Promise((resolve, reject) => {
+            const req = filesStore.getAll();
+            req.onsuccess = () => resolve(req.result || []);
+            req.onerror   = () => reject(req.error);
+        });
+
+        for (const record of allFiles) {
+            if (!record || !record.blob) continue;
+            if (record.location === 'disk') continue;
+
+            try {
+                if (String(record.id).startsWith('thumb_')) {
+                    const id = String(record.id).slice(6);
+                    await db.saveThumbnailBlob(id, record.blob);
+                    migratedThumbs++;
+                } else {
+                    await db.saveFileBlob(record.id, record.blob);
+                    migratedFiles++;
+                }
+            } catch (e) {
+                console.warn('[Storage] Migration failed for id', record.id, e);
+                failed++;
+            }
+        }
+
+        // ── Sweep 'publicAssets' store ───────────────────────────────
+        const assetsStore = database
+            .transaction('publicAssets', 'readonly')
+            .objectStore('publicAssets');
+
+        const allAssets = await new Promise((resolve, reject) => {
+            const req = assetsStore.getAll();
+            req.onsuccess = () => resolve(req.result || []);
+            req.onerror   = () => reject(req.error);
+        });
+
+        for (const record of allAssets) {
+            if (!record || !record.blob) continue;
+            if (record.location === 'disk') continue;
+
+            try {
+                await db.savePublicAsset(record.key, record.blob, record.metadata || {});
+                migratedAssets++;
+            } catch (e) {
+                console.warn('[Storage] Migration failed for asset', record.key, e);
+                failed++;
+            }
+        }
+    } catch (e) {
+        // Couldn't even open the DB — try again next boot.
+        console.warn('[Storage] Migration could not start:', e);
+        return;
+    }
+
+    const t1 = (typeof performance !== 'undefined' && performance.now)
+        ? performance.now()
+        : Date.now();
+    const ms = Math.round(t1 - t0);
+
+    console.log(
+        `[Storage] Migration done in ${ms}ms — ` +
+        `files: ${migratedFiles}, thumbnails: ${migratedThumbs}, ` +
+        `assets: ${migratedAssets}, failed: ${failed}`
+    );
+
+    // Set the marker even if some records failed. The point is to
+    // avoid pausing boot on every launch. Un-migrated blobs stay
+    // readable through the disk-miss fallback in db.js.
+    utils.setLocalStorage(MIGRATION_KEY, {
+        at: Date.now(),
+        files: migratedFiles,
+        thumbnails: migratedThumbs,
+        assets: migratedAssets,
+        failed,
+    });
+}
+
+/**
+ * Root-to-root migration. Moves every file under content/ from the
+ * current write root to the other one, then commits the preference.
+ *
+ * Called by the Storage tab in Settings → Profile. Also safe to call
+ * from any other UI that wants to offer the same control.
+ *
+ * Reads stay working throughout — the native bridge checks both roots
+ * on every get, so a partially-completed migration never strands a
+ * file. The preference is committed only after every file has landed;
+ * otherwise the user is told how many files could not be moved and
+ * can retry — already-moved files skip via the dest.exists() guard
+ * inside relocateToOtherRoot.
+ *
+ * @returns {Promise<{ ok: boolean, moved: number, failed: number,
+ *                     from?: string, to?: string, reason?: string }>}
+ */
+async function migrateStorageRoots() {
+    if (!storage.isNativeStorageAvailable()) {
+        return { ok: false, moved: 0, failed: 0, reason: 'Native storage unavailable' };
+    }
+    if (!window.MedVixStorage?.listFilesInRoot || !window.MedVixStorage?.relocateToOtherRoot) {
+        return { ok: false, moved: 0, failed: 0, reason: 'Migration not supported in this build' };
+    }
+
+    const from = storage.getStorageRootType();
+
+    let roots = [];
+    try {
+        const raw = window.MedVixStorage.getAvailableRoots?.();
+        roots = raw ? JSON.parse(raw) : [];
+    } catch { roots = []; }
+
+    const other = roots.find(r => r.type !== from && r.available);
+    if (!other) {
+        return { ok: false, moved: 0, failed: 0, reason: 'No alternate storage location available' };
+    }
+
+    // Enumerate every file under content/ in the source root.
+    let list = [];
+    try {
+        const raw = window.MedVixStorage.listFilesInRoot(from, 'content');
+        list = raw ? JSON.parse(raw) : [];
+    } catch { list = []; }
+
+    if (list.length === 0) {
+        // Nothing to move. Commit the preference so new writes go to
+        // the other root.
+        window.MedVixStorage.setPreferredRoot(other.type);
+        return { ok: true, moved: 0, failed: 0, from, to: other.type };
+    }
+
+    let moved = 0;
+    let failed = 0;
+
+    for (const rel of list) {
+        try {
+            if (window.MedVixStorage.relocateToOtherRoot(rel)) moved++;
+            else failed++;
+        } catch {
+            failed++;
+        }
+    }
+
+    if (failed === 0) {
+        // All files landed. Commit the preference so new writes go to
+        // the other root from now on.
+        window.MedVixStorage.setPreferredRoot(other.type);
+        return { ok: true, moved, failed: 0, from, to: other.type };
+    }
+
+    // Partial. Leave the preference unchanged — reads still find every
+    // file because the bridge checks both roots.
+    return {
+        ok: false,
+        moved,
+        failed,
+        from,
+        to: other.type,
+        reason: `${failed} file${failed === 1 ? '' : 's'} could not be moved. Preference unchanged.`,
+    };
+}
+
+/**
+ * Wipe all local data: every IndexedDB store, plus every on-disk
+ * content/ and cache/ directory under the current write root.
+ *
+ * Called by the Storage tab in Settings → Profile. Also safe to call
+ * from anywhere else that wants a full local reset.
+ *
+ * The user stays logged in. This is a device-scoped wipe, not an
+ * account deletion — the account-level delete lives on the Security
+ * tab and calls into auth.deleteAccount().
+ *
+ * @returns {Promise<{ ok: boolean, reason?: string }>}
+ */
+async function deleteAllLocalData() {
+    // 1. Clear every IndexedDB store. db.clearDatabase() also wipes
+    //    the on-disk content/ and cache/ trees via the native bridge.
+    await db.clearDatabase();
+
+    // 2. Belt-and-braces: if the native bridge exposes the low-level
+    //    directory wipes, call them directly in case a partial IDB
+    //    clear left something behind.
+    try {
+        if (window.MedVixStorage?.deleteDirectory) {
+            window.MedVixStorage.deleteDirectory('content');
+            window.MedVixStorage.deleteDirectory('cache');
+        }
+    } catch { /* ignore */ }
+
+    return { ok: true };
+}
+
+// ============================================================
 // APP-LEVEL STATE
 // ============================================================
 let pendingAppUrl = null;
@@ -112,15 +435,14 @@ let appInitialized = false;
 let appAuthenticated = false;
 let referralCode = null;
 let redirectTarget = null;
-let screenOrientation = null;
 
 // ============================================================
 // FILE-OPEN — EXTERNAL FILE INTENTS (ANDROID)
 // ============================================================
 //
-// When the OS hands MedVix a file — a PDF, image, or text file the user
-// tapped in Files, Gmail, or Chrome — the FileOpen plugin copies the
-// bytes into the app cache and delivers a payload:
+// When the OS hands the app a file — a PDF, image, or text file the
+// user tapped in Files, Gmail, or Chrome — the FileOpen Java plugin
+// copies the bytes into the app cache and delivers a payload:
 //
 //   { path: string, name: string, mimeType: string|null, size?: number }
 //
@@ -132,15 +454,18 @@ let screenOrientation = null;
 //     initial route is resolved.
 //
 //   • Warm start — the app is already running. The plugin fires a
-//     `fileOpen` event. `registerFileListener()` handles it: stash the
-//     payload, then either dispatch a page-level event (chrome already
-//     mounted) or navigate to the host page.
+//     `fileOpen` event. `registerFileListener()` stashes the payload
+//     and routes to the viewer page.
 //
-// In both cases, the payload is written to `sessionStorage.pendingFileOpen`
-// and the app routes to `resource-browser`. That page's init() calls
-// `viewer.openPendingFile()`, which drains the stash and loads the file
-// through the standard viewer pipeline. External files never require auth
-// — the user chose the file; it just opens.
+// In both cases the payload is written to `sessionStorage.pendingFileOpen`
+// and the app navigates to `pages/viewer.html`. That page's init()
+// calls `viewer.openPendingFile()`, which drains the stash and loads the
+// file through the standard viewer pipeline.
+//
+// External files NEVER require auth. The user chose the file; it just
+// opens. Internal catalogue resources still route through
+// resource-browser.html's embedded viewer overlay — they never reach
+// this path.
 
 const PENDING_FILE_KEY = 'pendingFileOpen';
 
@@ -151,30 +476,10 @@ let fileLaunchPending = false;
 let _fileListenerRegistered = false;
 
 /**
- * True when the currently mounted page is the resource browser — the
- * page that hosts the viewer chrome. Used to decide whether a warm-start
- * file should trigger a navigation (chrome not mounted) or a page-level
- * reload (chrome already mounted).
- *
- * @private
- * @returns {boolean}
- */
-function _isOnResourceBrowser() {
-    try {
-        const root = document.getElementById('app-root');
-        if (!root) return false;
-        const section = root.querySelector('section[data-page]');
-        return !!(section && section.dataset.page === 'resource-browser');
-    } catch {
-        return false;
-    }
-}
-
-/**
  * Write an external file payload to sessionStorage in the shape
- * `viewer.openPendingFile()` expects. Idempotent — a second call replaces
- * the previous payload, which is correct when a new file arrives before
- * the previous one has been drained.
+ * `viewer.openPendingFile()` expects. Idempotent — a second call
+ * replaces the previous payload, which is correct when a new file
+ * arrives before the previous one has been drained.
  *
  * @private
  * @param {{ path: string, name?: string, mimeType?: string|null, size?: number }} payload
@@ -194,9 +499,9 @@ function _stashFilePayload(payload) {
 }
 
 /**
- * Read the cold-start file payload from the FileOpen plugin. Called once
- * during bootstrap, before route resolution. If a payload exists, the
- * initial route is forced to `resource-browser`.
+ * Read the cold-start file payload from the FileOpen plugin. Called
+ * once during bootstrap, before route resolution. If a payload exists,
+ * the initial route is forced to `viewer`.
  *
  * @private
  * @returns {Promise<void>}
@@ -216,8 +521,14 @@ async function captureLaunchFile() {
 }
 
 /**
- * Register the warm-start `fileOpen` listener. Called once during bootstrap.
- * Idempotent.
+ * Register the warm-start `fileOpen` listener. Called once during
+ * bootstrap. Idempotent.
+ *
+ * Every external file — cold or warm — routes to `viewer`. If the user
+ * is already on the viewer page, `navigateTo('viewer')` destroys the
+ * current mount and reloads the page, which drains the new payload.
+ * That's exactly what should happen when a second file arrives while
+ * one is on screen.
  *
  * @private
  */
@@ -232,22 +543,16 @@ function registerFileListener() {
         _stashFilePayload(payload);
 
         if (!appInitialized) {
-            // Arrived during bootstrap — resolveInitialRoute() will pick it up.
+            // Arrived during bootstrap — resolveInitialRoute() picks it up.
             fileLaunchPending = true;
             return;
         }
 
-        if (_isOnResourceBrowser()) {
-            // Chrome already mounted. Dispatch an event the page listens
-            // for so it drains the stash without a full re-mount.
-            try {
-                document.dispatchEvent(new CustomEvent('native:file-arrived'));
-            } catch { /* ignore */ }
-        } else {
-            // Some other page is mounted. Navigate to the host page;
-            // page-manager will run its init(), which drains the stash.
-            navigateTo('resource-browser');
-        }
+        // App is fully booted. Navigate to the dedicated viewer page.
+        // Page-manager will destroy whatever page is currently mounted
+        // (including a previous viewer mount) and reload viewer.html,
+        // whose init drains the new payload.
+        navigateTo('viewer');
     });
 
     _fileListenerRegistered = true;
@@ -319,31 +624,34 @@ function extractDeepLinkPath(rawUrl) {
 // DEEP LINK — COLD START ROUTE
 // ============================================================
 //
-// Called exactly once during bootstrap. Priority order:
+// Called exactly once during bootstrap. Priority order (highest first):
 //
-//   1. External file intent — the OS handed us a file. Route to the
-//      viewer host page unconditionally. No auth check.
-//   2. Deep link — a URL the user tapped. Extract the path and route
-//      to it verbatim. No auth check.
-//   3. Fallback — no deep link, no file. Auth-based default.
+//   1. Deep link URL — a share link the user tapped, or an OAuth
+//      callback. This is the "greatest" path; it wins over everything.
+//
+//   2. External file intent — the OS handed us a file via ACTION_VIEW.
+//      Routes to the viewer page. No auth check.
+//
+//   3. Auth-based default — no deep link, no file. Authed users land
+//      on `subjects`; unauthed land on `welcome`.
 
 function resolveInitialRoute() {
-    // ── External file intent (highest priority) ────────────────────────
-    if (fileLaunchPending) {
-        console.log('[App] Initial route: resource-browser (file intent)');
-        return 'resource-browser';
-    }
-
-    // ── Deep link wins over the default route ──────────────────────────
+    // ── 1. Deep link URL (highest priority) ────────────────────────────
     if (pendingAppUrl) {
         const link = extractDeepLinkPath(pendingAppUrl);
         if (link) {
             if (link.kind === 'file') {
-                // Defensive fallback: if a content:// URI reached this
-                // path via @capacitor/app (unusual but possible on some
-                // Android builds), stash it and route to the host page.
-                try { sessionStorage.setItem(PENDING_FILE_KEY, JSON.stringify({ path: link.url, name: 'Document', mimeType: null, size: 0 })); } catch {}
-                return 'resource-browser';
+                // Defensive: a content:// URI delivered through the
+                // MedvixApp plugin rather than FileOpen. Route to viewer.
+                try {
+                    sessionStorage.setItem(PENDING_FILE_KEY, JSON.stringify({
+                        path: link.url,
+                        name: 'Document',
+                        mimeType: null,
+                        size: 0,
+                    }));
+                } catch { /* ignore */ }
+                return 'viewer';
             }
 
             // Split path from query/hash so a deep link with NO route
@@ -372,7 +680,13 @@ function resolveInitialRoute() {
         }
     }
 
-    // ── No deep link → auth-based default ───────────────────────────────
+    // ── 2. External file intent ────────────────────────────────────────
+    if (fileLaunchPending) {
+        console.log('[App] Initial route: viewer (file intent)');
+        return 'viewer';
+    }
+
+    // ── 3. Auth-based default ──────────────────────────────────────────
     return appAuthenticated ? 'subjects' : 'welcome';
 }
 
@@ -385,8 +699,15 @@ function dispatchDeepLink(rawUrl) {
     if (!link) return;
 
     if (link.kind === 'file') {
-        try { sessionStorage.setItem(PENDING_FILE_KEY, JSON.stringify({ path: link.url, name: 'Document', mimeType: null, size: 0 })); } catch {}
-        navigateTo('resource-browser');
+        try {
+            sessionStorage.setItem(PENDING_FILE_KEY, JSON.stringify({
+                path: link.url,
+                name: 'Document',
+                mimeType: null,
+                size: 0,
+            }));
+        } catch { /* ignore */ }
+        navigateTo('viewer');
         return;
     }
 
@@ -395,13 +716,13 @@ function dispatchDeepLink(rawUrl) {
 }
 
 // ============================================================
-// DEEP LINK — CAPTURE
+// DEEP LINK — CAPTURE (MedvixApp plugin)
 // ============================================================
 
 async function captureLaunchUrl() {
-    if (!App) return;
+    if (!MedvixApp || typeof MedvixApp.getLaunchUrl !== 'function') return;
     try {
-        const result = await App.getLaunchUrl();
+        const result = await MedvixApp.getLaunchUrl();
         if (result && result.url) {
             console.log('[DeepLink] getLaunchUrl:', result.url);
             if (!pendingAppUrl) pendingAppUrl = result.url;
@@ -412,8 +733,8 @@ async function captureLaunchUrl() {
 }
 
 function registerAppUrlListener() {
-    if (!App) return;
-    App.addListener('appUrlOpen', ({ url }) => {
+    if (!MedvixApp || typeof MedvixApp.addListener !== 'function') return;
+    MedvixApp.addListener('appUrlOpen', ({ url }) => {
         if (!url) return;
         console.log('[DeepLink] appUrlOpen:', url);
         if (appInitialized) {
@@ -457,16 +778,31 @@ function drainEarlyQueue() {
 }
 
 // ============================================================
-// ORIENTATION LOCK
+// ORIENTATION — SPLASH-ONLY PORTRAIT LOCK
 // ============================================================
-async function initOrientation() {
-    if (!ScreenOrientation) return;
+//
+// The splash screen holds the device in portrait so the boot animation
+// always renders upright. As soon as the app is fully mounted and the
+// splash is torn down, the lock is released — from that point the OS is
+// free to rotate based on the sensor and the user's auto-rotate setting.
+
+async function lockSplashOrientation() {
+    if (!MedvixOrientation || typeof MedvixOrientation.lock !== 'function') return;
     try {
-        screenOrientation = ScreenOrientation;
-        await screenOrientation.lock({ orientation: 'portrait' });
-        console.log('[App] Orientation locked');
+        await MedvixOrientation.lock({ orientation: 'portrait' });
+        console.log('[App] Splash orientation locked to portrait');
     } catch {
-        console.warn('[App] Orientation lock not available');
+        console.warn('[App] Splash orientation lock not available');
+    }
+}
+
+async function releaseSplashOrientation() {
+    if (!MedvixOrientation || typeof MedvixOrientation.unlock !== 'function') return;
+    try {
+        await MedvixOrientation.unlock();
+        console.log('[App] Splash orientation released');
+    } catch {
+        console.warn('[App] Splash orientation release failed');
     }
 }
 
@@ -505,8 +841,8 @@ async function runPlayUpdateCheck() {
 
     let currentVersionCode = 0;
     try {
-        if (App && typeof App.getInfo === 'function') {
-            const info = await App.getInfo();
+        if (MedvixApp && typeof MedvixApp.getInfo === 'function') {
+            const info = await MedvixApp.getInfo();
             currentVersionCode = parseInt(info.build, 10) || 0;
             console.log(
                 `[PlayUpdate] Running v${info.version} (versionCode ${currentVersionCode})`
@@ -541,9 +877,6 @@ async function runPlayUpdateCheck() {
 // SAFE REDIRECT (fallback if router fails)
 // ============================================================
 function safeRedirect(targetPath) {
-    if (screenOrientation) {
-        screenOrientation.unlock().catch(() => {});
-    }
     let target = targetPath;
     if (target.startsWith('/pages/')) target = target.replace('/pages/', '');
     if (target.endsWith('.html')) target = target.replace('.html', '');
@@ -598,6 +931,11 @@ async function destroySplash() {
     document.body.classList.remove('splash-active', 'medvex-splash-active');
 
     progressFill = null;
+
+    // Release the splash-only portrait lock. The OS is now free to
+    // rotate based on the sensor and the user's auto-rotate setting.
+    await releaseSplashOrientation();
+
     console.log('[Splash] Splash completely destroyed.');
 }
 
@@ -728,34 +1066,40 @@ async function bootstrap() {
         // ── 0. Warm device identity (fire-and-forget) ───────────────────
         //
         // Fired FIRST, before any other work, so it overlaps with
-        // Capacitor import, file capture, Play update check, auth init,
-        // subscription load, session refresh, and sync. By the time the
-        // user reaches the login form, `_deviceId` and `_deviceInfo` are
-        // already resident and auth.login() never waits on the bridge.
-        //
-        // security/device.js dedupes via its own _pendingId/_pendingInfo,
-        // so this costs nothing even if it races with a later call from
-        // initializeApp() or auth.js.
+        // plugin lookups, file capture, Play update check, auth init,
+        // subscription load, session refresh, and sync. By the time
+        // the user reaches the login form, `_deviceId` and
+        // `_deviceInfo` are already resident and auth.login() never
+        // waits on the bridge.
         warmDeviceIdentity();
 
         // ── 1. Read the deep link captured by index.html ────────────────
         consumeEarlyDeepLink();
 
-        // ── 2. Load Capacitor modules + plugin handles ──────────────────
-        await importCapacitor();
+        // ── 2. Load native plugin handles (synchronous) ─────────────────
+        importCapacitor();
 
-        // ── 3. Capture cold-start file intent (Android ACTION_VIEW) ─────
+        // ── 2b. Storage: register namespaces + scaffold directories ─────
+        //
+        // Synchronous. Registers the app-facing namespaces ('resources',
+        // 'media', 'user') and creates the on-disk tree. Idempotent —
+        // safe on every boot, no-op after the first.
+        initStorageLayout();
+
+        // ── 3. Lock splash orientation (portrait for boot) ──────────────
+        // Fired before any awaits so the splash animation is always
+        // upright. Released inside destroySplash().
+        await lockSplashOrientation();
+
+        // ── 4. Capture cold-start file intent (Android ACTION_VIEW) ─────
         // Runs BEFORE the deep-link capture so a file intent takes
         // priority in resolveInitialRoute().
         await captureLaunchFile();
         registerFileListener();
 
-        // ── 4. Backup capture of URL-based deep links ──────────────────
+        // ── 5. Backup capture of URL-based deep links ──────────────────
         await captureLaunchUrl();
         registerAppUrlListener();
-
-        // ── 5. Orientation lock ─────────────────────────────────────────
-        await initOrientation();
 
         // ── 6. Play update check ────────────────────────────────────────
         await runPlayUpdateCheck();
@@ -786,15 +1130,26 @@ async function bootstrap() {
         appInitialized = true;
 
         // ── 10. Resolve the initial route ───────────────────────────────
-        // Priority: external file > deep link > auth-based default.
+        // Priority: deep link > external file > auth-based default.
         // No auth gate is applied to file intents or deep links.
         redirectTarget = resolveInitialRoute();
         console.log('[App] Initial route:', redirectTarget,
                     '| authed:', appAuthenticated,
-                    '| fileLaunch:', fileLaunchPending);
+                    '| fileLaunch:', fileLaunchPending,
+                    '| deepLink:', !!pendingAppUrl);
 
         // ── 11. Apply theme ─────────────────────────────────────────────
+        // Sets the dark-theme class and calls syncStatusBar() so the
+        // native status bar matches the theme before the first paint
+        // of the routed page.
         if (ui.applyTheme) ui.applyTheme();
+
+        // ── 11b. Sync the native status bar explicitly ──────────────────
+        // applyTheme() already calls syncStatusBar(), but on cold boot
+        // the CSS may not have been fully evaluated when setTheme()
+        // ran, so re-running it here ensures the tokens resolve after
+        // the stylesheet is live. Idempotent — a second call is free.
+        if (ui.syncStatusBar) ui.syncStatusBar();
 
         // ── 12. Set the URL bar to match the resolved route ─────────────
         const currentFull = window.location.pathname + window.location.search + window.location.hash;
@@ -822,8 +1177,9 @@ async function bootstrap() {
         // ── 15. Freeze the early queue ──────────────────────────────────
         // From this point, app.js's own appUrlOpen listener owns every
         // URL. The early (index.html) listener keeps its handler attached
-        // — Capacitor does not offer a synchronous remove — but the
-        // freeze flag stops it from buffering into a queue nothing drains.
+        // — the Java bridge does not offer a synchronous remove — but
+        // the freeze flag stops it from buffering into a queue nothing
+        // drains.
         if (window.__deepLink) window.__deepLink.frozen = true;
 
         // ── 16. Wait for the first render ───────────────────────────────
@@ -840,10 +1196,26 @@ async function bootstrap() {
             });
         }
 
-        // ── 17. Destroy splash ──────────────────────────────────────────
+        // ── 17. Destroy splash (releases orientation lock) ──────────────
         await destroySplash();
 
-        // ── 18. Register service worker ─────────────────────────────────
+        // ── 18. Legacy blob migration (fire-and-forget, delayed) ────────
+        //
+        // Runs once per install. Sweeps any IDB blobs written before the
+        // v13 split out to disk. Delayed slightly so the initial render
+        // completes and the user is interacting before the sweep starts.
+        //
+        // Idempotent — checks a localStorage marker. Never blocks boot.
+        // Failures on individual records are logged and skipped; the
+        // disk-miss → IDB fallback in db.js keeps un-migrated blobs
+        // readable on every subsequent launch.
+        setTimeout(() => {
+            migrateLegacyBlobs().catch((e) =>
+                console.warn('[Storage] Migration failed:', e)
+            );
+        }, 2000);
+
+        // ── 19. Register service worker ─────────────────────────────────
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('/service-worker.js');
         }
@@ -859,6 +1231,10 @@ async function bootstrap() {
         document.body.classList.remove('splash-active', 'medvex-splash-active');
 
         progressFill = null;
+
+        // Best-effort orientation release even on the error path, so a
+        // failed boot doesn't leave the user stuck in portrait.
+        try { await releaseSplashOrientation(); } catch {}
 
         const appRoot = document.getElementById('app-root');
         if (appRoot) {
@@ -959,4 +1335,36 @@ window.app = {
     // File-intent debug helpers
     isFileLaunchPending: () => fileLaunchPending,
     stashFilePayload: _stashFilePayload,
+
+    // Orientation debug helpers
+    lockSplashOrientation,
+    releaseSplashOrientation,
+
+    // ── Storage — root info ────────────────────────────────────────────
+    storageRoot:           () => window.MedVixStorage?.getRoot?.()           || null,
+    storageRootType:       () => window.MedVixStorage?.getRootType?.()       || 'unavailable',
+    storageAvailable:      () => !!window.MedVixStorage?.isAvailable?.()    ,
+    storagePreferredRoot:  () => window.MedVixStorage?.getPreferredRoot?.()  || 'internal',
+    storageAvailableRoots: () => {
+        try {
+            const raw = window.MedVixStorage?.getAvailableRoots?.();
+            return raw ? JSON.parse(raw) : [];
+        } catch { return []; }
+    },
+    storageSetPreferredRoot: (type) =>
+        !!window.MedVixStorage?.setPreferredRoot?.(type),
+
+    // ── Storage — content operations ───────────────────────────────────
+    storageStats:      () => contentStore.getStorageStats(),
+    storageClearCache: () => contentStore.clearCache(),
+
+    // ── Storage — high-level actions ───────────────────────────────────
+    storageMigrateRoots: migrateStorageRoots,
+    storageDeleteAll:    deleteAllLocalData,
+
+    // ── Storage — diagnostics ──────────────────────────────────────────
+    storageLayoutDescriptor:     () => layout.readLayoutDescriptor(),
+    storageRegisteredNamespaces: () => layout.getRegisteredNamespaces(),
+    storageMigrationRan:         () => !!utils.getLocalStorage(MIGRATION_KEY),
+    storageMigrateLegacyBlobs:   () => migrateLegacyBlobs(),
 };

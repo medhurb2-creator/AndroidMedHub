@@ -96,6 +96,7 @@
         <button class="tab-button" data-tab="devices-tab">📱 Devices</button>
         <button class="tab-button" data-tab="preferences-tab">⚙️ Preferences</button>
         <button class="tab-button" data-tab="stats-tab">📊 Perfomance</button>
+        <button class="tab-button" data-tab="storage-tab">💾 Storage</button>
       </div>
 
       <!-- Profile Tab -->
@@ -238,6 +239,44 @@
           </div>
         </div>
         <button id="viewAnalyticsBtn" class="btn-secondary">View Detailed Analytics →</button>
+      </div>
+            <!-- Storage Tab -->
+      <div id="storage-tab" class="tab-content">
+        <h3>Storage</h3>
+
+        <div class="storage-card">
+          <div class="storage-row">
+            <span class="storage-label">Location</span>
+            <span class="storage-value" id="storage-current-root">—</span>
+          </div>
+          <div class="storage-row">
+            <span class="storage-label">Path</span>
+            <code class="storage-path" id="storage-current-path">—</code>
+          </div>
+          <div class="storage-row">
+            <span class="storage-label">Used by MedVix</span>
+            <span class="storage-value" id="storage-usage">—</span>
+          </div>
+        </div>
+
+        <h3>Move downloaded content</h3>
+        <p class="storage-hint" id="migrate-hint">
+          Moves all downloaded content to the other storage location.
+        </p>
+        <button id="migrateDataBtn" class="btn-secondary">
+          Migrate to other storage
+        </button>
+
+        <hr>
+
+        <h3>Delete all data</h3>
+        <p class="storage-hint">
+          Removes all downloads, cached content, notes, and local settings
+          from this device. Your account on the server is not affected.
+        </p>
+        <button id="deleteAllDataBtn" class="btn-danger">
+          Delete all data
+        </button>
       </div>
     </main>
 

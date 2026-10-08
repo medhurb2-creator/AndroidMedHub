@@ -95,6 +95,9 @@ html {
     --icon-orange:  #f97316;
     --icon-pink:    #ec4899;
     --icon-slate:   #64748b;
+
+    --status-bar-bg:    var(--bg-primary);
+    --status-bar-icons: dark;
 }
 
 /* Dark theme */
@@ -113,10 +116,14 @@ html {
 
     --overlay: rgba(0, 0, 0, 0.7);
 
+    --status-bar-bg:    var(--bg-primary);
+    --status-bar-icons: light;
+
     --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
     --shadow:    0 4px 6px -1px rgb(0 0 0 / 0.5);
     --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5);
 }
+
 
 /* ---------- 3. Base ---------- */
 body {
