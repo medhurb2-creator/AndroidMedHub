@@ -4,6 +4,8 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 
 import androidx.core.view.WindowCompat;
@@ -22,9 +24,26 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
     // Shared with MedvixAppPlugin.getPendingDeepLink(). The plugin reads
     // the same file name and keys, so both sides must stay in sync if
     // either is renamed.
-    private static final String REFERRER_PREFS     = "medvix_deferred_links";
-    private static final String KEY_PENDING_ROUTE  = "pending_route";
+    private static final String REFERRER_PREFS       = "medvix_deferred_links";
+    private static final String KEY_PENDING_ROUTE    = "pending_route";
+    private static final String KEY_PENDING_ROUTE_AT = "pending_route_at";
     private static final String KEY_REFERRER_CHECKED = "referrer_checked";
+
+    // ── Referrer retry policy ───────────────────────────────────────
+    //
+    // Play Services is often not ready to answer the Install Referrer
+    // query during the very first cold start of a brand-new install.
+    // It returns SERVICE_UNAVAILABLE. Retrying within the same session
+    // with a short backoff turns a flaky launch into a working one.
+    //
+    // Three attempts, delays are indexed by attempt number:
+    //   attempt 0 → immediate
+    //   attempt 1 → after 500 ms
+    //   attempt 2 → after 1500 ms
+    // Worst case: ~2 s added to the reference lookup, entirely off the
+    // UI thread. JavaScript polls getPendingDeepLink() in the meantime.
+    private static final int  REFERRER_MAX_ATTEMPTS = 3;
+    private static final long[] REFERRER_RETRY_DELAYS_MS = { 0L, 500L, 1500L };
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -261,11 +280,35 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
      * succeeds once per install — after that the referrer value stays
      * cached forever and would point at a stale route, so we set
      * KEY_REFERRER_CHECKED on success and never look again.
+     *
+     * Retries: the referrer service may not be ready on the very first
+     * cold start of a brand-new install. We retry up to three times with
+     * short backoff before giving up on this session. If we still fail,
+     * KEY_REFERRER_CHECKED stays false and the next cold launch retries.
      */
     private void retrieveInstallReferrer() {
         SharedPreferences prefs = getSharedPreferences(REFERRER_PREFS, MODE_PRIVATE);
 
         // The initial-install referrer is only meaningful once.
+        if (prefs.getBoolean(KEY_REFERRER_CHECKED, false)) {
+            return;
+        }
+
+        attemptInstallReferrer(0);
+    }
+
+    /**
+     * Single attempt at the Install Referrer lookup, with retry
+     * scheduling on transient failures.
+     *
+     * @param attempt zero-based attempt counter, capped at
+     *                REFERRER_MAX_ATTEMPTS - 1
+     */
+    private void attemptInstallReferrer(final int attempt) {
+        final SharedPreferences prefs = getSharedPreferences(REFERRER_PREFS, MODE_PRIVATE);
+
+        // A previous attempt (or a previous cold launch) already
+        // succeeded — nothing to do.
         if (prefs.getBoolean(KEY_REFERRER_CHECKED, false)) {
             return;
         }
@@ -290,10 +333,25 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
 
                             if (safeRoute != null
                                     && !prefs.contains(KEY_PENDING_ROUTE)) {
+                                // Persist the route and the moment we
+                                // captured it. The plugin reads both and
+                                // discards the route if it is older than
+                                // its freshness window — this prevents a
+                                // route that arrives days after install
+                                // from suddenly firing on an unrelated
+                                // launch.
                                 prefs.edit()
                                         .putString(KEY_PENDING_ROUTE, safeRoute)
+                                        .putLong(KEY_PENDING_ROUTE_AT,
+                                                System.currentTimeMillis())
                                         .apply();
+
+                                Log.i("MedVixReferrer",
+                                        "Deferred route captured: " + safeRoute);
                             }
+                        } else {
+                            Log.i("MedVixReferrer",
+                                    "Referrer present but no deep_link payload");
                         }
 
                         prefs.edit()
@@ -301,17 +359,46 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
                                 .apply();
 
                     } else if (responseCode ==
-                                   InstallReferrerClient.InstallReferrerResponse.SERVICE_UNAVAILABLE
-                            || responseCode ==
-                                   InstallReferrerClient.InstallReferrerResponse.FEATURE_NOT_SUPPORTED) {
+                            InstallReferrerClient.InstallReferrerResponse.SERVICE_UNAVAILABLE) {
 
-                        // Transient — do NOT mark as checked. Play Services
-                        // is often not ready to answer at cold start on a
-                        // brand-new install. The next cold launch retries,
-                        // and by then it succeeds.
+                        // Transient. Play Services is often not ready to
+                        // answer at cold start on a brand-new install.
+                        // Retry with backoff; if we exhaust attempts,
+                        // leave KEY_REFERRER_CHECKED false so the next
+                        // cold launch picks up where we left off.
+                        scheduleRetry(attempt, responseCode);
+
+                    } else if (responseCode ==
+                            InstallReferrerClient.InstallReferrerResponse.FEATURE_NOT_SUPPORTED) {
+
+                        // Permanent — the current Play Store app on this
+                        // device does not support the Install Referrer
+                        // API. Retrying will not help. Mark as checked so
+                        // we stop trying on every cold start.
                         Log.w("MedVixReferrer",
-                                "Install Referrer unavailable: " + responseCode);
+                                "Install Referrer not supported on this device");
+                        prefs.edit()
+                                .putBoolean(KEY_REFERRER_CHECKED, true)
+                                .apply();
+
+                    } else if (responseCode ==
+                            InstallReferrerClient.InstallReferrerResponse.DEVELOPER_ERROR) {
+
+                        // Bad request — coding issue. Retrying will not
+                        // help. Mark checked to stop noise.
+                        Log.e("MedVixReferrer",
+                                "Install Referrer DEVELOPER_ERROR — check Play Console setup");
+                        prefs.edit()
+                                .putBoolean(KEY_REFERRER_CHECKED, true)
+                                .apply();
+
+                    } else {
+                        // Any other code — treat as transient and retry.
+                        Log.w("MedVixReferrer",
+                                "Install Referrer unexpected response: " + responseCode);
+                        scheduleRetry(attempt, responseCode);
                     }
+
                 } catch (Exception e) {
                     Log.e("MedVixReferrer",
                             "Unable to process Install Referrer", e);
@@ -325,6 +412,37 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
                 try { client.endConnection(); } catch (Exception ignored) {}
             }
         });
+    }
+
+    /**
+     * Schedule a retry of the Install Referrer lookup if we have
+     * attempts left. Runs on the main looper so the
+     * InstallReferrerClient — which expects to be touched from the
+     * main thread — stays happy.
+     */
+    private void scheduleRetry(final int attempt, final int responseCode) {
+        final int next = attempt + 1;
+
+        if (next >= REFERRER_MAX_ATTEMPTS) {
+            Log.w("MedVixReferrer",
+                    "Install Referrer unavailable after " + REFERRER_MAX_ATTEMPTS
+                            + " attempts (last code: " + responseCode
+                            + ") — will retry on next cold launch");
+            return;
+        }
+
+        final long delay = REFERRER_RETRY_DELAYS_MS[
+                Math.min(next, REFERRER_RETRY_DELAYS_MS.length - 1)];
+
+        Log.w("MedVixReferrer",
+                "Install Referrer unavailable: " + responseCode
+                        + " — retry " + next + "/" + (REFERRER_MAX_ATTEMPTS - 1)
+                        + " in " + delay + "ms");
+
+        new Handler(Looper.getMainLooper()).postDelayed(
+                () -> attemptInstallReferrer(next),
+                delay
+        );
     }
 
     /**
@@ -361,9 +479,9 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
      *   • Must not be a protocol-relative URL ('//evil.com').
      *   • Must not contain backslashes or line breaks (header-injection
      *     style attacks against downstream parsers).
-     *   • Path must be one of the known share routes.
      *
-     * Query parameters (e.g. ?token=...) are allowed and preserved.
+     * Any path is accepted — the router decides what to do with it.
+     * Query strings and fragments are preserved as-is.
      */
     private String validateDeferredRoute(String destination) {
         if (destination == null || destination.isEmpty()) return null;
@@ -380,13 +498,6 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
         String path = uri.getPath();
 
         if (path == null || path.isEmpty()) return null;
-
-        if (!path.equals("/shared-note/")
-                && !path.equals("/shared-note")
-                && !path.equals("/shared-exam/")
-                && !path.equals("/shared-exam")) {
-            return null;
-        }
 
         return uri.toString();
     }

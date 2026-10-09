@@ -6,6 +6,7 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
+import android.util.Log;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -51,6 +52,14 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  * "checked" flag in the result tells JavaScript whether the native side
  * has finished its (async) referrer lookup — the JS layer polls until
  * checked=true so it never mistakes "not ready yet" for "no deferred link".
+ *
+ * Staleness: MainActivity also writes the capture timestamp alongside the
+ * route (pending_route_at). If the referrer lookup failed on launch #1
+ * and only succeeded days later, the route would otherwise fire on an
+ * unrelated launch and take the user somewhere they did not ask to go.
+ * getPendingDeepLink() drops any route older than STALE_AFTER_MS and
+ * returns no url, but still reports checked=true so JavaScript stops
+ * polling.
  */
 @CapacitorPlugin(name = "MedvixApp")
 public class MedvixAppPlugin extends Plugin {
@@ -63,6 +72,24 @@ public class MedvixAppPlugin extends Plugin {
     public static MedvixAppPlugin sInstance = null;
 
     private String launchUrl = null;
+
+    // ── Deferred deep-link storage keys ─────────────────────────────
+    //
+    // Must match the constants in MainActivity.java. If either side is
+    // renamed, both must change together.
+    private static final String REFERRER_PREFS        = "medvix_deferred_links";
+    private static final String KEY_PENDING_ROUTE     = "pending_route";
+    private static final String KEY_PENDING_ROUTE_AT  = "pending_route_at";
+    private static final String KEY_REFERRER_CHECKED  = "referrer_checked";
+
+    /**
+     * A deferred route is considered fresh for this long after it was
+     * captured. Beyond that, we drop it on read and log a warning. Ten
+     * minutes is generous enough to cover any reasonable install →
+     * first-launch gap, but short enough that a route recovered days
+     * later cannot hijack a normal launch.
+     */
+    private static final long STALE_AFTER_MS = 10 * 60 * 1000L;
 
     // ========================================================================
     // Lifecycle
@@ -175,37 +202,64 @@ public class MedvixAppPlugin extends Plugin {
      * Response shape:
      *   { url?: string, checked: boolean }
      *
-     *   • url      — present only if a valid route is waiting. Consumed
-     *                on read: the next call returns nothing.
+     *   • url      — present only if a valid route is waiting AND it is
+     *                still fresh (captured less than STALE_AFTER_MS ago).
+     *                Consumed on read: the next call returns nothing.
      *   • checked  — true once the native referrer lookup has finished
      *                (success OR permanent failure). JavaScript polls
      *                this method until checked=true so it doesn't mistake
      *                an in-flight lookup for "no deferred link".
      *
-     * The route is written by MainActivity.retrieveInstallReferrer() into
-     * the "medvix_deferred_links" SharedPreferences file. Both sides must
+     * The route and its timestamp are written by
+     * MainActivity.retrieveInstallReferrer() into the
+     * "medvix_deferred_links" SharedPreferences file. Both sides must
      * use the same file name and keys.
+     *
+     * Consuming the route: whether the route is fresh (returned) or
+     * stale (dropped), both the route and its timestamp are removed
+     * from SharedPreferences so the next call sees an empty slot.
      */
     @PluginMethod
     public void getPendingDeepLink(PluginCall call) {
         try {
             SharedPreferences prefs = getContext().getSharedPreferences(
-                    "medvix_deferred_links",
+                    REFERRER_PREFS,
                     android.content.Context.MODE_PRIVATE
             );
 
-            String route = prefs.getString("pending_route", null);
-            boolean checked = prefs.getBoolean("referrer_checked", false);
+            String  route      = prefs.getString(KEY_PENDING_ROUTE, null);
+            long    capturedAt = prefs.getLong(KEY_PENDING_ROUTE_AT, 0L);
+            boolean checked    = prefs.getBoolean(KEY_REFERRER_CHECKED, false);
 
             JSObject result = new JSObject();
             result.put("checked", checked);
 
             if (route != null && !route.isEmpty()) {
-                result.put("url", route);
+                // Freshness check. A route with no timestamp (0L) is
+                // treated as stale — MainActivity always writes both
+                // keys together, so a missing timestamp means the data
+                // is corrupt or from a pre-timestamp build.
+                boolean fresh = capturedAt > 0L
+                        && (System.currentTimeMillis() - capturedAt) < STALE_AFTER_MS;
 
-                // Consume exactly once — a stale route must never fire
-                // on a later launch.
-                prefs.edit().remove("pending_route").apply();
+                if (fresh) {
+                    result.put("url", route);
+                } else {
+                    long ageMs = capturedAt > 0L
+                            ? (System.currentTimeMillis() - capturedAt)
+                            : -1L;
+                    Log.w("MedvixApp",
+                            "Discarding stale deferred route (age "
+                                    + ageMs + "ms)");
+                }
+
+                // Consume either way — the slot is spent, fresh or not.
+                // Removing the timestamp alongside the route keeps the
+                // two keys from drifting out of sync.
+                prefs.edit()
+                        .remove(KEY_PENDING_ROUTE)
+                        .remove(KEY_PENDING_ROUTE_AT)
+                        .apply();
             }
 
             call.resolve(result);
