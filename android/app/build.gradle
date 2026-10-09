@@ -13,8 +13,8 @@ android {
         applicationId "com.medhurb.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 8
-        versionName "1.0.7"
+        versionCode 9
+        versionName "1.0.8"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
@@ -58,6 +58,9 @@ dependencies {
 
     // Google Play In-App Updates (Flexible + Immediate)
     implementation 'com.google.android.play:app-update:2.1.0'
+
+    // Google Play Install Referrer (deferred deep links)
+    implementation "com.android.installreferrer:installreferrer:2.2"
 }
 
 apply from: 'capacitor.build.gradle'

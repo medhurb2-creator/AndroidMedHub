@@ -28,6 +28,17 @@
  *   4. Nothing in this file inserts or mutates canvases in the DOM as
  *      pages. Canvases flow in from the render pipeline; the search
  *      overlay is the only thing this file appends to .page-container.
+ *
+ *   5. MemoryManager enforces the cap by EVICTING BEFORE REGISTERING. When
+ *      a new canvas would push usage over the cap, existing canvases are
+ *      evicted (farthest from the current page first, oldest as a
+ *      tiebreaker) until the new one fits. Memory pressure events are the
+ *      fallback for the case where the pyramid alone cannot keep up — not
+ *      the primary mechanism.
+ *
+ *   6. The cap is chosen from the device profile's memoryCapBytes, which
+ *      core.js derives from navigator.deviceMemory and the platform tier.
+ *      No consumer recomputes it from raw constants.
  * ═══════════════════════════════════════════════════════════════════════════
  *
  * Exports (7):
@@ -102,11 +113,19 @@ const PRESSURE_WARNING_RATIO = 0.75;
 /** Mem-pressure threshold: critical at 90% of cap. @private */
 const PRESSURE_CRITICAL_RATIO = 0.9;
 
-/** Mem-pressure hysteresis: reset to 'none' below 70%. @private */
-const PRESSURE_RESET_RATIO = 0.7;
+/**
+ * Mem-pressure hysteresis: reset to 'none' below 65%. Wider than the
+ * classic 70% so eviction does not immediately trigger a new alloc→evict
+ * cycle when the pyramid rebuilds.
+ * @private
+ */
+const PRESSURE_RESET_RATIO = 0.65;
 
 /** Eviction radius sequence when under pressure. @private */
 const EVICTION_RADII = [4, 3, 2, 1, 0];
+
+/** Fallback cap when deviceProfile is missing. @private */
+const FALLBACK_CAP_BYTES = 200 * 1024 * 1024;
 
 // ============================================================================
 // 1. LRU CACHE
@@ -330,6 +349,9 @@ export class LRUCache {
  * Five-tier cache: text content, page viewports, rendered canvases,
  * pinned thumbnails, and reserved spatial index. All tiers except the
  * thumbnail tier enforce LRU caps.
+ *
+ * The byte cap is read once from the device profile. Subsequent tier
+ * allocations derive their own sub-caps from that single value.
  */
 export class CacheManager {
   /**
@@ -640,16 +662,21 @@ export class CacheManager {
     }
   }
 
-  /** @private @returns {number} */
+  /**
+   * Read the byte cap from the device profile set up by core.js. Falls
+   * back to a conservative default if the profile is missing (web build,
+   * bootstrap failure).
+   * @private @returns {number}
+   */
   _computeCapBytes() {
-    let isMobile = false;
     try {
       const state = this._core.getState();
       const profile = state ? state.get('deviceProfile') : null;
-      if (profile && profile.isMobile) isMobile = true;
+      if (profile && typeof profile.memoryCapBytes === 'number' && profile.memoryCapBytes > 0) {
+        return profile.memoryCapBytes;
+      }
     } catch { /* ignore */ }
-    const mb = isMobile ? CONFIG.MEMORY_CAP_MOBILE_MB : CONFIG.MEMORY_CAP_DESKTOP_MB;
-    return mb * 1024 * 1024;
+    return FALLBACK_CAP_BYTES;
   }
 }
 
@@ -658,18 +685,40 @@ export class CacheManager {
 // ============================================================================
 
 /**
- * Tracks every canvas the viewer allocates, enforces the total cap, and emits
- * MEMORY_PRESSURE events at configurable thresholds.
+ * Tracks every canvas the viewer allocates, enforces the total cap, and
+ * emits MEMORY_PRESSURE events at configurable thresholds.
+ *
+ * EVICT-BEFORE-REGISTER:
+ *   Before a new canvas is admitted, existing canvases are evicted until
+ *   the incoming allocation fits. This is what keeps MEMORY_PRESSURE from
+ *   firing on every render — the cap is never breached, so the warning
+ *   and critical thresholds are reserved for the rare cases where the
+ *   pyramid itself cannot keep up.
+ *
+ *   Eviction order: farthest from `keepPage` first (so a page 20 away
+ *   goes before a page 3 away), oldest registration as the tiebreaker.
+ *
+ * ITERATION:
+ *   WeakMap has no iteration API. A parallel Set holds the same canvas
+ *   references so eviction can find and sort candidates. The Set is the
+ *   companion to the WeakMap, not a duplicate store — removal from one
+ *   is always paired with removal from the other.
  */
 export class MemoryManager {
   /** @param {import('./core.js').ViewerCore} core */
   constructor(core) {
     /** @private */ this._core = core;
+
     /** @private @type {WeakMap<HTMLCanvasElement, { pageNum: number, bytes: number, pinned: boolean, registeredAt: number }>} */
     this._canvases = new WeakMap();
+
+    /** @private @type {Set<HTMLCanvasElement>} */
+    this._registered = new Set();
+
     /** @private */ this._bytesUsed = 0;
     /** @private */ this._bytesPinned = 0;
     /** @private */ this._canvasCount = 0;
+
     /** @private @type {number} */ this._capBytes = this._computeCapBytes();
     /** @private @type {'none'|'warning'|'critical'} */ this._lastPressureLevel = 'none';
   }
@@ -677,6 +726,16 @@ export class MemoryManager {
   // ── Registration ──────────────────────────────────────────────────────────
 
   /**
+   * Register a canvas.
+   *
+   * If the incoming canvas alone exceeds the cap, it is admitted and every
+   * other non-pinned canvas is evicted first — refusing the render would
+   * leave the visible page blank, which is worse than a temporarily tight
+   * budget.
+   *
+   * Otherwise, eviction runs BEFORE the registration so the cap is never
+   * breached even momentarily.
+   *
    * @param {HTMLCanvasElement} canvas
    * @param {number} pageNum
    * @param {{ pinned?: boolean }} [options]
@@ -686,6 +745,21 @@ export class MemoryManager {
     if (!canvas) return;
     const bytes = this._canvasBytes(canvas);
     const pinned = !!(options && options.pinned);
+
+    // Single-canvas-larger-than-cap: admit and clear everything else.
+    if (bytes > this._capBytes) {
+      this._evictAllExcept(canvas);
+    } else {
+      // Evict before registering so the cap is never exceeded.
+      const needed = (this._bytesUsed + this._bytesPinned + bytes) - this._capBytes;
+      if (needed > 0) {
+        this._evictToTarget(
+          this._capBytes - this._bytesPinned - bytes,
+          pageNum,
+          canvas,
+        );
+      }
+    }
 
     const existing = this._canvases.get(canvas);
     if (existing) {
@@ -701,6 +775,7 @@ export class MemoryManager {
       pinned,
       registeredAt: Date.now(),
     });
+    this._registered.add(canvas);
     if (pinned) this._bytesPinned += bytes;
     else this._bytesUsed += bytes;
 
@@ -716,6 +791,7 @@ export class MemoryManager {
     else this._bytesUsed -= entry.bytes;
     this._canvasCount = Math.max(0, this._canvasCount - 1);
     this._canvases.delete(canvas);
+    this._registered.delete(canvas);
     this._evaluatePressure();
   }
 
@@ -753,6 +829,32 @@ export class MemoryManager {
     this._lastPressureLevel = 'critical';
   }
 
+  /**
+   * Schedule an idle-time eviction to bring usage back toward the resume
+   * band (RESET_RATIO of the cap). Called by core.js when MEMORY_PRESSURE
+   * fires at warning level. Non-blocking.
+   *
+   * @param {number} activePageIndex
+   * @returns {void}
+   */
+  scheduleBackgroundEviction(activePageIndex) {
+    const run = () => {
+      if (this._bytesUsed + this._bytesPinned <= this._capBytes * PRESSURE_RESET_RATIO) {
+        return;
+      }
+      const target = this._capBytes * PRESSURE_RESET_RATIO - this._bytesPinned;
+      this._evictToTarget(target, activePageIndex, null);
+    };
+
+    try {
+      if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(run, { timeout: 1000 });
+      } else {
+        setTimeout(run, 200);
+      }
+    } catch { /* ignore */ }
+  }
+
   // ── Internal ──────────────────────────────────────────────────────────────
 
   /** @private */
@@ -786,22 +888,78 @@ export class MemoryManager {
     } catch { /* ignore */ }
   }
 
+  /**
+   * Evict non-pinned canvases (farthest from `keepPage` first, oldest
+   * registration as tiebreaker) until total used bytes are at or below
+   * `targetBytes`. Skips `skipCanvas` — used when registering a canvas
+   * that hasn't been added to `_registered` yet.
+   *
+   * @private
+   * @param {number} targetBytes
+   * @param {number} keepPage
+   * @param {HTMLCanvasElement|null} skipCanvas
+   */
+  _evictToTarget(targetBytes, keepPage, skipCanvas) {
+    const candidates = [];
+
+    for (const canvas of this._registered) {
+      if (canvas === skipCanvas) continue;
+      const rec = this._canvases.get(canvas);
+      if (!rec || rec.pinned) continue;
+      candidates.push({ canvas, rec });
+    }
+
+    // Sort: farthest from keepPage first, then oldest registration.
+    candidates.sort((a, b) => {
+      const da = Math.abs(a.rec.pageNum - keepPage);
+      const db = Math.abs(b.rec.pageNum - keepPage);
+      if (da !== db) return db - da;
+      return a.rec.registeredAt - b.rec.registeredAt;
+    });
+
+    for (const c of candidates) {
+      if (this._bytesUsed <= targetBytes) break;
+      this.unregisterCanvas(c.canvas);
+    }
+  }
+
+  /**
+   * Evict every non-pinned canvas except `keepCanvas`. Used when a single
+   * canvas is larger than the whole cap.
+   *
+   * @private
+   * @param {HTMLCanvasElement} keepCanvas
+   */
+  _evictAllExcept(keepCanvas) {
+    const snapshot = Array.from(this._registered);
+    for (const canvas of snapshot) {
+      if (canvas === keepCanvas) continue;
+      const rec = this._canvases.get(canvas);
+      if (rec && rec.pinned) continue;
+      this.unregisterCanvas(canvas);
+    }
+  }
+
   /** @private @param {HTMLCanvasElement|null} canvas @returns {number} */
   _canvasBytes(canvas) {
     if (!canvas || typeof canvas.width !== 'number' || typeof canvas.height !== 'number') return 0;
     return Math.max(0, canvas.width * canvas.height * CANVAS_BYTE_PER_PIXEL);
   }
 
-  /** @private @returns {number} */
+  /**
+   * Read the byte cap from the device profile set up by core.js. Falls
+   * back to a conservative default if the profile is missing.
+   * @private @returns {number}
+   */
   _computeCapBytes() {
-    let isMobile = false;
     try {
       const state = this._core.getState();
       const profile = state ? state.get('deviceProfile') : null;
-      if (profile && profile.isMobile) isMobile = true;
+      if (profile && typeof profile.memoryCapBytes === 'number' && profile.memoryCapBytes > 0) {
+        return profile.memoryCapBytes;
+      }
     } catch { /* ignore */ }
-    const mb = isMobile ? CONFIG.MEMORY_CAP_MOBILE_MB : CONFIG.MEMORY_CAP_DESKTOP_MB;
-    return mb * 1024 * 1024;
+    return FALLBACK_CAP_BYTES;
   }
 }
 
@@ -1030,11 +1188,7 @@ export class SearchManager {
     const container = els.main.querySelector('.' + CONFIG.PAGE_CONTAINER_CLASS);
     if (!container) return;
 
-    // Make .page-container the positioning context for the highlight layers,
-    // once per container instance. Without this the layers would anchor
-    // against #viewer-main (which is also positioned) — that works too, but
-    // being explicit keeps the layer/slot geometry consistent even if the
-    // CSS changes later.
+    // Make .page-container the positioning context for the highlight layers.
     if (container.style.position !== 'relative') {
       container.style.position = 'relative';
     }
@@ -1791,9 +1945,8 @@ export class OutlineManager {
         row.appendChild(spacer);
       }
 
-      // The label. Uses <button>, never <a href>. This is the reload fix:
-      // buttons have no default navigation, so no matter what a router or
-      // WebView does with anchor clicks, this element cannot trigger one.
+      // The label. Uses <button>, never <a href>. Buttons have no default
+      // navigation, so a router or WebView cannot trigger a reload on click.
       const label = document.createElement('button');
       label.type = 'button';
       label.className = 'outline-link';
@@ -2140,6 +2293,10 @@ export function createManagers(core) {
   }));
 
   // MEMORY_PRESSURE (critical) → enforce cache eviction.
+  //
+  // MemoryManager now evicts before registering, so it rarely emits at
+  // critical level. When it does, the pyramid could not keep up — the
+  // cache tiers are swept in addition to whatever MemoryManager did.
   teardowns.push(bus.on(Events.MEMORY_PRESSURE, (payload) => {
     if (!payload || payload.level !== 'critical') return;
     try { cache._onMemoryPressure(payload); } catch { /* ignore */ }

@@ -1,15 +1,30 @@
 package com.medhurb.app;
 
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.net.Uri;
 import android.os.Bundle;
+import android.util.Log;
 
 import androidx.core.view.WindowCompat;
 
+import com.android.installreferrer.api.InstallReferrerClient;
+import com.android.installreferrer.api.InstallReferrerStateListener;
+import com.android.installreferrer.api.ReferrerDetails;
 import com.getcapacitor.BridgeActivity;
 
 import ee.forgr.capacitor.social.login.ModifiedMainActivityForSocialLoginPlugin;
 
 public class MainActivity extends BridgeActivity implements ModifiedMainActivityForSocialLoginPlugin {
+
+    // ── Deferred deep-link storage ──────────────────────────────────
+    //
+    // Shared with MedvixAppPlugin.getPendingDeepLink(). The plugin reads
+    // the same file name and keys, so both sides must stay in sync if
+    // either is renamed.
+    private static final String REFERRER_PREFS     = "medvix_deferred_links";
+    private static final String KEY_PENDING_ROUTE  = "pending_route";
+    private static final String KEY_REFERRER_CHECKED = "referrer_checked";
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -48,6 +63,24 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
         registerPlugin(MedvixHapticsPlugin.class);
 
         super.onCreate(savedInstanceState);
+
+        // ── Deferred deep link (Play Install Referrer) ──────────────────
+        //
+        // If the user tapped an app.medvix.co.ke link, found no app, was
+        // sent to Play, installed, and then tapped "Open" (or later
+        // launched from the launcher), Play stores the original referrer
+        // payload. We read it here on the FIRST post-install launch and
+        // stash the destination in SharedPreferences for JavaScript to
+        // drain via MedvixAppPlugin.getPendingDeepLink().
+        //
+        // The lookup is asynchronous — it returns immediately and the
+        // callback fires whenever Play Services answers. Javascript polls
+        // MedvixAppPlugin until the "checked" flag flips true.
+        //
+        // Safe to call on every cold start: the method itself short-
+        // circuits once the check has succeeded, and it's a no-op on
+        // warm starts (onCreate runs once per Activity instance).
+        retrieveInstallReferrer();
 
         // ── Window layout — reserve the system bars ─────────────────────
         //
@@ -204,5 +237,157 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
     @Override
     public void IHaveModifiedTheMainActivityForTheUseWithSocialLoginPlugin() {
         // Intentionally empty — the method exists only as a marker.
+    }
+
+    // ========================================================================
+    // Deferred deep-link retrieval (Play Install Referrer)
+    // ========================================================================
+
+    /**
+     * Asks Google Play for the install referrer that was attached to the
+     * Play Store link the user tapped to install the app.
+     *
+     * The website passes the original destination as the "deep_link"
+     * query parameter of the referrer payload, e.g.
+     *
+     *   https://play.google.com/store/apps/details?id=com.medhurb.app
+     *     &referrer=deep_link%3D%252Fshared-note%252F%253Ftoken%253Dabc
+     *
+     * Play decodes that once and hands us a string like:
+     *
+     *   deep_link=%2Fshared-note%2F%3Ftoken%3Dabc
+     *
+     * We extract, validate, and persist the destination. The lookup only
+     * succeeds once per install — after that the referrer value stays
+     * cached forever and would point at a stale route, so we set
+     * KEY_REFERRER_CHECKED on success and never look again.
+     */
+    private void retrieveInstallReferrer() {
+        SharedPreferences prefs = getSharedPreferences(REFERRER_PREFS, MODE_PRIVATE);
+
+        // The initial-install referrer is only meaningful once.
+        if (prefs.getBoolean(KEY_REFERRER_CHECKED, false)) {
+            return;
+        }
+
+        final InstallReferrerClient client =
+                InstallReferrerClient.newBuilder(this).build();
+
+        client.startConnection(new InstallReferrerStateListener() {
+            @Override
+            public void onInstallReferrerSetupFinished(int responseCode) {
+                try {
+                    if (responseCode ==
+                            InstallReferrerClient.InstallReferrerResponse.OK) {
+
+                        ReferrerDetails details = client.getInstallReferrer();
+                        String referrer = details.getInstallReferrer();
+
+                        String destination = extractDeepLink(referrer);
+
+                        if (destination != null) {
+                            String safeRoute = validateDeferredRoute(destination);
+
+                            if (safeRoute != null
+                                    && !prefs.contains(KEY_PENDING_ROUTE)) {
+                                prefs.edit()
+                                        .putString(KEY_PENDING_ROUTE, safeRoute)
+                                        .apply();
+                            }
+                        }
+
+                        prefs.edit()
+                                .putBoolean(KEY_REFERRER_CHECKED, true)
+                                .apply();
+
+                    } else if (responseCode ==
+                                   InstallReferrerClient.InstallReferrerResponse.SERVICE_UNAVAILABLE
+                            || responseCode ==
+                                   InstallReferrerClient.InstallReferrerResponse.FEATURE_NOT_SUPPORTED) {
+
+                        // Transient — do NOT mark as checked. Play Services
+                        // is often not ready to answer at cold start on a
+                        // brand-new install. The next cold launch retries,
+                        // and by then it succeeds.
+                        Log.w("MedVixReferrer",
+                                "Install Referrer unavailable: " + responseCode);
+                    }
+                } catch (Exception e) {
+                    Log.e("MedVixReferrer",
+                            "Unable to process Install Referrer", e);
+                } finally {
+                    try { client.endConnection(); } catch (Exception ignored) {}
+                }
+            }
+
+            @Override
+            public void onInstallReferrerServiceDisconnected() {
+                try { client.endConnection(); } catch (Exception ignored) {}
+            }
+        });
+    }
+
+    /**
+     * Extracts the "deep_link" query parameter from the referrer string.
+     *
+     * We do not use Uri.parse() here because the referrer value we get
+     * back from Play is a bare query string (no scheme, no host), and the
+     * destination may itself contain characters that would confuse URI
+     * parsing. Splitting on '&' and decoding manually is more robust.
+     *
+     * Example input:  deep_link=%2Fshared-note%2F%3Ftoken%3Dabc123
+     * Example output: /shared-note/?token=abc123
+     */
+    private String extractDeepLink(String referrer) {
+        if (referrer == null || referrer.isEmpty()) return null;
+
+        for (String pair : referrer.split("&")) {
+            int eq = pair.indexOf('=');
+            if (eq <= 0) continue;
+
+            String key = Uri.decode(pair.substring(0, eq));
+            if (!"deep_link".equals(key)) continue;
+
+            return Uri.decode(pair.substring(eq + 1));
+        }
+        return null;
+    }
+
+    /**
+     * Validates a deferred destination before persisting it.
+     *
+     * Rules:
+     *   • Must be a relative path starting with a single '/'.
+     *   • Must not be a protocol-relative URL ('//evil.com').
+     *   • Must not contain backslashes or line breaks (header-injection
+     *     style attacks against downstream parsers).
+     *   • Path must be one of the known share routes.
+     *
+     * Query parameters (e.g. ?token=...) are allowed and preserved.
+     */
+    private String validateDeferredRoute(String destination) {
+        if (destination == null || destination.isEmpty()) return null;
+
+        if (!destination.startsWith("/")
+                || destination.startsWith("//")
+                || destination.contains("\\")
+                || destination.indexOf('\n') >= 0
+                || destination.indexOf('\r') >= 0) {
+            return null;
+        }
+
+        Uri uri = Uri.parse(destination);
+        String path = uri.getPath();
+
+        if (path == null || path.isEmpty()) return null;
+
+        if (!path.equals("/shared-note/")
+                && !path.equals("/shared-note")
+                && !path.equals("/shared-exam/")
+                && !path.equals("/shared-exam")) {
+            return null;
+        }
+
+        return uri.toString();
     }
 }

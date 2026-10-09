@@ -300,41 +300,103 @@ export function copyReferralLink(referralCode) {
     });
 }
 
-export function shareReferralLink(referralCode) {
-    const link = generateReferralLink(referralCode);
-    const shareData = {
-        title: 'Join MedVix and ace your medical exams!',
-        text: 'Use my referral link to join MedVix and get started with premium medical exam prep:',
-        url: link
-    };
+// ==================== SHARE REFERRAL LINK (NATIVE) ====================
 
-    // 1. Try Capacitor Share (if available)
-    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Share) {
-        window.Capacitor.Plugins.Share.share({
-            title: shareData.title,
-            text: shareData.text,
-            url: shareData.url,
-            dialogTitle: 'Share Referral Link'
-        }).catch(() => {
-            // Fallback to Web Share or clipboard
-            fallbackShare(shareData);
-        });
-    }
-    // 2. Try Web Share API
-    else if (navigator.share) {
-        navigator.share(shareData).catch(() => {
-            fallbackShare(shareData);
-        });
-    }
-    // 3. Fallback to clipboard
-    else {
-        fallbackShare(shareData);
-    }
+/**
+ * Get the native MedvixShare plugin handle, or null on web / old builds.
+ * MedvixShare is registered in MainActivity.onCreate() and exposed as
+ * window.Capacitor.Plugins.MedvixShare. It replaces @capacitor/share —
+ * do NOT reference Capacitor.Plugins.Share here; it will not exist.
+ */
+function _getNativeShare() {
+    if (typeof window === 'undefined') return null;
+    return (
+        window.Capacitor &&
+        window.Capacitor.Plugins &&
+        window.Capacitor.Plugins.MedvixShare
+    ) || null;
 }
 
-// Helper fallback for share
+/**
+ * Share the referral link.
+ *
+ * Fallback chain:
+ *   1. Native MedvixShare.share()   — Android app
+ *   2. navigator.share()            — mobile browsers, desktop Chrome/Edge
+ *   3. Clipboard copy               — always available
+ *
+ * Note on the native path: MedvixSharePlugin.share() sends EITHER
+ * `url` OR `text` as the body — url takes precedence. To keep both the
+ * human-readable message AND the link in the shared payload, we combine
+ * them into the `text` field and leave `url` unset for the native call.
+ * Web Share gets the structured { title, text, url } object so platforms
+ * that render a link preview can do so.
+ */
+export async function shareReferralLink(referralCode) {
+    const link = generateReferralLink(referralCode);
+    const title = 'Join MedVix and ace your medical exams!';
+    const message = 'Use my referral link to join MedVix and get started with premium medical exam prep:';
+
+    // ── 1. Native Android share sheet ──────────────────────────────
+    const NativeShare = _getNativeShare();
+    if (NativeShare && typeof NativeShare.share === 'function') {
+        try {
+            await NativeShare.share({
+                title,
+                // Combine message + link because native only sends one of them.
+                text: `${message}\n\n${link}`,
+                dialogTitle: 'Share Referral Link',
+            });
+            return;
+        } catch (err) {
+            console.warn('[Referral] Native share failed, falling back:', err);
+            // fall through
+        }
+    }
+
+    // ── 2. Web Share API ───────────────────────────────────────────
+    if (typeof navigator !== 'undefined' && navigator.share) {
+        try {
+            await navigator.share({ title, text: message, url: link });
+            return;
+        } catch (err) {
+            // User cancelled or unsupported — fall through to clipboard.
+        }
+    }
+
+    // ── 3. Clipboard fallback ──────────────────────────────────────
+    fallbackShare({ title, text: message, url: link });
+}
+
+/**
+ * Last-resort fallback: copy the full shareable text (message + link)
+ * to the clipboard. We do NOT call copyReferralLink() here — that
+ * regenerates the link from a code and would throw away the message.
+ * Copying the exact payload the user would have shared is friendlier.
+ */
 function fallbackShare(shareData) {
-    copyReferralLink(shareData.url.split('?ref=')[1]); // extract code from URL
+    const payload = `${shareData.text}\n\n${shareData.url}`;
+    const done = () => ui.showToast('Referral link copied!', 'success');
+    const fail = () => {
+        // Legacy browsers — use the textarea trick.
+        try {
+            const textarea = document.createElement('textarea');
+            textarea.value = payload;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            textarea.remove();
+            done();
+        } catch {
+            window.prompt('Copy your referral link:', payload);
+        }
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(payload).then(done).catch(fail);
+    } else {
+        fail();
+    }
 }
 
 // ==================== EXPOSE GLOBALLY ====================

@@ -1,6 +1,7 @@
 package com.medhurb.app;
 
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.net.Uri;
@@ -24,6 +25,7 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  *   • backButton event        — hardware back button interception
  *   • appStateChange event    — foreground/background transitions
  *   • exitApp()               — programmatic app exit
+ *   • getPendingDeepLink()    — deferred route from Play Install Referrer
  *
  * Same design discipline as MedvixDevicePlugin: no exceptions reach the
  * bridge, no dynamic imports on the JS side, everything resolves.
@@ -41,6 +43,14 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  * The static `sInstance` reference is how MainActivity reaches the live
  * plugin instance — plugins are created and owned by the Capacitor bridge,
  * so MainActivity can't construct one itself.
+ *
+ * ─── DEFERRED DEEP LINKS ────────────────────────────────────────────────────
+ * MainActivity writes a pending route into SharedPreferences when the
+ * Install Referrer API returns a valid deep_link payload on first install.
+ * getPendingDeepLink() reads it, returns it once, and deletes it. The
+ * "checked" flag in the result tells JavaScript whether the native side
+ * has finished its (async) referrer lookup — the JS layer polls until
+ * checked=true so it never mistakes "not ready yet" for "no deferred link".
  */
 @CapacitorPlugin(name = "MedvixApp")
 public class MedvixAppPlugin extends Plugin {
@@ -156,6 +166,52 @@ public class MedvixAppPlugin extends Plugin {
             ret.put("url", launchUrl);
         }
         call.resolve(ret);
+    }
+
+    /**
+     * Returns a deferred route that was captured from the Play Install
+     * Referrer on first install, if any.
+     *
+     * Response shape:
+     *   { url?: string, checked: boolean }
+     *
+     *   • url      — present only if a valid route is waiting. Consumed
+     *                on read: the next call returns nothing.
+     *   • checked  — true once the native referrer lookup has finished
+     *                (success OR permanent failure). JavaScript polls
+     *                this method until checked=true so it doesn't mistake
+     *                an in-flight lookup for "no deferred link".
+     *
+     * The route is written by MainActivity.retrieveInstallReferrer() into
+     * the "medvix_deferred_links" SharedPreferences file. Both sides must
+     * use the same file name and keys.
+     */
+    @PluginMethod
+    public void getPendingDeepLink(PluginCall call) {
+        try {
+            SharedPreferences prefs = getContext().getSharedPreferences(
+                    "medvix_deferred_links",
+                    android.content.Context.MODE_PRIVATE
+            );
+
+            String route = prefs.getString("pending_route", null);
+            boolean checked = prefs.getBoolean("referrer_checked", false);
+
+            JSObject result = new JSObject();
+            result.put("checked", checked);
+
+            if (route != null && !route.isEmpty()) {
+                result.put("url", route);
+
+                // Consume exactly once — a stale route must never fire
+                // on a later launch.
+                prefs.edit().remove("pending_route").apply();
+            }
+
+            call.resolve(result);
+        } catch (Exception e) {
+            call.reject("Unable to retrieve pending deep link");
+        }
     }
 
     @PluginMethod

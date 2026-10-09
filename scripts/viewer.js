@@ -20,7 +20,7 @@
  * Public exports:
  *   * loadDocumentInPage(docId)                             -> Promise<void>
  *   * openDocument(docId, title?, fileType?, opts?)         -> Promise<void>
- *   * showEmbeddedViewer(docId, title?, fileType?, opts?)   -> void
+ *   * showEmbeddedViewer(docId, title?, fileType?, opts?)   -> Promise<void>
  *   * closeEmbeddedViewer()                                 -> void
  *   * openDocumentModal(docId)                              -> Promise<void>  (legacy alias)
  *   * openPendingFile()                                     -> boolean       (host-page hook)
@@ -30,6 +30,38 @@
  *     subscribe CTA after the last preview page. Set by resource-browser.js
  *     for premium catalogue resources opened without an active subscription.
  *     Never set by external-file paths (file picker, Android intent).
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * ASYNC FAILURE PROPAGATION
+ *
+ *   The whole open-document chain is awaitable:
+ *
+ *     resource-browser.js Open handler
+ *       → viewer.openDocument(id, title, type, { previewMode })
+ *       → window.showViewer(...)  (set to resource-browser.js::showViewer)
+ *       → viewer.showEmbeddedViewer(...)
+ *       → _loadDocumentIntoEmbedded(...)
+ *
+ *   Every hop returns a Promise that resolves when the load completes and
+ *   rejects when it fails. The Open handler's try/catch is the endpoint:
+ *   it restores the button's "Open" state and surfaces a toast.
+ *
+ *   showEmbeddedViewer is written as a plain function (not async) that
+ *   returns the Promise from _loadDocumentIntoEmbedded and attaches a
+ *   silent `.catch(() => {})` to the returned promise. This silences the
+ *   browser's "unhandled rejection" warning for legacy callers that fire
+ *   and forget, while still rejecting for callers that await. Awaiting the
+ *   same Promise sees the rejection; the two paths do not interfere.
+ *
+ *   Errors that originate inside `core.loadDocument` are a special case:
+ *   core catches them, emits DOCUMENT_ERROR, and ui-internal renders the
+ *   standard error container into the viewer chrome. The chain does NOT
+ *   see those — loadDocument resolves normally after firing the event.
+ *   The chain only sees errors that happen BEFORE core takes over: missing
+ *   IndexedDB blob, failed download, core initialization failure. Those
+ *   are the cases where the button would otherwise stay stuck at
+ *   "Opening…" forever with no visible feedback.
+ * ═══════════════════════════════════════════════════════════════════════════
  *
  * External file handling:
  *   Two entry points hand external files to this module:
@@ -63,7 +95,8 @@
  *
  * Design constraints:
  *   * Zero import-time side effects. All wiring happens on demand.
- *   * Errors are rendered into the viewer chrome, never thrown to callers.
+ *   * Errors are rendered into the viewer chrome, never thrown to
+ *     non-awaiting callers. Awaiting callers receive the rejection.
  *   * Every error message is escaped via utils.escapeHtml.
  *   * No reference to pdfjsLib, Worker, localStorage, or rAF.
  *
@@ -451,6 +484,12 @@ export async function loadDocumentInPage(docId) {
  * This is the internal-document path. Auth is enforced by the target page's
  * own logic, not here.
  *
+ * The delegate call is awaited. When the host app's `window.showViewer`
+ * returns a Promise (as the resource-browser's does), any async failure
+ * inside the viewer propagates back here and out to the caller. This is
+ * what lets the resource-browser Open button's try/catch see "file not
+ * found", "download failed", and viewer initialization errors.
+ *
  * @param {string} docId
  * @param {string} [title='Document']
  * @param {string|null} [fileType=null]
@@ -460,12 +499,14 @@ export async function loadDocumentInPage(docId) {
 export async function openDocument(docId, title = 'Document', fileType = null, opts = null) {
   try { injectViewerStyles(); } catch { /* ignore */ }
 
-  try {
-    if (typeof window !== 'undefined' && typeof window.showViewer === 'function') {
-      window.showViewer(docId, title, fileType, opts);
-      return;
-    }
-  } catch { /* ignore */ }
+  if (typeof window !== 'undefined' && typeof window.showViewer === 'function') {
+    // Await the delegate so async failures surface to the caller.
+    // A sync delegate that returns undefined resolves immediately —
+    // which is correct behaviour for legacy hosts that don't return
+    // a Promise.
+    await window.showViewer(docId, title, fileType, opts);
+    return;
+  }
 
   try {
     router.navigateTo('resource-browser');
@@ -482,11 +523,18 @@ export async function openDocument(docId, title = 'Document', fileType = null, o
  * This is the catalogue path. Called by resource-browser.js when a
  * catalogue resource is opened. Mounts the chrome itself.
  *
+ * Returns a Promise that resolves when the load completes and rejects when
+ * it fails. Written as a plain (non-async) function so the returned Promise
+ * is exactly the one from `_loadDocumentIntoEmbedded` — but with a silent
+ * `.catch` attached, so callers that fire-and-forget do not trigger the
+ * browser's unhandled-rejection warning. Awaiting the same Promise still
+ * sees the rejection; the two paths do not interfere.
+ *
  * @param {string} docId
  * @param {string} [title='Document']
  * @param {string|null} [fileType=null]
  * @param {{ previewMode?: boolean }|null} [opts=null]
- * @returns {void}
+ * @returns {Promise<void>}
  */
 export function showEmbeddedViewer(docId, title = 'Document', fileType = null, opts = null) {
   const els = refreshElementCache();
@@ -495,7 +543,9 @@ export function showEmbeddedViewer(docId, title = 'Document', fileType = null, o
   _currentDocId = docId;
   _isLocalFile = false;
 
-  if (!els || !els.main) return;
+  if (!els || !els.main) {
+    return Promise.resolve();
+  }
 
   try { mountChrome(_core); } catch { /* ignore */ }
 
@@ -505,10 +555,27 @@ export function showEmbeddedViewer(docId, title = 'Document', fileType = null, o
   if (els.progress) els.progress.style.display = 'none';
   if (els.title) els.title.textContent = title || 'Document';
 
-  _loadDocumentIntoEmbedded(docId, fileType, opts).catch(() => { /* handled internally */ });
+  const loadPromise = _loadDocumentIntoEmbedded(docId, fileType, opts);
+
+  // Silence unhandled-rejection warnings for callers that ignore the
+  // returned Promise. The rejection is still delivered to anyone who
+  // awaits loadPromise.
+  loadPromise.catch(() => { /* silence for fire-and-forget callers */ });
+
+  return loadPromise;
 }
 
 /**
+ * Load a catalogue document into the mounted embedded viewer.
+ *
+ * Errors that occur before core takes over (missing IndexedDB blob, failed
+ * download, core init failure) are rendered into the viewer chrome AND
+ * re-thrown so the caller can react. Once core.loadDocument is reached,
+ * errors are core's responsibility — core catches them, emits
+ * DOCUMENT_ERROR, and ui-internal renders the standard error container.
+ * core.loadDocument does not reject for PDF-load errors; it resolves
+ * normally after firing the event.
+ *
  * @private
  * @param {string} docId
  * @param {string|null} fileType
@@ -532,11 +599,17 @@ async function _loadDocumentIntoEmbedded(docId, fileType, opts = null) {
     const core = await _ensureCore();
     await core.loadDocument(blob, fileType, 'Document', opts);
   } catch (err) {
+    // Render the error into the viewer chrome so the failure is visible
+    // even if the caller ignores the rejection.
     if (els && els.main) {
       const message = err && err.message ? err.message : 'Failed to load document';
       const safe = escapeHtml(String(message));
-      els.main.innerHTML = `<div class="error-container" role="alert"><p>${safe}</p></div>`;
+      els.main.innerHTML =
+        `<div class="error-container" role="alert"><p>${safe}</p></div>`;
     }
+    // Re-throw so awaiting callers (the Open button handler) can restore
+    // their state and surface their own feedback.
+    throw err;
   } finally {
     if (els && els.loading) els.loading.style.display = 'none';
     if (els && els.progress) els.progress.style.display = 'none';

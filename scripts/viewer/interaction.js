@@ -16,8 +16,8 @@
  *      never measures it for anything except "what size is the viewport".
  *
  *   2. .page-container is the ONLY interactive element. Zoom (pinch/wheel)
- *      and the (now-retired) pan transform target ONLY .page-container. If
- *      it does not exist, zoom and pan are inert — no fallback to main.
+ *      targets ONLY .page-container. If it does not exist, zoom is inert —
+ *      no fallback to main.
  *
  *   3. Native scroll owns X and Y. PanManager is a no-op stub kept only for
  *      backward compatibility; it is never attached and never enabled.
@@ -32,6 +32,12 @@
  *   5. Pinch and Ctrl+wheel are recognised ONLY when they originate inside
  *      .page-container (or its descendants). Touches on the background do
  *      nothing.
+ *
+ *   6. Velocity is reported, not acted upon. This file samples velocity
+ *      every frame and emits SCROLL_VELOCITY on the bus. Core consumes that
+ *      event to choose between paper / glance / idle render modes. This
+ *      file never pauses the scheduler, never cancels render jobs, never
+ *      decides what renders — the pyramid in core.js owns all of that.
  * ═══════════════════════════════════════════════════════════════════════════
  *
  * Boundary rule:
@@ -39,7 +45,7 @@
  *     touch listeners.
  *   • Never touches the engine. Accesses subsystems exclusively via
  *     core.getScheduler(), core.getTileManager(), core.getRenderer(),
- *     core.getScroll(), core.getZoom(), core.getPan().
+ *     core.getScroll(), core.getZoom().
  *   • Never inserts canvases into the DOM (that is core's RENDER_COMPLETE
  *     subscriber). Never mutates caches.
  *
@@ -67,7 +73,13 @@ const SWIPE_MIN_DX_PX = 40;
 const WHEEL_ZOOM_FACTOR = 0.002;
 const VELOCITY_EMA_WEIGHT = 0.3;
 const ZOOM_PRERENDER_RADIUS = 5;
-const PREFETCH_OPPOSITE_FRACTION = 0.5;
+
+/**
+ * Milliseconds of scroll quiet before the idle tick fires a final
+ * SCROLL_VELOCITY with velocity 0. At that point core resets the pyramid
+ * to its centred, full-ring state.
+ */
+const SCROLL_IDLE_MS = 150;
 
 // ============================================================================
 // 1. SCROLL MANAGER
@@ -75,10 +87,8 @@ const PREFETCH_OPPOSITE_FRACTION = 0.5;
 
 /**
  * Owns the scroll listener on `#viewer-main`. Samples scroll velocity and
- * direction on every animation frame; drives scheduler pause/resume with
- * hysteresis; recomputes the visible-page set using largest-overlap;
- * enqueues directional prefetch; cancels stale work on direction change;
- * provides `navigateTo` for fast random access.
+ * direction on every animation frame and emits SCROLL_VELOCITY. Core
+ * consumes that event to drive the pyramid and the render-mode bands.
  *
  * Slots are found by `[data-page]` inside `.page-container`. Both covers and
  * rendered canvases carry that attribute, so this manager is agnostic to
@@ -101,9 +111,15 @@ export class ScrollManager {
     /** @type {number} */ this._direction = 0;
     /** @type {number} */ this._directionIdleFrames = 0;
 
-    this._paused = false;
     this._layoutDirty = false;
     this._attached = false;
+
+    /**
+     * Fires 150 ms after the last scroll frame. Emits velocity 0 so core
+     * can restore the pyramid to idle mode.
+     * @type {ReturnType<typeof setTimeout>|null}
+     */
+    this._idleTimer = null;
 
     this._onScrollThrottled = rafThrottle((_event, frameTimestamp) => {
       this._onScrollFrame(frameTimestamp);
@@ -124,6 +140,10 @@ export class ScrollManager {
   }
 
   detach() {
+    if (this._idleTimer) {
+      clearTimeout(this._idleTimer);
+      this._idleTimer = null;
+    }
     if (!this._attached || !this._scrollRoot) return;
     try {
       this._scrollRoot.removeEventListener('scroll', this._onScrollThrottled);
@@ -183,11 +203,19 @@ export class ScrollManager {
   }
 
   /**
-   * Fast page navigation. Cancels pending work, updates state, scrolls the
-   * target slot into view (scroll mode only), enqueues a P1 render, and
-   * emits PAGE_VISIBLE.
+   * Fast page navigation.
+   *
+   * Cancels pending work, ensures geometry for the target is real (not a
+   * 200px placeholder), scrolls the target slot into view, then emits
+   * PAGE_VISIBLE so core sets currentPage and slides the pyramid.
+   *
+   * Preview mode: navigation is clamped at the effective page limit.
+   *
+   * @param {number} pageNum
+   * @param {{ smooth?: boolean }} [opts]
+   * @returns {Promise<void>}
    */
-  navigateTo(pageNum, opts) {
+  async navigateTo(pageNum, opts) {
     if (!Number.isFinite(pageNum)) return;
     const totalPages = this._getNumPages();
     const effectiveLimit = this._getEffectiveLimit();
@@ -195,6 +223,8 @@ export class ScrollManager {
     const clampedToTotal = clamp(pageNum, 1, Math.max(1, totalPages));
     const target = clampedToTotal > effectiveLimit ? effectiveLimit : clampedToTotal;
 
+    // Cancel all queued and running work — the previous scroll's
+    // prefetches are meaningless once we're jumping.
     try {
       const scheduler = this._core.getScheduler();
       if (scheduler && scheduler.cancelAll) {
@@ -204,11 +234,28 @@ export class ScrollManager {
     } catch { /* ignore */ }
 
     const viewMode = this._getViewMode();
+
     if (viewMode === 'scroll') {
+      // Ensure real geometry before scrolling. Pages past the eager-
+      // metadata threshold are 200px placeholders, so the target's
+      // offsetTop is far short of its true position.
+      try {
+        if (typeof this._core._preloadSizesUpTo === 'function') {
+          await this._core._preloadSizesUpTo(target);
+        }
+      } catch { /* ignore */ }
+
       if (this._layoutDirty) this.recomputeLayout();
+
       const entry = this._slotCache.find((w) => w.pageNum === target);
       if (entry && this._scrollRoot) {
-        const smooth = !!(opts && opts.smooth);
+        // Long jumps snap; short jumps animate. A smooth scroll across
+        // hundreds of pages takes seconds and races with the pyramid's
+        // ongoing DOM updates.
+        const distance = Math.abs(entry.top - this._scrollRoot.scrollTop);
+        const smooth = !!(opts && opts.smooth)
+          && distance < 4 * this._scrollRoot.clientHeight;
+
         if (smooth) {
           try {
             entry.slot.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -221,26 +268,33 @@ export class ScrollManager {
       }
     }
 
+    // Emit PAGE_VISIBLE. Core's subscriber sets currentPage and either
+    // slides the pyramid (scroll mode) or rebuilds the layout (page mode).
+    // Do NOT set currentPage here first — the subscriber's guard would
+    // then skip the pyramid for every outline-driven navigation.
     try {
-      const state = this._core.getState();
-      state.set('currentPage', target);
-      this._core.getBus().emit(Events.PAGE_VISIBLE, { pageNum: target, reason: 'navigation' });
+      this._core.getBus().emit(Events.PAGE_VISIBLE, {
+        pageNum: target,
+        reason: 'navigation',
+      });
     } catch { /* ignore */ }
 
-    this._requestRender(target, PRIORITY.VISIBLE);
     this._emitActivity();
   }
 
   refreshVisible() {
     if (this._layoutDirty) this.recomputeLayout();
     this._updateVisiblePages();
-    for (const pageNum of this._visibleSet) {
-      this._requestRender(pageNum, PRIORITY.VISIBLE);
-    }
+    // The pyramid in core drives rendering; this just reports visibility
+    // state so anything observing visiblePageNumbers sees the current set.
   }
 
   destroy() {
     this.detach();
+    if (this._idleTimer) {
+      clearTimeout(this._idleTimer);
+      this._idleTimer = null;
+    }
     this._slotCache = [];
     this._visibleSet.clear();
     this._visibleTopPage = 0;
@@ -248,7 +302,6 @@ export class ScrollManager {
     this._lastTimestamp = 0;
     this._velocity = 0;
     this._direction = 0;
-    this._paused = false;
     this._layoutDirty = false;
   }
 
@@ -290,15 +343,13 @@ export class ScrollManager {
     this._lastTimestamp = now;
     this._lastScrollTop = scrollTop;
 
-    if (this._flags.useVelocityThrottle) {
-      this._applyVelocityThrottle();
-    }
+    // NOTE: _applyVelocityThrottle and _prefetchAdjacent are no longer
+    // called from this frame. Velocity-driven rendering is owned by the
+    // pyramid in core.js, which consumes SCROLL_VELOCITY below. Calling
+    // scheduler.pause() here would freeze the visible ring during a fling
+    // — the opposite of what we want.
 
     this._updateVisiblePages();
-
-    if (this._flags.useRenderPrefetch && Math.abs(this._velocity) < CONFIG.VELOCITY_PREFETCH_MAX) {
-      this._prefetchAdjacent();
-    }
 
     try {
       this._core.getState().set('scrollVelocityPxPerFrame', this._velocity);
@@ -312,21 +363,26 @@ export class ScrollManager {
         direction: this.getDirection(),
       });
     } catch { /* ignore */ }
-  }
 
-  _applyVelocityThrottle() {
-    const scheduler = this._core.getScheduler();
-    if (!scheduler) return;
-    const absV = Math.abs(this._velocity);
-    const suspend = CONFIG.VELOCITY_SUSPEND_PX_PER_FRAME;
-
-    if (!this._paused && absV > suspend) {
-      try { scheduler.pause(); } catch { /* ignore */ }
-      this._paused = true;
-    } else if (this._paused && absV < suspend / 2) {
-      try { scheduler.resume(); } catch { /* ignore */ }
-      this._paused = false;
-    }
+    // Reset the idle timer on every scroll frame. When it fires after
+    // SCROLL_IDLE_MS of quiet, emit a final SCROLL_VELOCITY with velocity 0
+    // so core restores the pyramid to its centred, full-ring state.
+    if (this._idleTimer) clearTimeout(this._idleTimer);
+    this._idleTimer = setTimeout(() => {
+      this._idleTimer = null;
+      this._velocity = 0;
+      this._direction = 0;
+      this._directionIdleFrames = 0;
+      try {
+        this._core.getState().set('scrollVelocityPxPerFrame', 0);
+      } catch { /* ignore */ }
+      try {
+        this._core.getBus().emit(Events.SCROLL_VELOCITY, {
+          velocity: 0,
+          direction: 0,
+        });
+      } catch { /* ignore */ }
+    }, SCROLL_IDLE_MS);
   }
 
   _updateVisiblePages() {
@@ -358,12 +414,8 @@ export class ScrollManager {
     const newSet = new Set(visible.map((v) => v.pageNum));
     const previousSet = this._visibleSet;
     this._visibleSet = newSet;
-
-    for (const pageNum of newSet) {
-      if (!previousSet.has(pageNum)) {
-        this._requestRender(pageNum, PRIORITY.VISIBLE);
-      }
-    }
+    // Newly-entered pages are handled by the pyramid subscriber on
+    // PAGE_VISIBLE; no direct enqueue here.
 
     if (topPage > 0 && topPage !== this._visibleTopPage) {
       this._visibleTopPage = topPage;
@@ -388,67 +440,6 @@ export class ScrollManager {
     const scheduler = this._core.getScheduler();
     if (!scheduler || !scheduler.cancelBelow) return;
     try { scheduler.cancelBelow(PRIORITY.ADJACENT); } catch { /* ignore */ }
-  }
-
-  _prefetchAdjacent() {
-    if (!this._scrollRoot) return;
-
-    const limit = this._getEffectiveLimit();
-    if (limit <= 1) return;
-
-    const current = this._getCurrentPage();
-    if (!Number.isFinite(current)) return;
-
-    const dir = this._direction > 0 ? 1 : this._direction < 0 ? -1 : 0;
-    if (dir === 0) return;
-
-    const absV = Math.abs(this._velocity);
-    const activeDepth = absV > CONFIG.VELOCITY_SUSPEND_PX_PER_FRAME / 2
-      ? CONFIG.PREFETCH_DEPTH_FAST
-      : CONFIG.PREFETCH_DEPTH_SLOW;
-
-    for (let offset = 1; offset <= activeDepth; offset++) {
-      const pageNum = current + dir * offset;
-      if (pageNum < 1 || pageNum > limit) continue;
-      this._requestRender(pageNum, PRIORITY.ADJACENT);
-    }
-
-    const oppositeDepth = Math.max(
-      1,
-      Math.floor(activeDepth * PREFETCH_OPPOSITE_FRACTION),
-    );
-    for (let offset = 1; offset <= oppositeDepth; offset++) {
-      const pageNum = current - dir * offset;
-      if (pageNum < 1 || pageNum > limit) continue;
-      this._requestRender(pageNum, PRIORITY.MARGIN);
-    }
-  }
-
-  _requestRender(pageNum, priority) {
-    if (!Number.isFinite(pageNum)) return;
-    if (pageNum > this._getEffectiveLimit()) return;
-
-    const scheduler = this._core.getScheduler();
-    if (!scheduler || !scheduler.enqueue) return;
-
-    let scale = 1;
-    let rotation = 0;
-    try {
-      const state = this._core.getState();
-      scale = state.get('scale') || 1;
-      rotation = state.get('rotation') || 0;
-    } catch { /* ignore */ }
-
-    const job = {
-      id: `page:${pageNum}:${scale}:${rotation}`,
-      kind: 'page',
-      pageNum,
-      scale,
-      rotation,
-      tileRect: null,
-      priority,
-    };
-    try { scheduler.enqueue(job); } catch { /* ignore */ }
   }
 
   _emitActivity() {
@@ -498,8 +489,7 @@ export class ScrollManager {
  * point in natural-page coordinates, clear the transform, emit
  * SCALE_APPLIED (core resizes slots to natural × newScale), then on next
  * frame adjust scrollLeft/scrollTop so the same page-point stays under the
- * focal point. Finally enqueue re-raster for visible pages plus the
- * surrounding 5-page window.
+ * focal point.
  *
  * If .page-container does not exist, attach(null) makes the manager inert.
  * There is no fallback to #viewer-main.
@@ -516,7 +506,6 @@ export class ZoomManager {
 
     this._gestureActive = false;
     /** @type {string|null} */ this._gestureSource = null;
-    /** @type {{x:number, y:number}} */ this._origin = { x: 0, y: 0 };
 
     // Focal in client (viewport) coords — captured at gesture start and
     // preserved across settle.
@@ -543,7 +532,6 @@ export class ZoomManager {
    */
   attach(node) {
     if (this._transformNode === (node || null)) return;
-    // Detach any in-flight gesture from the previous node.
     this._cancelSettle();
     this._gestureActive = false;
     this._transformNode = node || null;
@@ -655,7 +643,6 @@ export class ZoomManager {
     this._gestureStartScale = this._currentScale;
     this._targetScale = this._currentScale;
 
-    // Capture focal in client coords.
     if (focal && typeof focal.x === 'number' && typeof focal.y === 'number') {
       this._focalClientX = focal.x;
       this._focalClientY = focal.y;
@@ -854,7 +841,6 @@ export class ZoomManager {
    *   3. Emit SCALE_APPLIED — core.js resizes every slot to natural × scale.
    *   4. On next frame, adjust scroll so the same page-point stays under the
    *      focal point.
-   *   5. Enqueue re-raster for the visible ring + the surrounding window.
    */
   _commitScale(scale, opts) {
     const clamped = clamp(scale, CONFIG.MIN_ZOOM, CONFIG.MAX_ZOOM);
@@ -930,70 +916,6 @@ export class ZoomManager {
     }
 
     this._gestureLayoutOrigin = null;
-
-    this._enqueueVisibleRenders(clamped);
-  }
-
-  _enqueueVisibleRenders(scale) {
-    const scroll = this._core.getScroll();
-    const scheduler = this._core.getScheduler();
-    if (!scheduler || !scheduler.enqueue) return;
-
-    let limit = 1;
-    let rotation = 0;
-    try {
-      if (this._core && typeof this._core.getEffectivePageLimit === 'function') {
-        limit = this._core.getEffectivePageLimit();
-      } else {
-        limit = this._core.getState().get('numPages') || 1;
-      }
-      rotation = this._core.getState().get('rotation') || 0;
-    } catch {
-      limit = this._core.getState().get('numPages') || 1;
-    }
-
-    const pages = scroll && scroll.getVisiblePageNumbers
-      ? scroll.getVisiblePageNumbers()
-      : [];
-
-    const fallback = this._getCurrentPage();
-    const visibleList = pages.length > 0 ? pages : [fallback];
-
-    const enqueued = new Set();
-
-    for (const pageNum of visibleList) {
-      if (pageNum > limit) continue;
-      if (enqueued.has(pageNum)) continue;
-      enqueued.add(pageNum);
-      this._enqueuePage(scheduler, pageNum, scale, rotation, PRIORITY.VISIBLE);
-    }
-
-    const current = fallback;
-    for (let offset = 1; offset <= ZOOM_PRERENDER_RADIUS; offset++) {
-      const above = current - offset;
-      if (above >= 1 && above <= limit && !enqueued.has(above)) {
-        enqueued.add(above);
-        this._enqueuePage(scheduler, above, scale, rotation, PRIORITY.ADJACENT);
-      }
-      const below = current + offset;
-      if (below >= 1 && below <= limit && !enqueued.has(below)) {
-        enqueued.add(below);
-        this._enqueuePage(scheduler, below, scale, rotation, PRIORITY.ADJACENT);
-      }
-    }
-  }
-
-  _enqueuePage(scheduler, pageNum, scale, rotation, priority) {
-    const job = {
-      id: `page:${pageNum}:${scale}:${rotation}`,
-      kind: 'page',
-      pageNum,
-      scale,
-      rotation,
-      tileRect: null,
-      priority,
-    };
-    try { scheduler.enqueue(job); } catch { /* ignore */ }
   }
 
   _getCurrentPage() {
@@ -1038,7 +960,6 @@ export class GestureManager {
     this._core = core;
     /** @type {HTMLElement|null} */ this._target = null;
     /** @type {ZoomManager|null} */ this._zoom = null;
-    /** @type {PanManager|null} */ this._pan = null;
     /** @type {ScrollManager|null} */ this._scroll = null;
 
     this._pinchDistance = 0;
@@ -1062,7 +983,6 @@ export class GestureManager {
     if (!target) return;
     this._target = target;
     this._zoom = (deps && deps.zoomManager) || null;
-    this._pan = (deps && deps.panManager) || null;
     this._scroll = (deps && deps.scrollManager) || null;
 
     this._target.addEventListener('touchstart', this._onTouchStartBound, { passive: false });
@@ -1097,7 +1017,6 @@ export class GestureManager {
   destroy() {
     this.detach();
     this._zoom = null;
-    this._pan = null;
     this._scroll = null;
   }
 
@@ -1111,8 +1030,6 @@ export class GestureManager {
       this._pinchDistance = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
       this._pinchScale = this._zoom ? this._zoom.getCurrentScale() : 1;
       this._pinchActive = true;
-
-      if (this._pan) this._pan.setEnabled(false);
 
       if (this._zoom) {
         const focal = {
@@ -1160,7 +1077,6 @@ export class GestureManager {
       this._pinchActive = false;
       this._pinchDistance = 0;
       this._touchStartTime = 0;
-      if (this._pan) this._pan.setEnabled(false);
       if (this._zoom) this._zoom.endGesture();
       return;
     }
@@ -1237,10 +1153,10 @@ export class GestureManager {
  * subscribe to the events that drive them.
  *
  * Attach contract:
- *   • scroll.attach()           → #viewer-main (the fixed window; scroll is native)
- *   • zoom.attach(pageContainer) → the ONLY transform target; null if absent
+ *   • scroll.attach()                → #viewer-main (the fixed window; scroll is native)
+ *   • zoom.attach(pageContainer)     → the ONLY transform target; null if absent
  *   • gestures.attach(pageContainer) → the ONLY gesture target; null if absent
- *   • pan                        → dead stub; never attached, never enabled
+ *   • pan                            → dead stub; never attached, never enabled
  *
  * Re-attachment:
  *   • LAYOUT_CHANGED — after core rebuilds the DOM, re-attach zoom/gestures
@@ -1276,7 +1192,6 @@ export function createInteractionLayer(core) {
   zoom.attach(initialContainer);
   gestures.attach(initialContainer, {
     zoomManager: zoom,
-    panManager: pan,
     scrollManager: scroll,
   });
 
@@ -1305,7 +1220,6 @@ export function createInteractionLayer(core) {
       zoom.attach(pc);
       gestures.attach(pc, {
         zoomManager: zoom,
-        panManager: pan,
         scrollManager: scroll,
       });
     } else {
@@ -1380,7 +1294,6 @@ export function createInteractionLayer(core) {
       zoom.attach(pc);
       gestures.attach(pc, {
         zoomManager: zoom,
-        panManager: pan,
         scrollManager: scroll,
       });
     }

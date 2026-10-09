@@ -14,7 +14,8 @@
     <!-- Notifications -->
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-<uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
     <!-- 🚫 Unused system permissions — removed from merged manifest.
          These are auto-injected by plugins but MedVix does not use them. -->
     <uses-permission
@@ -26,8 +27,6 @@
     <uses-permission
         android:name="android.permission.RECEIVE_BOOT_COMPLETED"
         tools:node="remove" />
-
-
 
     <!-- Runtime (Dangerous) permissions – requested at runtime -->
     <uses-permission android:name="android.permission.CAMERA" />
@@ -80,74 +79,56 @@
             </intent-filter>
 
             <!-- ===== Custom scheme for OAuth redirects ===== -->
-<intent-filter android:autoVerify="true">
-    <action android:name="android.intent.action.VIEW" />
-    <category android:name="android.intent.category.DEFAULT" />
-    <category android:name="android.intent.category.BROWSABLE" />
-    <data android:scheme="https" android:host="app.medvix.co.ke" />
-</intent-filter>
-
-<intent-filter android:autoVerify="true">
-    <action android:name="android.intent.action.VIEW" />
-    <category android:name="android.intent.category.DEFAULT" />
-    <category android:name="android.intent.category.BROWSABLE" />
-    <data android:scheme="https" android:host="www.app.medvix.co.ke" />
-</intent-filter>
-
-            <!-- ================================================================
-                 "Open with" file handlers
-                 ================================================================
-                 Each MIME type gets its own <intent-filter> block. Android
-                 merges them into a single chooser entry, so the user sees the
-                 app listed once with the union of all supported types.
-
-                 These filters make MedVix appear in the OS "Open with" chooser
-                 when the user taps a matching file in Files, Gmail, Chrome,
-                 Drive, or any other app that raises ACTION_VIEW.
-
-                 The incoming file arrives via a content:// URI. MainActivity
-                 forwards it to FileOpenPlugin, which copies the stream into
-                 the app cache and delivers an absolute path to viewer.js.
-                 viewer.js → _openNativeFilePayload loads it through the same
-                 core.loadDocument pipeline every other entry point uses.
-
-                 External files are NEVER subject to the preview-mode policy.
-                 That is by design: the user chose the file themselves, and
-                 there is no catalogue resource to upsell.
-
-                 To narrow or widen the surface, add or remove whole
-                 <intent-filter> blocks. Do not merge multiple <data> elements
-                 into one filter unless you want the chooser to require ALL of
-                 them to match — that is almost never what you want.
-                 ================================================================ -->
-
-            <!-- ── Open with: PDF ─────────────────────────────────────────── -->
-            <intent-filter>
+            <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:mimeType="application/pdf" />
+                <data android:scheme="https" android:host="app.medvix.co.ke" />
             </intent-filter>
 
-            <!-- ── Open with: Images ──────────────────────────────────────── -->
-            <!-- Remove this block if you do not want the app offered for
-                 every image the user taps in Files or Chrome. -->
-            <intent-filter>
+            <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:mimeType="image/*" />
+                <data android:scheme="https" android:host="www.app.medvix.co.ke" />
             </intent-filter>
 
-            <!-- ── Open with: Plain text ──────────────────────────────────── -->
-            <!-- Remove this block if you do not want the app offered for
-                 .txt files. -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:mimeType="text/plain" />
-            </intent-filter>
+            <!--
+                External-file "Open with" intent filters have been removed.
+                MedVix no longer appears in the OS chooser when the user taps
+                a PDF, image, or .txt file in Files, Gmail, Chrome, Drive, or
+                any other app.
+
+                The FileOpenPlugin is still installed and MainActivity still
+                forwards any ACTION_VIEW intents it receives to it. But with
+                no matching intent-filter, the OS will never launch MedVix
+                this way. The plugin simply never receives a URI, and
+                viewer.js's `_wireNativeFileOpen` handshake stays idle.
+
+                To re-enable external file opening later, restore the three
+                intent-filter blocks below.
+
+                <intent-filter>
+                    <action android:name="android.intent.action.VIEW" />
+                    <category android:name="android.intent.category.DEFAULT" />
+                    <category android:name="android.intent.category.BROWSABLE" />
+                    <data android:mimeType="application/pdf" />
+                </intent-filter>
+
+                <intent-filter>
+                    <action android:name="android.intent.action.VIEW" />
+                    <category android:name="android.intent.category.DEFAULT" />
+                    <category android:name="android.intent.category.BROWSABLE" />
+                    <data android:mimeType="image/*" />
+                </intent-filter>
+
+                <intent-filter>
+                    <action android:name="android.intent.action.VIEW" />
+                    <category android:name="android.intent.category.DEFAULT" />
+                    <category android:name="android.intent.category.BROWSABLE" />
+                    <data android:mimeType="text/plain" />
+                </intent-filter>
+            -->
 
         </activity>
 

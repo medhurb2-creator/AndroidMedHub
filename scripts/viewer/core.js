@@ -44,6 +44,24 @@
  *   6. The resolution pyramid SLIDES with the current page. Five pages
  *      change ring per single-page step; all five upgrades are enqueued in
  *      the same tick. See _applyPyramidWindow().
+ *
+ *   7. Velocity drives three render modes:
+ *        paper  (|v| ≥ 100 px/frame) — covers only, nothing renders
+ *        glance (30 ≤ |v| < 100)     — centre page at 100% (the page the
+ *                                       user is reading stays sharp);
+ *                                       periphery inside ±4 at 20%;
+ *                                       beyond ±8 released to cover
+ *        idle   (|v| < 30)           — full pyramid
+ *      The mode is set by the SCROLL_VELOCITY subscriber from the smoothed
+ *      velocity ScrollManager emits, and reset to idle by the 150 ms quiet
+ *      tick ScrollManager also emits.
+ *
+ *   8. Images open fit-to-width, aspect ratio preserved. The slot's
+ *      display size is naturalW × fitScale by naturalH × fitScale, and
+ *      `object-fit: contain` fills that slot exactly — no cropping, no
+ *      distortion. The fit-width observer does not override the initial
+ *      fit for images (there is no page-1 metadata to consult); pinch and
+ *      the "Fit to width" menu action re-fit on demand.
  * ═══════════════════════════════════════════════════════════════════════════
  *
  * Preview-mode support:
@@ -171,17 +189,33 @@ export const CONFIG = deepFreeze({
   THUMBNAIL_SCALE: 0.1,
 
   // ── Memory ────────────────────────────────────────────────────────────────
-  MEMORY_CAP_MOBILE_MB: 80,
-  MEMORY_CAP_DESKTOP_MB: 200,
+  // Tiered caps chosen from navigator.deviceMemory (approximate hardware RAM
+  // in GB, bucketed to powers of two). The values are raw canvas bytes; the
+  // real browser RSS footprint is 2.5–4× this due to GPU compositor backing,
+  // decoded image bitmaps, and PDF.js worker state.
+  MEMORY_CAP_LOW_MEMORY_MB: 40,     // ≤2 GB devices
+  MEMORY_CAP_MOBILE_MB: 80,         // 4 GB devices
+  MEMORY_CAP_HIGH_MOBILE_MB: 150,   // ≥8 GB mobile
+  MEMORY_CAP_DESKTOP_MB: 250,       // desktop
+  // Legacy aliases retained so older callers don't break.
+  MEMORY_CAP_MOBILE_MB_LEGACY: 80,
+  MEMORY_CAP_DESKTOP_MB_LEGACY: 200,
 
   // ── Device pixel ratio ────────────────────────────────────────────────────
   MAX_DPR: 2,
+  MAX_DPR_MOBILE: 1.5,
+  MAX_DPR_LOW_MEMORY: 1.25,
+  MAX_DPR_VERY_LOW_MEMORY: 1.0,
 
   // ── Velocity thresholds ───────────────────────────────────────────────────
   VELOCITY_SUSPEND_PX_PER_FRAME: 40,
   VELOCITY_PREFETCH_MAX: 500,
   PREFETCH_DEPTH_SLOW: 5,
   PREFETCH_DEPTH_FAST: 2,
+
+  // Velocity → render-mode bands. See _velocityState().
+  VELOCITY_GLANCE_MIN: 30,   // above this, low-res placeholder mode
+  VELOCITY_PAPER_MIN: 100,   // above this, covers only
 
   // ── Render concurrency ────────────────────────────────────────────────────
   RENDER_CONCURRENCY: (() => {
@@ -209,6 +243,13 @@ export const CONFIG = deepFreeze({
     search: './viewer/search.worker.js',
     parser: './viewer/parser.worker.js',
   },
+
+  // ── PDF load limits ───────────────────────────────────────────────────────
+  MAX_PDF_BYTES_DESKTOP: 500 * 1024 * 1024,
+  MAX_PDF_BYTES_MOBILE: 200 * 1024 * 1024,
+  MAX_PDF_BYTES_LOW_MEMORY: 100 * 1024 * 1024,
+  PDF_LOAD_TIMEOUT_DESKTOP_MS: 60000,
+  PDF_LOAD_TIMEOUT_MOBILE_MS: 30000,
 
   // ── DOM contracts ─────────────────────────────────────────────────────────
   PAGE_CONTAINER_CLASS: 'page-container',   // the sole interactive element
@@ -240,6 +281,13 @@ export const CONFIG = deepFreeze({
   //   d≤-4     → cover (0%)
   PYRAMID_MAX_AHEAD: 16,
   PYRAMID_MAX_BEHIND: 4,
+
+  // Glance band window radii. Centre page gets 100%; periphery inside
+  // INNER gets the GLANCE_RES bitmap; outside OUTER, canvases release to
+  // cover.
+  PYRAMID_GLANCE_INNER: 4,
+  PYRAMID_GLANCE_OUTER: 8,
+  PYRAMID_GLANCE_RES: 0.20,
 
   // ── Dev-mode flags ────────────────────────────────────────────────────────
   DEBUG_VIEWER: false,
@@ -280,6 +328,7 @@ export const PRIORITY = deepFreeze({
 export const Events = deepFreeze({
   CORE_READY: 'core:ready',
   DOCUMENT_LOADING: 'document:loading',
+  DOCUMENT_PROGRESS: 'document:progress',
   DOCUMENT_LOADED: 'document:loaded',
   DOCUMENT_ERROR: 'document:error',
   DOCUMENT_DESTROYING: 'document:destroying',
@@ -526,23 +575,39 @@ export class ViewerState {
 
 export class ViewerCore {
   constructor() {
-    this._bus = null;
-    this._state = null;
+    /** @type {EventBus|null} */ this._bus = null;
+    /** @type {ViewerState|null} */ this._state = null;
 
-    this._engine = null;
-    this._render = null;
-    this._interaction = null;
-    this._managers = null;
-    this._workers = null;
+    /** @type {any} */ this._engine = null;
+    /** @type {any} */ this._render = null;
+    /** @type {any} */ this._interaction = null;
+    /** @type {any} */ this._managers = null;
+    /** @type {any} */ this._workers = null;
 
-    this._initPromise = null;
-    this._initialised = false;
-    this._destroying = false;
+    /** @type {Promise<void>|null} */ this._initPromise = null;
+    /** @type {boolean} */ this._initialised = false;
+    /** @type {boolean} */ this._destroying = false;
 
-    this._teardowns = [];
-    this._nativeTeardown = null;
+    /** @type {Array<() => void>} */ this._teardowns = [];
+    /** @type {null | (() => void)} */ this._nativeTeardown = null;
 
-    this._pageSizePreloadStarted = false;
+    /** @type {boolean} */ this._pageSizePreloadStarted = false;
+
+    // ── Render-mode state driven by SCROLL_VELOCITY ──────────────────────
+    //
+    // _renderMode picks the reconciliation strategy for the pyramid:
+    //   'idle'   — full ring geometry (see _ringResolutionForDistance)
+    //   'glance' — centre page at 100%, periphery at 20%
+    //   'paper'  — every canvas in range releases to cover; nothing renders
+    //
+    // _renderBias shifts the effective centre forward (positive) or
+    // backward (negative) by a few pages during motion, so pages coming
+    // toward the user get the render budget and pages behind release
+    // early.
+    /** @private @type {'paper'|'glance'|'idle'} */
+    this._renderMode = 'idle';
+    /** @private @type {number} */
+    this._renderBias = 0;
   }
 
   // ── Public API ────────────────────────────────────────────────────────────
@@ -577,6 +642,11 @@ export class ViewerCore {
     this._state.set('previewBlocked', false);
     this._state.set('rotation', 0);
 
+    // Reset the velocity state on every new document — a stale 'paper' or
+    // 'glance' from the previous document would suppress the first renders.
+    this._renderMode = 'idle';
+    this._renderBias = 0;
+
     this._state.set('isLoading', true);
     this._state.set('error', null);
     this._state.set('title', title || 'Document');
@@ -592,7 +662,7 @@ export class ViewerCore {
 
       switch (kind) {
         case 'pdf':    await this._loadPdf(normalised); break;
-        case 'image':  this._loadImage(normalised); break;
+        case 'image':  await this._loadImage(normalised); break;
         case 'text':   await this._loadText(normalised); break;
         case 'office': this._loadOffice(normalised); break;
         default:       this._loadUnsupported(normalised);
@@ -660,6 +730,8 @@ export class ViewerCore {
       this._state.set('isDestroyed', false);
       this._state.set('rotation', 0);
       this._pageSizePreloadStarted = false;
+      this._renderMode = 'idle';
+      this._renderBias = 0;
 
       this._bus.emit(Events.DOCUMENT_DESTROYED, {});
     } finally {
@@ -841,15 +913,40 @@ export class ViewerCore {
   _wireCrossModuleEvents() {
     const bus = this._bus;
 
-    // ── Memory pressure → cancel low-priority render work ─────────────────
+    // ── MEMORY_PRESSURE → cancel low-priority work, evict if critical ────
     this._teardowns.push(bus.on(Events.MEMORY_PRESSURE, (payload) => {
-      if (!payload || payload.level !== 'critical') return;
-      try {
-        const scheduler = this.getScheduler();
-        if (scheduler && scheduler.cancelBelow) {
-          scheduler.cancelBelow(PRIORITY.MARGIN);
-        }
-      } catch { /* ignore */ }
+      if (!payload) return;
+      const level = payload.level;
+      const memory = this.getMemory();
+
+      if (level === 'warning') {
+        // Schedule idle-time eviction to bring usage back toward the
+        // resume band. Never blocks the main thread.
+        try {
+          if (memory && typeof memory.scheduleBackgroundEviction === 'function') {
+            memory.scheduleBackgroundEviction(this._state.get('currentPage') || 1);
+          }
+        } catch { /* ignore */ }
+        return;
+      }
+
+      if (level === 'critical') {
+        // Cancel everything below visible and force an immediate eviction.
+        try {
+          const scheduler = this.getScheduler();
+          if (scheduler && scheduler.cancelBelow) {
+            scheduler.cancelBelow(PRIORITY.MARGIN);
+          }
+        } catch { /* ignore */ }
+
+        try {
+          if (memory && typeof memory.capBytes === 'function'
+              && typeof memory._evictToTarget === 'function') {
+            const target = memory.capBytes() * 0.65 - memory.pinnedBytes();
+            memory._evictToTarget(target, this._state.get('currentPage') || 1);
+          }
+        } catch { /* ignore */ }
+      }
     }));
 
     // ── RENDER_COMPLETE → install page into its slot ──────────────────────
@@ -857,24 +954,75 @@ export class ViewerCore {
       this._onRenderComplete(payload);
     }));
 
-    // ── PAGE_VISIBLE → track current page AND slide the pyramid window ────
+    // ── SCROLL_VELOCITY → drive the render mode ───────────────────────────
     //
-    // Every navigation path (scroll, page-jump, swipe, outline click, search
-    // match) converges on PAGE_VISIBLE. Sliding the pyramid here means the
-    // window always tracks the current page regardless of how the user got
-    // there, and it guarantees the +5 page is already enqueued by the time
-    // the user's next scroll frame begins.
+    // The velocity sample is the sole input to the render-mode decision.
+    // idle → full pyramid. glance → centre sharp + low-res periphery.
+    // paper → covers only. The 150 ms idle tick emitted by ScrollManager
+    // restores idle mode automatically once motion stops.
+    this._teardowns.push(bus.on(Events.SCROLL_VELOCITY, (payload) => {
+      const vel = payload && typeof payload.velocity === 'number' ? payload.velocity : 0;
+      const dir = payload && typeof payload.direction === 'number' ? payload.direction : 0;
+
+      const next = this._velocityState(vel, dir);
+      if (next.mode === this._renderMode && next.bias === this._renderBias) return;
+
+      this._renderMode = next.mode;
+      this._renderBias = next.bias;
+
+      // On entering paper, drop every queued render below VISIBLE so the
+      // scheduler isn't working on anything we're about to release anyway.
+      if (next.mode === 'paper') {
+        try {
+          const scheduler = this.getScheduler();
+          if (scheduler && scheduler.cancelBelow) {
+            scheduler.cancelBelow(PRIORITY.VISIBLE);
+          }
+        } catch { /* ignore */ }
+      }
+
+      try {
+        this._applyPyramidWindow(this._state.get('currentPage') || 1, {
+          mode: this._renderMode,
+          bias: this._renderBias,
+        });
+      } catch { /* ignore */ }
+    }));
+
+    // ── PAGE_VISIBLE → set current page AND slide the pyramid ─────────────
+    //
+    // Do NOT early-return when currentPage already matches. navigateTo()
+    // sets currentPage before emitting PAGE_VISIBLE, and _updateVisiblePages
+    // does the same during scroll — if this subscriber bails on the match,
+    // the pyramid is never applied for any navigation that didn't originate
+    // from a scroll-frame that found a new top page.
+    //
+    // In page-view mode there is only one slot, so instead of the pyramid
+    // we rebuild the layout for the new page.
     this._teardowns.push(bus.on(Events.PAGE_VISIBLE, (payload) => {
       if (!payload || typeof payload.pageNum !== 'number') return;
 
       const prev = this._state.get('currentPage');
-      if (prev === payload.pageNum) return;
+      if (prev !== payload.pageNum) {
+        this._state.set('currentPage', payload.pageNum);
+      }
 
-      this._state.set('currentPage', payload.pageNum);
+      const viewMode = this._state.get('viewMode');
 
-      // Slide the ring boundaries. Five pages change ring per step — all
-      // five upgrades fire in the same tick through the scheduler.
-      try { this._applyPyramidWindow(payload.pageNum); } catch { /* ignore */ }
+      if (viewMode === 'page') {
+        Promise.resolve()
+          .then(() => this._renderPageLayout())
+          .then(() => this._bus.emit(Events.LAYOUT_CHANGED, { mode: 'page' }))
+          .catch(() => { /* ignore */ });
+        return;
+      }
+
+      try {
+        this._applyPyramidWindow(payload.pageNum, {
+          mode: this._renderMode,
+          bias: this._renderBias,
+        });
+      } catch { /* ignore */ }
     }));
 
     // ── SCALE_APPLIED → resize every slot, then re-evaluate X-axis lock ───
@@ -890,7 +1038,12 @@ export class ViewerCore {
       this._updateXAxisLock();
 
       // Re-render the visible ring at the new scale.
-      try { this._applyPyramidWindow(this._state.get('currentPage') || 1); } catch { /* ignore */ }
+      try {
+        this._applyPyramidWindow(this._state.get('currentPage') || 1, {
+          mode: this._renderMode,
+          bias: this._renderBias,
+        });
+      } catch { /* ignore */ }
     }));
 
     // ── DOCUMENT_LOADED → hand outline to OutlineManager ──────────────────
@@ -958,6 +1111,8 @@ export class ViewerCore {
 
     this._teardowns.push(bus.on(Events.DOCUMENT_DESTROYED, () => {
       this._pageSizePreloadStarted = false;
+      this._renderMode = 'idle';
+      this._renderBias = 0;
     }));
 
     // ── Window resize → re-evaluate X-axis lock ───────────────────────────
@@ -968,6 +1123,66 @@ export class ViewerCore {
       window.addEventListener('resize', onResize, { passive: true });
       this._teardowns.push(() => {
         try { window.removeEventListener('resize', onResize); } catch { /* ignore */ }
+      });
+    }
+
+    // ── Visibility change → integrity probe ───────────────────────────────
+    // Android WebView silently purges canvas backing stores when the app is
+    // backgrounded. On return, canvases with wiped bitmaps show as transparent
+    // even though width/height are non-zero. Detect this and demote them to
+    // covers so the pyramid re-renders them.
+    if (typeof document !== 'undefined') {
+      const onVisibility = () => {
+        if (document.visibilityState !== 'visible') return;
+        try {
+          const els = getViewerElements();
+          if (!els || !els.main) return;
+          const container = els.main.querySelector('.' + CONFIG.PAGE_CONTAINER_CLASS);
+          if (!container) return;
+
+          let reEnqueue = 0;
+          for (const slot of container.querySelectorAll('.' + CONFIG.PAGE_CLASS)) {
+            const canvas = /** @type {HTMLCanvasElement} */ (slot);
+            if (!canvas.width || !canvas.height) continue;
+
+            let survived = true;
+            try {
+              const ctx = canvas.getContext('2d');
+              if (!ctx) { survived = false; }
+              else {
+                const px = ctx.getImageData(0, 0, 1, 1).data;
+                if (px[3] === 0) survived = false;
+              }
+            } catch { survived = false; }
+
+            if (!survived) {
+              const pageNum = Number(canvas.dataset.page);
+              if (Number.isFinite(pageNum)) {
+                try {
+                  const memory = this.getMemory();
+                  if (memory && memory.unregisterCanvas) memory.unregisterCanvas(canvas);
+                } catch { /* ignore */ }
+                const cover = this._makeCover(pageNum);
+                canvas.replaceWith(cover);
+                reEnqueue++;
+              }
+            }
+          }
+
+          if (reEnqueue > 0) {
+            try {
+              this._applyPyramidWindow(this._state.get('currentPage') || 1, {
+                mode: this._renderMode,
+                bias: this._renderBias,
+              });
+            } catch { /* ignore */ }
+          }
+        } catch { /* ignore */ }
+      };
+
+      document.addEventListener('visibilitychange', onVisibility);
+      this._teardowns.push(() => {
+        try { document.removeEventListener('visibilitychange', onVisibility); } catch { /* ignore */ }
       });
     }
   }
@@ -994,12 +1209,89 @@ export class ViewerCore {
     return 'unsupported';
   }
 
+  /**
+   * Load a PDF.
+   *
+   * SIZE HANDLING:
+   *   Passes a blob URL to the engine adapter so PDF.js can stream from
+   *   Chromium's blob storage instead of materializing the whole file into
+   *   the main JS heap via blob.arrayBuffer(). When the adapter doesn't
+   *   yet accept URL descriptors, falls back to the ArrayBuffer path —
+   *   which caps the practical file size at ~30 MB (see app-storage.js
+   *   for the corresponding readBlob path on the native side).
+   *
+   * The engine adapter is expected to accept either:
+   *   { url, rangeChunkSize, disableAutoFetch }   → preferred
+   *   ArrayBuffer                                  → fallback
+   */
   async _loadPdf(blob) {
-    const arrayBuffer = await blob.arrayBuffer();
+    const profile = this._state.get('deviceProfile') || {};
+    const isLowMemory = profile.isLowMemory === true;
+    const isMobile = profile.isMobile === true;
 
-    const handle = await this._engine.loadDocument(arrayBuffer, {
-      onProgress: (progress) => { void progress; },
-    });
+    // Size guard: refuse rather than silently OOM inside the worker.
+    const capBytes = isLowMemory
+      ? CONFIG.MAX_PDF_BYTES_LOW_MEMORY
+      : isMobile
+        ? CONFIG.MAX_PDF_BYTES_MOBILE
+        : CONFIG.MAX_PDF_BYTES_DESKTOP;
+
+    if (blob && typeof blob.size === 'number' && blob.size > capBytes) {
+      const sizeMb = Math.round(blob.size / (1024 * 1024));
+      const capMb = Math.round(capBytes / (1024 * 1024));
+      throw new Error(
+        `This PDF is ${sizeMb} MB — larger than the ${capMb} MB limit for ` +
+        `this device. Open it on a desktop browser.`,
+      );
+    }
+
+    const loadTimeout = isMobile
+      ? CONFIG.PDF_LOAD_TIMEOUT_MOBILE_MS
+      : CONFIG.PDF_LOAD_TIMEOUT_DESKTOP_MS;
+
+    const url = createObjectURL(blob);
+    let handle = null;
+
+    // Preferred path: URL descriptor. PDF.js streams from the blob URL;
+    // the file never enters the main-thread JS heap as one contiguous
+    // ArrayBuffer.
+    try {
+      handle = await Promise.race([
+        this._engine.loadDocument(
+          { url, rangeChunkSize: 65536, disableAutoFetch: true },
+          {
+            onProgress: (progress) => {
+              try {
+                this._bus.emit(Events.DOCUMENT_PROGRESS, {
+                  loaded: progress && progress.loaded,
+                  total: progress && progress.total,
+                });
+              } catch { /* ignore */ }
+            },
+          },
+        ),
+        new Promise((_, reject) => setTimeout(
+          () => reject(new Error(
+            `Timed out loading PDF after ${loadTimeout / 1000}s.`,
+          )),
+          loadTimeout,
+        )),
+      ]);
+    } catch (urlErr) {
+      // Fallback: adapter may not accept URL descriptors yet. Materialize
+      // as ArrayBuffer — the practical cap is ~30 MB.
+      try {
+        const arrayBuffer = await blob.arrayBuffer();
+        handle = await this._engine.loadDocument(arrayBuffer, {
+          onProgress: () => { /* no-op */ },
+        });
+      } catch (bufErr) {
+        // Both paths failed — surface the original URL error message so
+        // the caller sees the informative timeout rather than a generic
+        // adapter error.
+        throw urlErr;
+      }
+    }
 
     const numPages = handle && typeof handle.numPages === 'number' ? handle.numPages : 1;
     const outline = (handle && Array.isArray(handle.outline)) ? handle.outline : [];
@@ -1044,7 +1336,31 @@ export class ViewerCore {
     await this.renderCurrentLayout();
   }
 
-  _loadImage(blob) {
+  /**
+   * Load an image into the viewer.
+   *
+   * SIZING MODEL:
+   *   An image is a one-page document. It follows the SAME invariant as a
+   *   PDF page slot:
+   *
+   *     displayed width  = naturalWidth  × displayScale
+   *     displayed height = naturalHeight × displayScale
+   *
+   *   displayScale starts at fit-to-width — the same value _applyFitToWidth
+   *   computes for PDF page 1 — so the image opens edge-to-edge with the
+   *   same 3px gutter. Pan and zoom then multiply both dimensions by the
+   *   same factor, preserving aspect ratio exactly.
+   *
+   * NO CROPPING:
+   *   `object-fit: contain` scales the bitmap to fill the slot exactly.
+   *   Because the slot's aspect ratio is derived from the bitmap's own
+   *   natural ratio (same scale factor applied to both axes), `contain`
+   *   fills the slot without letterboxing, and no pixel is clipped.
+   *   The earlier `object-fit: none` was the bug: it rendered the bitmap
+   *   at intrinsic pixels and clipped to the slot whenever the slot was
+   *   smaller than natural — which happens for any scale below 1.0.
+   */
+  async _loadImage(blob) {
     const els = getViewerElements();
     if (!els || !els.main) return;
 
@@ -1066,26 +1382,101 @@ export class ViewerCore {
     main.classList.add('page-view');
     this._clearViewerMainPreservingChrome();
 
-    // The image IS the page — wrap it in .page-container so zoom/pan attach.
     const container = document.createElement('div');
     container.className = CONFIG.PAGE_CONTAINER_CLASS;
+    main.appendChild(container);
 
+    const url = createObjectURL(blob);
     const img = document.createElement('img');
     img.className = CONFIG.PAGE_CLASS;
-    img.src = createObjectURL(blob);
+    img.dataset.page = '1';
+    img.src = url;
+    img.alt = '';
+    img.draggable = false;
+
+    img.style.display = 'block';
     img.style.maxWidth = 'none';
     img.style.maxHeight = 'none';
+    // object-fit: contain — the bitmap scales to fit inside the slot
+    // without distorting. The slot's aspect ratio is derived from the
+    // bitmap's natural ratio, so `contain` fills it exactly. `none` was
+    // the bug: it renders the bitmap at intrinsic pixels and clips to
+    // the slot, cropping whenever the slot is smaller than natural.
     img.style.objectFit = 'contain';
-    img.style.transformOrigin = 'center center';
-    img.style.display = 'block';
+    img.style.transformOrigin = '0 0';
+    img.style.background = '#fff';
+    img.style.userSelect = 'none';
+    img.style.webkitUserDrag = 'none';
 
     container.appendChild(img);
-    main.appendChild(container);
+
+    // Wait for intrinsic dimensions before sizing.
+    try {
+      if (typeof img.decode === 'function') {
+        await img.decode();
+      } else {
+        await new Promise((resolve) => {
+          if (img.complete && img.naturalWidth > 0) return resolve();
+          img.addEventListener('load', () => resolve(), { once: true });
+          img.addEventListener('error', () => resolve(), { once: true });
+        });
+      }
+    } catch { /* image failed to decode */ }
+
+    const naturalW = img.naturalWidth || 0;
+    const naturalH = img.naturalHeight || 0;
+
+    if (!(naturalW > 0) || !(naturalH > 0)) {
+      container.remove();
+      this._loadUnsupported(blob);
+      return;
+    }
+
+    img.dataset.naturalWidth = String(naturalW);
+    img.dataset.naturalHeight = String(naturalH);
+
+    // ── Fit-to-width, aspect ratio preserved ────────────────────────────
+    // The image opens at the viewport width, minus the standard gutter.
+    // Height is computed from the image's own aspect ratio:
+    //
+    //   displayW = usable
+    //   displayH = usable × (naturalH / naturalW)
+    //
+    // That's what _applySlotSize does when we hand it a scale of
+    // `usable / naturalW`. Because the same factor is applied to both
+    // axes, the aspect ratio is preserved exactly.
+    let availableWidth = main.clientWidth;
+    if (!(availableWidth > 0)) {
+      availableWidth = await this._waitForViewerWidth(
+        main,
+        CONFIG.FIT_WIDTH_WAIT_TIMEOUT_MS,
+      );
+    }
+
+    let fitScale = 1;
+    if (availableWidth > 0) {
+      const usable = Math.max(availableWidth - CONFIG.FIT_WIDTH_H_PADDING_PX, 100);
+      fitScale = clamp(usable / naturalW, CONFIG.MIN_ZOOM, CONFIG.MAX_ZOOM);
+    }
+
+    this._state.set('scale', fitScale);
+
+    // Slot becomes naturalW × fitScale by naturalH × fitScale.
+    // At fit-to-width this is `usable` wide by `usable × ratio` tall.
+    this._applySlotSize(img, { width: naturalW, height: naturalH });
+
+    try {
+      const zoom = this.getZoom();
+      if (zoom && typeof zoom.syncScale === 'function') {
+        zoom.syncScale(fitScale);
+      }
+    } catch { /* ignore */ }
 
     if (els.footer) els.footer.style.display = 'none';
 
     this._updateXAxisLock();
-    this._bus.emit(Events.LAYOUT_CHANGED, { mode: 'page', container });
+
+    this._bus.emit(Events.LAYOUT_CHANGED, { mode: 'page' });
 
     this._bus.emit(Events.DOCUMENT_LOADED, {
       numPages: 1, outline: [],
@@ -1260,8 +1651,6 @@ export class ViewerCore {
       this._applySlotSize(el, meta);
     } else {
       el.style.minHeight = '200px';
-      // width intentionally unset — resolved by the container once page 1
-      // metadata arrives.
     }
     return el;
   }
@@ -1291,8 +1680,6 @@ export class ViewerCore {
 
   /**
    * Resize every slot (cover or canvas) to natural × displayScale.
-   * Called on zoom settle, after metadata arrives, and after rotation.
-   * Never touches the bitmap — resolution is the renderer's concern.
    */
   _syncSlotDimensions() {
     const els = getViewerElements();
@@ -1321,11 +1708,6 @@ export class ViewerCore {
 
   /**
    * Toggle the .x-scroll class on #viewer-main.
-   *
-   * CSS rule: #viewer-main is overflow-x: hidden by default, which locks
-   * X and lets margin: 0 auto centre the page. When the page is wider than
-   * the viewport, we add .x-scroll and the browser gives a native X
-   * scrollbar.
    */
   _updateXAxisLock() {
     const els = getViewerElements();
@@ -1354,46 +1736,60 @@ export class ViewerCore {
     }
   }
 
-  // ── Private: resolution pyramid ──────────────────────────────────────────
+  // ── Private: velocity → render-mode ──────────────────────────────────────
 
   /**
-   * Slide the resolution pyramid so the window is centred on `centerPage`.
+   * Translate a velocity sample into a render state.
    *
-   * Forward rings (distance d from the centre):
-   *   d = 0..5   → 100%   (full resolution)
-   *   d = 6..9   →  80%
-   *   d = 10..12 →  60%
-   *   d = 13..14 →  40%
-   *   d = 15     →  20%
-   *   d ≥ 16     → plain cover (canvas released)
+   * Three bands, keyed on absolute velocity:
    *
-   * Behind rings:
-   *   d = -1     → 100%   (one page kept warm for quick scroll-back)
-   *   d = -2..-3 →  40%
-   *   d ≤ -4     → plain cover
+   *   paper  (≥ 100 px/frame)  — moving faster than anyone can read.
+   *                              Release every canvas; leave white cover
+   *                              rectangles so scroll position is
+   *                              preserved. No renders enqueued.
    *
-   * Because every page's resolution depends only on its distance from the
-   * centre, a single page step moves the ring boundaries by one — so exactly
-   * five pages change ring per step:
+   *   glance (30–99)           — moving fast, but the page under the
+   *                              user's attention must stay sharp.
+   *                              _reconcileGlance renders the centre at
+   *                              100% and the ±4 periphery at 20%.
    *
-   *   +6  80%   → 100%
-   *   +10 60%   →  80%
-   *   +13 40%   →  60%
-   *   +15 20%   →  40%
-   *   +16 cover →  20%
+   *   idle   (< 30)            — the full pyramid. Ring geometry from
+   *                              _ringResolutionForDistance drives
+   *                              everything.
    *
-   * All five upgrades are enqueued in the same tick. Concurrency is
-   * RENDER_CONCURRENCY (up to 6). Every upgrade is a re-render of a page
-   * whose PDF.js operator list is already cached, so each completes in
-   * roughly 40–90 ms on desktop. The +5 page (the page the user is about
-   * to scroll onto) is sharp well within 150 ms.
+   * @private
+   * @param {number} velocity   px/frame (signed)
+   * @param {number} direction  -1 | 0 | 1
+   * @returns {{ mode: 'paper'|'glance'|'idle', bias: number }}
+   */
+  _velocityState(velocity, direction) {
+    const absV = Math.abs(velocity);
+    const sign = direction >= 0 ? 1 : -1;
+
+    if (absV >= CONFIG.VELOCITY_PAPER_MIN) {
+      return { mode: 'paper', bias: sign * 3 };
+    }
+    if (absV >= CONFIG.VELOCITY_GLANCE_MIN) {
+      return { mode: 'glance', bias: sign * 2 };
+    }
+    return { mode: 'idle', bias: 0 };
+  }
+
+  // ── Private: pyramid reconcilers ─────────────────────────────────────────
+
+  /**
+   * Reconcile every slot in the pyramid window against the current render
+   * state. Behaviour depends on the velocity band:
    *
-   * Idempotent: calling it twice with the same centre is a no-op.
+   *   idle   — full ring geometry (0..5 at 100%, 6..9 at 80%, …)
+   *   glance — centre at 100%, periphery at 20%
+   *   paper  — release everything; covers only
    *
    * @private
    * @param {number} centerPage
+   * @param {{ mode?: 'paper'|'glance'|'idle', bias?: number }} [opts]
    */
-  _applyPyramidWindow(centerPage) {
+  _applyPyramidWindow(centerPage, opts = {}) {
     if (!Number.isFinite(centerPage)) return;
     if (this._state.get('previewBlocked')) return;
 
@@ -1403,16 +1799,165 @@ export class ViewerCore {
       : null;
     if (!container) return;
 
+    const mode = opts.mode || 'idle';
+    const bias = Number.isFinite(opts.bias) ? opts.bias : 0;
+
     const limit = this.getEffectivePageLimit();
     const displayScale = this._state.get('scale') || 1;
     const rotation = this._state.get('rotation') || 0;
     const scheduler = this.getScheduler();
 
+    const effectiveCentre = clamp(centerPage + bias, 1, limit);
+
+    if (mode === 'paper') {
+      this._reconcilePaper(container, effectiveCentre, limit, scheduler);
+      return;
+    }
+
+    if (mode === 'glance') {
+      this._reconcileGlance(
+        container, effectiveCentre, limit, displayScale, rotation, scheduler,
+      );
+      return;
+    }
+
+    this._reconcilePyramid(
+      container, effectiveCentre, limit, displayScale, rotation, scheduler,
+    );
+  }
+
+  /**
+   * PAPER band: release every rendered canvas within the total influence
+   * range. Leave covers in place so scroll position and dimensions are
+   * preserved. Enqueue nothing.
+   *
+   * @private
+   */
+  _reconcilePaper(container, effectiveCentre, limit, scheduler) {
+    const RANGE = CONFIG.PYRAMID_MAX_AHEAD + CONFIG.PYRAMID_MAX_BEHIND;
+
+    for (let d = -RANGE; d <= RANGE; d++) {
+      const pageNum = effectiveCentre + d;
+      if (pageNum < 1 || pageNum > limit) continue;
+
+      const slot = container.querySelector(`[data-page="${pageNum}"]`);
+      if (!slot) continue;
+      if (!slot.classList.contains(CONFIG.PAGE_CLASS)) continue;
+
+      try {
+        if (scheduler && scheduler.cancelPage) scheduler.cancelPage(pageNum);
+      } catch { /* ignore */ }
+
+      try {
+        const memory = this.getMemory();
+        if (memory && memory.unregisterCanvas) memory.unregisterCanvas(slot);
+      } catch { /* ignore */ }
+
+      const cover = this._makeCover(pageNum);
+      slot.replaceWith(cover);
+    }
+  }
+
+  /**
+   * GLANCE band: the page under the user's attention (the effective
+   * centre) is rendered at 100% so it stays readable during slow
+   * scrolling. The surrounding ±INNER window is rendered at 20% —
+   * enough to show page structure and let the user orient, but cheap
+   * enough that the outer ring does not compete for render budget.
+   * Everything outside ±OUTER is released to cover.
+   *
+   * Without the 100% centre, a user scrolling at 30–99 px/frame would
+   * see the page under their eye render at 20% resolution — legible
+   * only as a shape, not as text. The whole point of glance mode is
+   * "moving fast enough that structure matters more than sharpness",
+   * but the page the user is currently on is always sharp.
+   *
+   * @private
+   */
+  _reconcileGlance(container, effectiveCentre, limit, displayScale, rotation, scheduler) {
+    const INNER = CONFIG.PYRAMID_GLANCE_INNER;
+    const OUTER = CONFIG.PYRAMID_GLANCE_OUTER;
+    const GLANCE_RES = CONFIG.PYRAMID_GLANCE_RES;
+
+    // ── 1. Release everything outside the outer band ───────────────────
+    const RANGE = CONFIG.PYRAMID_MAX_AHEAD + CONFIG.PYRAMID_MAX_BEHIND;
+    for (let d = -RANGE; d <= RANGE; d++) {
+      if (Math.abs(d) <= OUTER) continue;
+      const pageNum = effectiveCentre + d;
+      if (pageNum < 1 || pageNum > limit) continue;
+
+      const slot = container.querySelector(`[data-page="${pageNum}"]`);
+      if (!slot || !slot.classList.contains(CONFIG.PAGE_CLASS)) continue;
+
+      try {
+        if (scheduler && scheduler.cancelPage) scheduler.cancelPage(pageNum);
+      } catch { /* ignore */ }
+      try {
+        const memory = this.getMemory();
+        if (memory && memory.unregisterCanvas) memory.unregisterCanvas(slot);
+      } catch { /* ignore */ }
+
+      const cover = this._makeCover(pageNum);
+      slot.replaceWith(cover);
+    }
+
+    // ── 2. Within the inner band: centre at 100%, rest at 20% ──────────
+    //
+    // The centre (d === 0) is the page the user is currently reading.
+    // It gets the same full-resolution treatment it would have gotten
+    // in idle mode. Everything else in the window gets the coarser
+    // glance resolution.
+    //
+    // Resolution is checked per slot, not "is it a canvas". A page that
+    // was previously rendered at 20% and is now the centre must upgrade
+    // to 100%; a page that was at 100% and is now on the periphery must
+    // downgrade to 20%. The slot's data-res attribute records which
+    // ring the current bitmap belongs to.
+    for (let d = -INNER; d <= INNER; d++) {
+      const pageNum = effectiveCentre + d;
+      if (pageNum < 1 || pageNum > limit) continue;
+
+      const slot = container.querySelector(`[data-page="${pageNum}"]`);
+      if (!slot) continue;
+
+      const isCentre = d === 0;
+      const desiredRes = isCentre ? 1.00 : GLANCE_RES;
+
+      const isCanvas = slot.classList.contains(CONFIG.PAGE_CLASS);
+      const currentRes = isCanvas ? Number(slot.dataset.res || 0) : 0;
+
+      // Already at the correct resolution — no-op.
+      if (Math.abs(currentRes - desiredRes) < 0.01) continue;
+
+      // Cancel any in-flight render for this page at the wrong ring.
+      try {
+        if (scheduler && scheduler.cancelPage) scheduler.cancelPage(pageNum);
+      } catch { /* ignore */ }
+
+      const renderScale = displayScale * desiredRes;
+
+      // The centre render is the highest priority in the system — the
+      // user is looking at it. The periphery is ADJACENT: worth doing
+      // soon, but never at the cost of the centre.
+      const priority = isCentre ? PRIORITY.VISIBLE : PRIORITY.ADJACENT;
+
+      this._enqueueRingRender(pageNum, renderScale, desiredRes, rotation, priority);
+    }
+  }
+
+  /**
+   * IDLE band: the original pyramid. Ring geometry from
+   * _ringResolutionForDistance. Every slot reconciles to its ring's
+   * resolution; out-of-range slots release to cover.
+   *
+   * @private
+   */
+  _reconcilePyramid(container, effectiveCentre, limit, displayScale, rotation, scheduler) {
     const MAX_AHEAD = CONFIG.PYRAMID_MAX_AHEAD;
     const MAX_BEHIND = CONFIG.PYRAMID_MAX_BEHIND;
 
     for (let d = -MAX_BEHIND; d <= MAX_AHEAD; d++) {
-      const pageNum = centerPage + d;
+      const pageNum = effectiveCentre + d;
       if (pageNum < 1 || pageNum > limit) continue;
 
       const desiredRes = this._ringResolutionForDistance(d);
@@ -1422,17 +1967,13 @@ export class ViewerCore {
       const isCanvas = slot.classList.contains(CONFIG.PAGE_CLASS);
       const currentRes = isCanvas ? Number(slot.dataset.res || 0) : 0;
 
-      // Already at the correct resolution — no-op.
       if (Math.abs(currentRes - desiredRes) < 0.01) continue;
 
-      // Desired 0 → release the canvas and drop back to a plain cover.
       if (desiredRes === 0) {
         if (isCanvas) {
           try {
             if (scheduler && scheduler.cancelPage) scheduler.cancelPage(pageNum);
           } catch { /* ignore */ }
-
-          // Unregister from MemoryManager before the element is dropped.
           try {
             const memory = this.getMemory();
             if (memory && memory.unregisterCanvas) memory.unregisterCanvas(slot);
@@ -1444,14 +1985,10 @@ export class ViewerCore {
         continue;
       }
 
-      // Cancel any in-flight render for this page at the old ring — the
-      // pyramid wants exactly one render per page at a time.
       try {
         if (scheduler && scheduler.cancelPage) scheduler.cancelPage(pageNum);
       } catch { /* ignore */ }
 
-      // renderScale is the BITMAP density. The slot's DISPLAY size stays
-      // natural × displayScale (see _syncSlotDimensions / _applySlotSize).
       const renderScale = displayScale * desiredRes;
 
       let priority;
@@ -1475,7 +2012,6 @@ export class ViewerCore {
     const abs = Math.abs(d);
 
     if (d >= 0) {
-      // Forward-biased pyramid.
       if (abs <= 5)  return 1.00;
       if (abs <= 9)  return 0.80;
       if (abs <= 12) return 0.60;
@@ -1493,19 +2029,7 @@ export class ViewerCore {
   /**
    * Enqueue a page render at a specific ring resolution.
    *
-   * Job shape matches _enqueuePageRender but carries `ringRes` so
-   * _onRenderComplete can record it on the slot's dataset. The job id
-   * includes the render scale and rotation — but NOT the ringRes — so
-   * re-enqueueing the same page at a different ring is naturally
-   * de-duplicated against a still-running older render at the same scale
-   * (which the pyramid has already cancelled via scheduler.cancelPage).
-   *
    * @private
-   * @param {number} pageNum
-   * @param {number} renderScale
-   * @param {number} ringRes
-   * @param {number} rotation
-   * @param {number} priority
    */
   _enqueueRingRender(pageNum, renderScale, ringRes, rotation, priority) {
     const scheduler = this.getScheduler();
@@ -1579,6 +2103,15 @@ export class ViewerCore {
     try {
       const scroll = this.getScroll();
       if (scroll && scroll.refreshVisible) scroll.refreshVisible();
+    } catch { /* ignore */ }
+
+    // Prime the pyramid at the current page so the +5 sharp window renders
+    // immediately, not on the first scroll.
+    try {
+      this._applyPyramidWindow(this._state.get('currentPage') || 1, {
+        mode: this._renderMode,
+        bias: this._renderBias,
+      });
     } catch { /* ignore */ }
   }
 
@@ -1663,15 +2196,6 @@ export class ViewerCore {
   /**
    * RENDER_COMPLETE handler — the ONLY place a slot transitions from cover
    * to canvas.
-   *
-   * Invariants enforced here:
-   *   • The slot's rendered size is natural × displayScale — the same for
-   *     cover, thumbnail, and full canvas.
-   *   • Swapping a cover for a canvas is a paint event, not a layout event.
-   *     Same size, same position, no scroll jump.
-   *   • The rendered bitmap density differs by ring; the CSS size does
-   *     not. `data-res` records the ring this bitmap belongs to so
-   *     _applyPyramidWindow can decide whether the slot needs upgrading.
    */
   _onRenderComplete(payload) {
     if (!payload || !payload.canvas) return;
@@ -1722,8 +2246,8 @@ export class ViewerCore {
 
     page.dataset.renderedScale = String(scale);
 
-    // Record the RING resolution. This is what _applyPyramidWindow reads
-    // to decide whether the slot is already at the right level.
+    // Record the RING resolution so _applyPyramidWindow can decide
+    // whether the slot needs upgrading.
     if (typeof payload.ringRes === 'number') {
       page.dataset.res = String(payload.ringRes);
     }
@@ -1732,6 +2256,19 @@ export class ViewerCore {
     if (slot !== page) {
       slot.replaceWith(page);
     }
+
+    // Register the slot canvas with MemoryManager. This is the ONE copy
+    // of this page's bitmap that survives — the scratch surface has
+    // already been released by the scheduler.
+    try {
+      const memory = this.getMemory();
+      if (memory && typeof memory.registerCanvas === 'function') {
+        if (typeof memory.unregisterCanvas === 'function') {
+          try { memory.unregisterCanvas(page); } catch { /* ignore */ }
+        }
+        memory.registerCanvas(page, pageNum, { pinned: false });
+      }
+    } catch { /* ignore */ }
 
     try {
       const scroll = this.getScroll();
@@ -1811,6 +2348,78 @@ export class ViewerCore {
   }
 
   /**
+   * Ensure metadata — and therefore real geometry — for every page in
+   * 1..target is cached, and that any existing slot for those pages is
+   * sized correctly.
+   *
+   * WHY THIS EXISTS:
+   *   Pages past EAGER_METADATA_PAGES sit as 200px placeholders until
+   *   metadata arrives. On a jump to page 500 from page 1, pages 21..500
+   *   contribute 480 × 200 = 96,000px to the target's offsetTop — but the
+   *   real sum is ~750,000px. scrollIntoView lands on the wrong page and
+   *   the viewer appears hung.
+   *
+   * Called ONLY from ScrollManager.navigateTo.
+   *
+   * @private
+   * @param {number} target
+   * @returns {Promise<void>}
+   */
+  async _preloadSizesUpTo(target) {
+    if (!Number.isFinite(target) || target <= 0) return;
+
+    const cache = this.getCache();
+    if (!cache) return;
+
+    const engine = this._engine;
+    if (!engine || typeof engine.getPageMetadata !== 'function') return;
+
+    const els = getViewerElements();
+    const container = els && els.main
+      ? els.main.querySelector('.' + CONFIG.PAGE_CONTAINER_CLASS)
+      : null;
+
+    const queue = [];
+    for (let i = 1; i <= target; i++) {
+      if (cache.hasPageViewport && cache.hasPageViewport(i)) continue;
+      queue.push(i);
+    }
+    if (queue.length === 0) return;
+
+    const concurrency = Math.max(1, CONFIG.RENDER_CONCURRENCY);
+
+    const worker = async () => {
+      while (queue.length > 0) {
+        const p = queue.shift();
+        if (typeof p !== 'number') return;
+        try {
+          const meta = await engine.getPageMetadata(p);
+          if (!meta) continue;
+          if (cache.setPageViewport) cache.setPageViewport(p, meta);
+
+          if (container) {
+            const slot = container.querySelector(`[data-page="${p}"]`);
+            if (slot && slot.classList.contains(CONFIG.COVER_CLASS)) {
+              this._applySlotSize(slot, meta);
+            }
+          }
+        } catch { /* ignore individual failures */ }
+      }
+    };
+
+    const workers = [];
+    for (let i = 0; i < Math.min(concurrency, queue.length); i++) {
+      workers.push(worker());
+    }
+    await Promise.allSettled(workers);
+
+    try {
+      const scroll = this.getScroll();
+      if (scroll && scroll.recomputeLayout) scroll.recomputeLayout();
+    } catch { /* ignore */ }
+  }
+
+  /**
    * Compute the fit-to-width scale for page 1 and install it in state.
    *
    * Called:
@@ -1823,8 +2432,19 @@ export class ViewerCore {
    * slots may already exist from a layout that ran at the default scale,
    * and this method MUST resize them in place. Setting state.scale alone
    * is not enough.
+   *
+   * IMAGES BAIL OUT:
+   *   `_loadImage` computes its own fit-to-width scale from the image's
+   *   natural dimensions. `_applyFitToWidth` looks up page 1's metadata
+   *   from the page cache, which images do not populate. Running this
+   *   method for an image would either compute a wrong scale (if the
+   *   cache happens to hold a stale PDF's metadata) or silently bail
+   *   after the `if (!meta)` guard. Either way, the early return below
+   *   makes the intent explicit.
    */
   async _applyFitToWidth() {
+    if (this._state.get('documentKind') === 'image') return;
+
     try {
       const els = getViewerElements();
       if (!els || !els.main) return;
@@ -1857,15 +2477,15 @@ export class ViewerCore {
         zoom.syncScale(fitScale);
       }
 
-      // Resize every slot that already exists. A no-op the first time
-      // (no slots yet). This is what makes the "viewer was hidden during
-      // initial load, then shown" path end up fit-to-width instead of
-      // stuck at the default scale.
       this._syncSlotDimensions();
       this._updateXAxisLock();
 
-      // Recompute the pyramid so the +5 window renders at the new scale.
-      try { this._applyPyramidWindow(this._state.get('currentPage') || 1); } catch { /* ignore */ }
+      try {
+        this._applyPyramidWindow(this._state.get('currentPage') || 1, {
+          mode: this._renderMode,
+          bias: this._renderBias,
+        });
+      } catch { /* ignore */ }
     } catch { /* keep the default scale */ }
   }
 
@@ -2100,14 +2720,30 @@ export class ViewerCore {
 
   // ── Private: environment detection ────────────────────────────────────────
 
+  /**
+   * Build the device profile. Chooses the memory cap from the device's
+   * approximate RAM (navigator.deviceMemory, bucketed to powers of two).
+   *
+   * Falls back to 4 GB when the API is unavailable (Safari, Firefox).
+   */
   _detectDeviceProfile() {
     const base = getDeviceProfile();
-    const capMb = (base.isMobile || base.isLowMemory)
-      ? CONFIG.MEMORY_CAP_MOBILE_MB
-      : CONFIG.MEMORY_CAP_DESKTOP_MB;
+    const mem = typeof base.deviceMemory === 'number' ? base.deviceMemory : 4;
+
+    let capMb;
+    if (base.isLowMemory || mem <= 2) {
+      capMb = CONFIG.MEMORY_CAP_LOW_MEMORY_MB;
+    } else if (mem <= 4) {
+      capMb = CONFIG.MEMORY_CAP_MOBILE_MB;
+    } else if (base.isMobile) {
+      capMb = CONFIG.MEMORY_CAP_HIGH_MOBILE_MB;
+    } else {
+      capMb = CONFIG.MEMORY_CAP_DESKTOP_MB;
+    }
 
     return Object.freeze({
       ...base,
+      deviceMemory: mem,
       memoryCapBytes: capMb * 1024 * 1024,
     });
   }

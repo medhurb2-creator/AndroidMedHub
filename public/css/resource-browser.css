@@ -400,6 +400,43 @@ body {
 }
 .download-progress .percent { font-weight: 600; font-size: 0.75rem; }
 
+/* Inline "Opening…" state for the Open button.
+   Mirrors .download-progress so the two states feel consistent — same
+   14px spinner, same flex layout, same colour scheme. The difference is
+   only the label text and the container class. */
+.card-actions .main-btn .open-progress {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+}
+
+.card-actions .main-btn .open-progress .spinner-small {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+.card-actions .main-btn .open-progress .open-label {
+    font-weight: 600;
+    font-size: 0.75rem;
+}
+
+/* Disabled + loading state on the button itself.
+   cursor: wait is the standard browser hint; opacity keeps the button
+   visually distinct from an enabled one without hiding the spinner. */
+.card-actions .main-btn.btn-loading {
+    cursor: wait;
+    opacity: 0.85;
+}
+
+.card-actions .main-btn.btn-loading:hover {
+    filter: none;   /* cancel the parent's brightness-on-hover */
+}
 /* ============================================================
    SHIMMER (SKELETON) CARDS
    ============================================================ */
@@ -537,6 +574,12 @@ body {
 
 #viewer .viewer-container {
     display: grid;
+    /* Explicit single column pinned to the container width. Without this
+       the implicit `auto` column grows to fit the widest item — a long
+       title in the header blows the whole grid past 100vw. minmax(0, 1fr)
+       forces the column to be exactly the container width and lets
+       children shrink. */
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto auto 1fr auto;
     grid-template-areas:
         "header"
@@ -545,14 +588,15 @@ body {
         "footer";
     height: 100vh;
     width: 100vw;
+    max-width: 100vw;
+    overflow: visible;
     background: var(--bg-primary);
     position: relative;
-    overflow: hidden;
 }
-
 /* ---------- Header ---------- */
 #viewer .viewer-header {
     grid-area: header;
+    min-width: 0;
     position: relative;
     display: block;
     padding: calc(0.5rem + var(--safe-top)) calc(0.8rem + var(--safe-right))
@@ -561,6 +605,14 @@ body {
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
     z-index: 30;
+    /* overflow: visible — the hamburger dropdown is absolutely positioned
+       at top: calc(100% + 4px), which places it BELOW the header. With
+       overflow: hidden on the header, the dropdown was clipped and
+       invisible. The title's own ellipsis is unaffected (it has its own
+       overflow: hidden; text-overflow: ellipsis). The header width is
+       already pinned by the grid column's minmax(0, 1fr), so nothing
+       blows out past 100vw. */
+    overflow: visible;
 }
 
 #viewer .viewer-header-main {
@@ -822,6 +874,19 @@ body {
 /* Covers are divs that reserve the slot until the canvas arrives. */
 #viewer .page-container .cover {
     /* Same sizing as the eventual canvas, provided inline by JS. */
+}
+
+/* Image pages follow the same invariant as canvas pages:
+   natural × displayScale, sharp corners, no decoration. */
+#viewer .page-container img.page {
+  display: block;
+  background: #ffffff;
+  max-width: none;
+  max-height: none;
+  object-fit: none;
+  -webkit-touch-callout: none;
+  -webkit-user-drag: none;
+  user-select: none;
 }
 
 /* ---------- Text layer & search highlight ---------- */

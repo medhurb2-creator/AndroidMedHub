@@ -11,6 +11,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
@@ -70,6 +71,32 @@ import java.util.Base64;
  *
  * The DB never stores an absolute path. The same install works whether
  * the active root is internal or external.
+ *
+ * ─── READ STRATEGY ──────────────────────────────────────────────────────────
+ *
+ * Two read paths for binary data, chosen by the caller based on file
+ * size. Both return Base64 because the Android WebView bridge
+ * (addJavascriptInterface) can only marshal JSON-compatible primitives
+ * across the boundary — no byte[], no Blob, no ArrayBuffer.
+ *
+ *   Small files (< ~30 MB)  →  readBase64(relativePath)
+ *     Single call. Returns the whole file as one Base64 string. Cost is
+ *     4× the file size at peak: Java byte[] + Base64 string + JS string
+ *     + decoded Uint8Array. Above 30 MB this exhausts the WebView
+ *     renderer heap on most devices.
+ *
+ *   Large files (up to ~200 MB)  →  fileSize() + readBase64Range()
+ *     The caller loops over [0, fileSize) in fixed-size windows,
+ *     decodes each window, and appends to a Blob. Java-side allocation
+ *     is bounded to CHUNK_BYTES per call; JS-side peak is one chunk's
+ *     worth of working memory plus the accumulating Blob (which
+ *     Chromium spills to disk for large inputs). The ceiling here is
+ *     the renderer's pre-spill buffer, not the file size.
+ *
+ * Above ~200 MB the WebView bridge cannot deliver the bytes into JS at
+ * all — the renderer OOMs during accumulation. Files that large must be
+ * served via a local HTTP range endpoint so PDF.js can stream, which is
+ * a separate native component (see project notes on PdfRangeServer).
  *
  * ─── SECURITY ───────────────────────────────────────────────────────────────
  *
@@ -457,6 +484,16 @@ public class MedVixStorage {
         }
     }
 
+    /**
+     * Read a whole file as Base64.
+     *
+     * Safe up to roughly 30 MB on typical Android WebView renderers —
+     * peak cost is 4× file size (Java byte[] + Base64 string + JS string
+     * + decoded Uint8Array). For anything larger, use the chunked pair
+     * fileSize() + readBase64Range().
+     *
+     * Returns "" on failure or if the file exceeds Integer.MAX_VALUE bytes.
+     */
     @JavascriptInterface
     public String readBase64(String relativePath) {
         File f = resolveRead(relativePath);
@@ -479,6 +516,81 @@ public class MedVixStorage {
                     System.arraycopy(buf, 0, trimmed, 0, off);
                     buf = trimmed;
                 }
+            }
+            return Base64.getEncoder().encodeToString(buf);
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    /**
+     * Size of a file in bytes.
+     *
+     * Returns -1 if the path does not resolve to a regular file. Pairs
+     * with readBase64Range() as the entry point for chunked reads.
+     */
+    @JavascriptInterface
+    public long fileSize(String relativePath) {
+        File f = resolveRead(relativePath);
+        if (f == null || !f.isFile()) return -1L;
+        return f.length();
+    }
+
+    /**
+     * Read a byte range from a file and return it as Base64.
+     *
+     * Chunked reads let the WebView open files larger than the single-
+     * shot readBase64() ceiling (~30 MB) without exhausting the renderer
+     * heap. The caller loops over [0, fileSize) in fixed-size windows,
+     * decodes each window, and appends to a Blob. Java-side allocation
+     * is bounded to `length` bytes per call; JS-side working memory is
+     * one chunk + the accumulating Blob.
+     *
+     * Range semantics:
+     *   relativePath null or resolves to non-file  → ""
+     *   offset < 0 or length <= 0                  → ""
+     *   offset >= fileSize                         → "" (empty range)
+     *   offset + length > fileSize                 → clamp to fileSize
+     *   length > Integer.MAX_VALUE                 → clamp to Int max
+     *
+     * Uses RandomAccessFile so a single call reads only the requested
+     * window — the file is not materialized in memory. Short reads
+     * (file truncated between fileSize() and readBase64Range()) are
+     * trimmed to actual bytes so callers never receive zero padding.
+     *
+     * Returns Base64.NO_WRAP-style output (java.util.Base64 encoder
+     * default has no line breaks) or "" on failure. Never throws.
+     */
+    @JavascriptInterface
+    public String readBase64Range(String relativePath, long offset, long length) {
+        if (relativePath == null) return "";
+
+        File file = resolveRead(relativePath);
+        if (file == null || !file.isFile()) return "";
+        if (offset < 0 || length <= 0) return "";
+
+        long fileLen = file.length();
+        if (offset >= fileLen) return "";
+
+        long effective = Math.min(length, fileLen - offset);
+        int toRead = (int) Math.min(effective, Integer.MAX_VALUE);
+        if (toRead <= 0) return "";
+
+        try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
+            raf.seek(offset);
+            byte[] buf = new byte[toRead];
+            int read = 0;
+            while (read < toRead) {
+                int n = raf.read(buf, read, toRead - read);
+                if (n < 0) break;
+                read += n;
+            }
+            if (read < toRead) {
+                // File shrank under us between fileSize() and this call.
+                // Trim to actual bytes so the caller never sees zero padding.
+                byte[] trimmed = new byte[read];
+                System.arraycopy(buf, 0, trimmed, 0, read);
+                buf = trimmed;
             }
             return Base64.getEncoder().encodeToString(buf);
         } catch (Exception e) {

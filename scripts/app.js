@@ -559,6 +559,69 @@ function drainEarlyQueue() {
 }
 
 // ============================================================
+// DEEP LINK — DEFERRED (PLAY INSTALL REFERRER)
+// ────────────────────────────────────────────────────────────
+// On first install via a Play Store link that carries a
+// "deep_link" referrer payload, MainActivity.retrieveInstallReferrer()
+// stashes the destination into SharedPreferences. This function
+// polls the native plugin until either a route is available or the
+// native side confirms the lookup has finished (checked === true).
+//
+// The native lookup runs during MainActivity.onCreate(), so by the
+// time this module runs the answer is usually already waiting.
+// We cap the poll at 6 s; if the referrer lookup is still pending
+// after that, we give up — a future cold launch will retry, since
+// MainActivity deliberately does not set referrer_checked on a
+// transient SERVICE_UNAVAILABLE.
+//
+// The promise is created once and memoised — every caller awaits
+// the same native round-trip.
+let _pendingDeepLinkPromise = null;
+
+function capturePendingDeepLink() {
+    if (_pendingDeepLinkPromise) return _pendingDeepLinkPromise;
+
+    if (!MedvixApp || typeof MedvixApp.getPendingDeepLink !== 'function') {
+        // Native build predates this feature; silently no-op.
+        _pendingDeepLinkPromise = Promise.resolve(null);
+        return _pendingDeepLinkPromise;
+    }
+
+    _pendingDeepLinkPromise = (async () => {
+        const start = Date.now();
+        let delay = 200;
+
+        while (Date.now() - start < 6000) {
+            try {
+                const res = await MedvixApp.getPendingDeepLink();
+
+                if (res && res.url) {
+                    console.log('[DeepLink] Deferred route from referrer:', res.url);
+                    return res.url;
+                }
+
+                if (res && res.checked) {
+                    // Native side has confirmed: no deferred route.
+                    return null;
+                }
+                // Otherwise: still in flight — back off and retry.
+            } catch (err) {
+                console.warn('[DeepLink] getPendingDeepLink failed:', err);
+                return null;
+            }
+
+            await new Promise((r) => setTimeout(r, delay));
+            delay = Math.min(delay * 2, 1500);
+        }
+
+        console.warn('[DeepLink] Referrer poll timed out');
+        return null;
+    })();
+
+    return _pendingDeepLinkPromise;
+}
+
+// ============================================================
 // ORIENTATION — SPLASH-ONLY PORTRAIT LOCK
 // ============================================================
 async function lockSplashOrientation() {
@@ -975,6 +1038,12 @@ async function bootstrap() {
         // halves the wait versus the original serial order.
         await Promise.all([captureLaunchFile(), captureLaunchUrl()]);
 
+        // ── 4b. Kick off the deferred deep-link lookup ──────────────────
+        // Fire-and-forget here; we await it (with a short cap) just
+        // before route resolution, and attach a late-arrival handler
+        // after the router is live. See step 8b and step 13b below.
+        const deferredDeepLinkPromise = capturePendingDeepLink();
+
         // ── 5. Splash orientation — fire-and-forget ─────────────────────
         // The splash HTML already renders portrait via CSS; this just
         // tells the OS not to rotate the window during boot. No need
@@ -1001,6 +1070,30 @@ async function bootstrap() {
         appAuthenticated = auth.checkAuth();
         appInitialized = true;
 
+        // ── 8b. Deferred deep link — grace window ───────────────────────
+        // We reached this point having started the native referrer
+        // poll at step 4b; by now it has usually finished. If it has
+        // a route and no App Link is already pending, adopt it so
+        // resolveInitialRoute() picks it up.
+        //
+        // If the poll is still in flight, wait up to 1500 ms — a
+        // reasonable cap for Play Services. Anything slower is
+        // handled by the late-arrival handler at step 13b.
+        if (!pendingAppUrl) {
+            const raceResult = await Promise.race([
+                deferredDeepLinkPromise,
+                new Promise((resolve) => setTimeout(() => resolve(null), 1500)),
+            ]);
+
+            if (typeof raceResult === 'string' && raceResult) {
+                pendingAppUrl = raceResult;
+                console.log(
+                    '[DeepLink] Deferred route adopted before route resolution:',
+                    raceResult
+                );
+            }
+        }
+
         // ── 9. Resolve the initial route ────────────────────────────────
         redirectTarget = resolveInitialRoute();
         console.log('[App] Initial route:', redirectTarget,
@@ -1025,6 +1118,25 @@ async function bootstrap() {
 
         // ── 13. Drain warm-start URLs buffered during bootstrap ─────────
         drainEarlyQueue();
+
+        // ── 13b. Deferred deep link — late arrival ──────────────────────
+        // If the referrer lookup finished after the grace window at
+        // step 8b, dispatch it now that the router is live.
+        //
+        // Guards:
+        //   • No URL            → nothing to do.
+        //   • pendingAppUrl set → either an App Link won, or we already
+        //                         adopted the deferred route at 8b.
+        //                         Either way, do not double-fire.
+        //   • appInitialized false → impossible here, but kept for
+        //                            defensive clarity.
+        deferredDeepLinkPromise.then((url) => {
+            if (!url) return;
+            if (pendingAppUrl) return;
+            if (!appInitialized) return;
+            console.log('[DeepLink] Deferred route arrived late — dispatching:', url);
+            dispatchDeepLink(url);
+        });
 
         // ── 14. Freeze the early queue ──────────────────────────────────
         if (window.__deepLink) window.__deepLink.frozen = true;
@@ -1158,6 +1270,7 @@ window.app = {
     // Deep-link debug helpers
     extractDeepLinkPath,
     dispatchDeepLink,
+    capturePendingDeepLink,   // ← NEW: exposes the deferred-referrer poll
 
     // File-intent debug helpers
     isFileLaunchPending: () => fileLaunchPending,

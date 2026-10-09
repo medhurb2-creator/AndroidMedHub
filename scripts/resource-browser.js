@@ -65,6 +65,20 @@
  *   CONFIG.PREVIEW_PAGE_FRACTION (10% by default) and appends a subscribe
  *   call-to-action after the last preview page.
  *
+ * Open-button feedback:
+ *   When the user taps "Open", the button immediately enters an inline
+ *   "Opening…" state — a small spinner and a short label, contained
+ *   entirely within the button. This gives the tap immediate visual
+ *   confirmation while the entitlement check, blob resolution, and viewer
+ *   boot happen asynchronously. On failure the button is restored and a
+ *   toast reports the error. On success the viewer takes over the screen
+ *   and the button's state becomes irrelevant.
+ *
+ *   The inline state deliberately does NOT use the global overlay spinner,
+ *   which would hide the whole grid and give no per-card context. Every
+ *   card can be loading independently; the user always knows which one is
+ *   working.
+ *
  * Premium badge display policy:
  *   The 🔒 Premium badge is INFORMATIONAL ONLY. It is rendered on a card
  *   only when the resource is premium AND the user currently has no active
@@ -89,7 +103,7 @@
  *   runs at localhost:3001, but a link with that origin is useless to the
  *   recipient. See SHARE_ORIGIN below.
  *
- *   Landing flow (no auto-download, no premium decision here):
+ *   Landing flow (no auto-download, no auto-open, no premium decision here):
  *     1. initResourceBrowser() runs first — routing + page 1 fetch.
  *     2. Share params consumed:
  *          • If the id is already in docMap → use the real doc, no
@@ -98,9 +112,24 @@
  *            `resources/queries:getResource` (public, no auth) and
  *            returns the canonical public shape.
  *          • Null → toast "Shared document not found", stop.
- *     3. Inject the doc into allDocuments / docMap, render, open the
- *        viewer. Nothing else happens.
+ *     3. The recipient sees the shared document rendered as a normal card
+ *        in the grid, highlighted so they can identify it, and a toast
+ *        naming it. The filter is reset to "all" and any active search
+ *        term cleared so the card is guaranteed visible.
  *     4. Strip share params from the URL.
+ *     5. Nothing else happens. The recipient decides whether to Download
+ *        the resource (which stores the blob in IndexedDB, enabling
+ *        offline access) or, once downloaded, to Open it in the viewer.
+ *
+ *   Why no auto-open:
+ *     Opening a share link on an undownloaded resource would force the
+ *     recipient to fetch the entire file just to look at page 1, without
+ *     asking. That is a silent bandwidth cost on someone else's device.
+ *     The card gives the recipient full metadata — title, author, file
+ *     size, premium status, download state — so they can make the
+ *     decision themselves. Every path from the card (Download, Open,
+ *     favourite, share again) flows through the existing handlers that
+ *     already implement entitlement, preview mode, and offline storage.
  *
  *   Native share (Android):
  *     Inside the Capacitor Android app the Web Share API is unreliable, so
@@ -643,6 +672,88 @@ function createResourceCard(doc) {
     `;
 }
 
+// ==================== OPEN-BUTTON FEEDBACK ====================
+
+/**
+ * Put an Open button into a visible inline "Opening…" state.
+ *
+ * The spinner is the same 14px border spinner the download button uses,
+ * scoped to the button rather than the whole screen. This is the point:
+ * the user tapped a specific card, and the feedback should stay on that
+ * card, not blank out the rest of the grid with a full-screen overlay.
+ *
+ * The original innerHTML is stashed on the element so _restoreButton can
+ * put it back verbatim without reconstructing the "Open" markup.
+ *
+ * @param {HTMLButtonElement|null} btn
+ */
+function _setButtonOpening(btn) {
+    if (!btn) return;
+    if (!btn.dataset.originalHtml) {
+        btn.dataset.originalHtml = btn.innerHTML;
+    }
+    btn.disabled = true;
+    btn.classList.add('btn-loading');
+    btn.innerHTML = `
+        <div class="open-progress">
+            <span class="spinner-small"></span>
+            <span class="open-label">Opening…</span>
+        </div>
+    `;
+}
+
+/**
+ * Restore an Open button to its original state.
+ *
+ * Called only on failure paths. On success the viewer takes over the
+ * screen and the button's state no longer matters — leaving it in the
+ * loading state is fine and avoids a visible flicker of "Open" →
+ * "Opening…" → "Open" → screen change.
+ *
+ * @param {HTMLButtonElement|null} btn
+ */
+function _restoreButton(btn) {
+    if (!btn) return;
+    btn.disabled = false;
+    btn.classList.remove('btn-loading');
+    if (btn.dataset.originalHtml) {
+        btn.innerHTML = btn.dataset.originalHtml;
+        delete btn.dataset.originalHtml;
+    }
+}
+
+// ==================== SHARE-HIGHLIGHT FEEDBACK ====================
+
+/**
+ * Scroll a card into view and pulse it briefly so the recipient of a share
+ * link can see exactly which document the link points at. Purely cosmetic —
+ * the card is fully interactive either way.
+ *
+ * Called only from the share-landing flow. Removes the highlight class
+ * after a few seconds; the outline disappears and the card looks identical
+ * to every other card in the grid.
+ *
+ * @param {string} id
+ */
+function _highlightSharedCard(id) {
+    try {
+        const card = document.querySelector(`.resource-card[data-id="${id}"]`);
+        if (!card) return;
+
+        card.classList.add('shared-highlight');
+
+        try {
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } catch {
+            try { card.scrollIntoView(); } catch { /* ignore */ }
+        }
+
+        setTimeout(() => {
+            try { card.classList.remove('shared-highlight'); } catch { /* ignore */ }
+        }, 4000);
+    } catch { /* ignore */ }
+}
+
 // ==================== SHARE ====================
 //
 // Share is a deep link, not a premium or download feature. Its only job:
@@ -668,7 +779,10 @@ function createResourceCard(doc) {
 //          `resources/queries:getResource` (public, no auth) and returns
 //          the canonical public shape.
 //        • Null → toast "Shared document not found", stop.
-//   3. Inject the doc into allDocuments / docMap, render, open viewer.
+//   3. The shared card is injected into the grid (if not already present),
+//      the filter is reset to "all", any active search is cleared, the
+//      card is scrolled into view and briefly highlighted, and a toast
+//      names it. NO viewer is opened. NO download is started.
 //   4. Strip share params from the URL.
 //
 // Native share (Android):
@@ -839,8 +953,23 @@ async function shareResource(doc) {
 }
 
 /**
- * Resolve a shared id to a real document and open it in the viewer.
- * No download, no persistence — just metadata fetch + viewer handoff.
+ * Resolve a shared id to a real document, inject it into the grid so the
+ * recipient sees it as a normal card, and stop there.
+ *
+ * NO viewer is opened. NO download is started. The recipient gets the
+ * card with full metadata (title, author, size, premium badge, download
+ * state) and decides what to do with it — Download, Open (once
+ * downloaded), favourite, or nothing. Every one of those paths flows
+ * through the existing card handlers, which already implement
+ * entitlement checks, preview mode, and offline storage.
+ *
+ * Called from two places:
+ *   • initResourceBrowser() on cold start, when the URL carries share
+ *     params.
+ *   • _handleShareIfPresent() in pages/resource-browser.js, which
+ *     re-invokes initResourceBrowser() for warm-start arrivals (native
+ *     share intent while the page is already up, or browser
+ *     back/forward onto a share URL).
  *
  * @param {{id: string}} share
  */
@@ -861,20 +990,48 @@ async function _consumeSharedDoc(share) {
         return;
     }
 
-    // Inject and render as a real card if it isn't already on screen.
+    // Inject the doc into the grid so the recipient sees it as a real
+    // card, with all its metadata, file size, and entitlements intact.
     docMap.set(doc._id, doc);
     if (!allDocuments.some(d => d._id === doc._id)) {
         allDocuments = [doc, ...allDocuments];
         await hydrateThumbnailCache([doc]);
-        applyFiltersAndRender();
     }
 
+    // If the recipient is on a filter that would hide the shared card
+    // (e.g. "Downloaded" but this doc isn't downloaded yet), reset to
+    // "all" so the shared card is actually visible on landing. Also
+    // clear any active search term — a stale query from the previous
+    // session would silently hide the shared doc.
+    if (currentFilter !== 'all') {
+        currentFilter = 'all';
+        const dropdown = document.getElementById('filter-dropdown');
+        if (dropdown) {
+            dropdown.querySelectorAll('button').forEach(b => {
+                b.classList.toggle('active-filter', b.dataset.filter === 'all');
+            });
+        }
+    }
+    const searchEl = document.getElementById('search-input');
+    if (searchEl && searchEl.value) {
+        searchEl.value = '';
+    }
+
+    applyFiltersAndRender();
+
+    // Make the shared card findable: scroll it into view and pulse it
+    // briefly so the recipient can identify which document the link
+    // points at.
+    _highlightSharedCard(doc._id);
+
     if (_dbg()) {
-        _logLine('share-open', `id=${doc._id} title="${doc.title}"`, 'info');
+        _logLine('share-land', `id=${doc._id} title="${doc.title}"`, 'info');
     }
 
     ui.showToast(`Shared: ${doc.title}`, 'info');
-    viewer.openDocument(doc._id, doc.title, doc.fileType);
+
+    // NO viewer.openDocument() call. The user decides what to do with the
+    // card — Open, Download, share again, or nothing.
 }
 
 // ==================== EVENT LISTENERS ====================
@@ -899,47 +1056,77 @@ function attachCardEventListeners() {
 
             // ===== OPEN =====
             if (isOpen) {
+                // Immediate visual feedback: swap the button into an inline
+                // loading state before any await. The entitlement check, the
+                // metadata lookup inside the viewer, and the blob URL
+                // creation all take time on first open — especially for a
+                // large PDF that has to be read out of the native bridge in
+                // chunks.
+                _setButtonOpening(btn);
+
                 let previewMode = false;
                 let hasActive = false;
 
-                if (doc && doc.isPremium === true) {
-                    hasActive = await subscription.hasActiveSubscription();
-                    if (!hasActive) {
-                        previewMode = true;
+                             try {
+                    if (doc && doc.isPremium === true) {
+                        hasActive = await subscription.hasActiveSubscription();
+                        if (!hasActive) {
+                            previewMode = true;
+                        }
                     }
-                }
 
-                if (_dbg()) {
-                    const reason = !doc
-                        ? 'doc not in docMap'
-                        : doc.isPremium !== true
-                            ? `isPremium is ${typeof doc.isPremium} (${String(doc.isPremium)}), not strict true`
-                            : hasActive
-                                ? 'user has active subscription'
-                                : 'unsubscribed + premium → PREVIEW MODE';
+                    if (_dbg()) {
+                        const reason = !doc
+                            ? 'doc not in docMap'
+                            : doc.isPremium !== true
+                                ? `isPremium is ${typeof doc.isPremium} (${String(doc.isPremium)}), not strict true`
+                                : hasActive
+                                    ? 'user has active subscription'
+                                    : 'unsubscribed + premium → PREVIEW MODE';
 
-                    _log('open-decision', {
-                        id,
-                        doc: doc ? _summariseDoc(doc) : null,
-                        docMapSize: docMap.size,
-                        hasActiveSubscription: hasActive,
-                        willEnterPreviewMode: previewMode,
-                        reason,
-                    }, previewMode ? 'warn' : 'ok');
-                }
+                        _log('open-decision', {
+                            id,
+                            doc: doc ? _summariseDoc(doc) : null,
+                            docMapSize: docMap.size,
+                            hasActiveSubscription: hasActive,
+                            willEnterPreviewMode: previewMode,
+                            reason,
+                        }, previewMode ? 'warn' : 'ok');
+                    }
 
-                if (previewMode) {
+                    if (previewMode) {
+                        ui.showToast(
+                            'Previewing the first 10% — subscribe to unlock all pages',
+                            'info'
+                        );
+                    }
+
+                    const title = btn.dataset.title || 'Document';
+                    const fileType = btn.dataset.type || 'pdf';
+
+                    await viewer.openDocument(id, title, fileType, { previewMode });
+                } catch (err) {
+                    if (_dbg()) {
+                        _logLine(
+                            'open-failed',
+                            String(err && err.message || err),
+                            'fail'
+                        );
+                    }
                     ui.showToast(
-                        'Previewing the first 10% — subscribe to unlock all pages',
-                        'info'
+                        'Could not open: ' +
+                            (err && err.message ? err.message : 'unknown error'),
+                        'error'
                     );
+                } finally {
+                    // Restore the button whether the open succeeded or failed.
+                    // On success the viewer is covering the screen so the
+                    // reset is invisible; on failure it's what un-sticks the
+                    // button.
+                    _restoreButton(btn);
                 }
+                return;  
 
-                const title = btn.dataset.title || 'Document';
-                const fileType = btn.dataset.type || 'pdf';
-
-                viewer.openDocument(id, title, fileType, { previewMode });
-                return;
             }
 
             // ===== DOWNLOAD =====
@@ -1475,8 +1662,12 @@ export async function initResourceBrowser(subject, type, forceRefresh = false) {
 
     // ── Shared-doc landing ─────────────────────────────────────────
     // If the URL carries a share payload, resolve it to a real document
-    // (backend by id if not already loaded) and open it in the viewer.
-    // No download, no persistence — just navigation.
+    // (backend by id if not already loaded), inject it as a card, and
+    // highlight it so the recipient can see which one the link points
+    // at. No viewer is opened, no download is started.
+    //
+    // The recipient decides what to do with the card via the normal
+    // Open / Download / Share / Favourite handlers.
     const share = readSharedDocFromUrl();
     if (share) await _consumeSharedDoc(share);
 

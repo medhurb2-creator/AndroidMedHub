@@ -104,7 +104,9 @@
  *
  *   What is removed: the .page-container, every <canvas class="page"> and
  *   every <div class="cover"> inside it, the preview CTA, the error
- *   container, and any other non-static direct child of #viewer-main.
+ *   container, and any other non-static direct child of #viewer-main. The
+ *   .x-scroll class on #viewer-main is also cleared so the next document
+ *   starts with X-axis lock restored.
  *
  * Tap-sequence behaviour (Android convention):
  *   • Single tap  → toggle header/footer visibility.
@@ -138,6 +140,13 @@
  *     • 'double-tap'           → override (user zoomed in)
  *     • 'button', 'keyboard',
  *       'pinch', 'wheel'       → override
+ *
+ * Memory pressure toast:
+ *   MemoryManager evicts before registering, so MEMORY_PRESSURE at critical
+ *   level is now a rare event — it fires only when the pyramid's natural
+ *   eviction (farthest-from-centre on every page change) could not keep
+ *   pace with allocation. When it does fire, the user sees one throttled
+ *   toast. The 60s throttle (up from 30s) matches the reduced frequency.
  *
  * @module viewer/ui-internal
  */
@@ -769,9 +778,9 @@ export function setupFitWidthObserver(core) {
           // User has chosen a scale manually — respect it.
           if (_userZoomOverride) return;
 
-          // Re-apply fit-to-width via the core's private helper. It
-          // computes the new scale, sets state, and calls
-          // zoom.syncScale() so the next render uses the new scale.
+          // Re-apply fit-to-width via the core's helper. It computes the
+          // new scale, sets state, calls zoom.syncScale, resizes every
+          // existing slot in place, and re-kicks the pyramid.
           if (core && typeof core._applyFitToWidth === 'function') {
             Promise.resolve(core._applyFitToWidth()).catch(() => { /* ignore */ });
           }
@@ -1391,15 +1400,40 @@ export function bindCoreEvents(core) {
     }
   };
 
-  // ── Loading / loaded / error ─────────────────────────────────────────────
+  // ── Loading / progress / loaded / error ─────────────────────────────────
   subscribe(Events.DOCUMENT_LOADING, () => {
     const els = _getEls();
     if (!els) return;
     if (els.loading) els.loading.style.display = 'block';
-    if (els.progress) els.progress.style.display = 'none';
+    if (els.progress) {
+      els.progress.value = 0;
+      els.progress.style.display = 'none';
+    }
     if (els.main) {
       const err = els.main.querySelector('.error-container');
       if (err) err.remove();
+    }
+  });
+
+  // DOCUMENT_PROGRESS → move the progress bar. Emitted by core._loadPdf
+  // during URL-based loads; the bar shows bytes loaded / total. It is
+  // hidden again on DOCUMENT_LOADED.
+  subscribe(Events.DOCUMENT_PROGRESS, (payload) => {
+    const els = _getEls();
+    if (!els || !els.progress) return;
+    if (!payload) return;
+
+    const loaded = typeof payload.loaded === 'number' ? payload.loaded : 0;
+    const total = typeof payload.total === 'number' ? payload.total : 0;
+
+    els.progress.style.display = 'block';
+    if (total > 0) {
+      els.progress.value = Math.max(0, Math.min(1, loaded / total));
+    } else {
+      // Indeterminate: loaded bytes known but total unknown. Fall back to
+      // a slow crawl so the bar visibly moves.
+      const current = typeof els.progress.value === 'number' ? els.progress.value : 0;
+      els.progress.value = Math.min(0.9, current + 0.02);
     }
   });
 
@@ -1407,18 +1441,23 @@ export function bindCoreEvents(core) {
     const els = _getEls();
     if (!els) return;
     if (els.loading) els.loading.style.display = 'none';
-    if (els.progress) els.progress.style.display = 'none';
+    if (els.progress) {
+      els.progress.value = 0;
+      els.progress.style.display = 'none';
+    }
 
     let current = 1;
     let total = 1;
     let documentKind = null;
     let blocked = false;
+    let titleText = '';
     try {
       const s = core.getState();
       current = s.get('currentPage') || 1;
       total = s.get('numPages') || 1;
       documentKind = s.get('documentKind');
       blocked = s.get('previewBlocked') === true;
+      titleText = s.get('title') || '';
       _currentPage = current;
       _currentTotalPages = total;
       _currentViewMode = s.get('viewMode') || 'scroll';
@@ -1431,6 +1470,13 @@ export function bindCoreEvents(core) {
     if (els.footer) {
       els.footer.style.display =
         (documentKind === 'pdf' && !blocked) ? 'flex' : 'none';
+    }
+
+    // Set the document title with a native tooltip so a truncated visible
+    // string still surfaces the full name on hover / long-press.
+    if (els.title && titleText) {
+      els.title.textContent = titleText;
+      els.title.setAttribute('title', titleText);
     }
 
     _applyPageNumbers(current, total);
@@ -1455,7 +1501,10 @@ export function bindCoreEvents(core) {
     const els = _getEls();
     if (!els) return;
     if (els.loading) els.loading.style.display = 'none';
-    if (els.progress) els.progress.style.display = 'none';
+    if (els.progress) {
+      els.progress.value = 0;
+      els.progress.style.display = 'none';
+    }
     if (!els.main) return;
     const rawMessage = payload && payload.message ? payload.message : 'Failed to load document';
     const safe = escapeHtml(String(rawMessage));
@@ -1607,12 +1656,22 @@ export function bindCoreEvents(core) {
   });
 
   // ── Memory pressure → throttled toast ────────────────────────────────────
+  //
+  // MemoryManager evicts before registering, so this event fires only when
+  // the pyramid's natural eviction could not keep pace with allocation —
+  // a genuinely tight condition, not a routine one. 60 s throttle rather
+  // than 30 s, matching the reduced frequency.
   subscribe(Events.MEMORY_PRESSURE, (payload) => {
     if (!payload || payload.level !== 'critical') return;
     const now = Date.now();
-    if (now - _memoryToastAt < 30000) return;
+    if (now - _memoryToastAt < 60000) return;
     _memoryToastAt = now;
-    try { showToast('Low memory — some pages may reload as you scroll', 'warning'); } catch { /* ignore */ }
+    try {
+      showToast(
+        'Memory is tight — some pages may re-render at lower quality while you scroll',
+        'warning',
+      );
+    } catch { /* ignore */ }
   });
 
   // ── Network offline → throttled toast ───────────────────────────────────
@@ -1735,6 +1794,10 @@ export function resetUIState() {
       els.outlineDrawer.setAttribute('aria-hidden', 'true');
     }
     if (els.footer) els.footer.style.display = 'none';
+    if (els.title) {
+      els.title.textContent = '';
+      els.title.removeAttribute('title');
+    }
   }
 
   try {
@@ -1841,7 +1904,9 @@ export function teardownControls() {
  * ALSO:
  *   • Empties #viewer-outline-drawer and removes its .open class.
  *   • Closes the scrim.
- *   • Clears #viewer-title textContent.
+ *   • Clears #viewer-title textContent and its title attribute.
+ *   • Removes the .x-scroll class so the next document starts with the
+ *     X-axis lock restored.
  *   • Exits fullscreen if the viewer was the fullscreen element.
  *
  * Idempotent. Safe to call before init, after destroy, or on a document
@@ -1898,6 +1963,7 @@ export function clearViewerContent() {
 
     if (els.title) {
       els.title.textContent = '';
+      els.title.removeAttribute('title');
     }
 
     if (els.footer) {

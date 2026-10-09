@@ -12,6 +12,36 @@
  * never `navigator.userAgent`, never `window.matchMedia` directly. Swapping
  * the detection strategy later touches one file.
  *
+ * ═══════════════════════════════════════════════════════════════════════════
+ * MEMORY TIER CONTRACT
+ *
+ *   This module exposes the raw primitives for memory classification:
+ *
+ *     deviceMemoryGB()      — navigator.deviceMemory, or 4 as a fallback
+ *     isLowMemoryDevice()   — true when the device reports ≤ 2 GB
+ *
+ *   core.js consumes these and picks an absolute canvas-byte cap from the
+ *   tiers defined in CONFIG (MEMORY_CAP_LOW_MEMORY_MB, MEMORY_CAP_MOBILE_MB,
+ *   MEMORY_CAP_HIGH_MOBILE_MB, MEMORY_CAP_DESKTOP_MB). The tier thresholds
+ *   are:
+ *
+ *     isLowMemory  OR mem ≤ 2  →  40 MB cap
+ *     mem ≤ 4                  →  80 MB cap
+ *     mobile                   → 150 MB cap
+ *     desktop                  → 250 MB cap
+ *
+ *   The classification lives in core.js because it depends on CONFIG
+ *   constants. This module only answers "how much RAM does this device
+ *   have" and "does that classify as low memory". Changing the tier
+ *   thresholds happens in exactly one place.
+ *
+ *   navigator.deviceMemory is bucketed to powers of two by the browser
+ *   (0.25, 0.5, 1, 2, 4, 8) — so "≤ 2" and "< 4" produce identical results
+ *   in practice. The threshold is written "≤ 2" to match the cap tier's
+ *   wording. The API is unavailable on Safari and Firefox; both return the
+ *   fallback of 4 GB, which lands in the mid-range tier.
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
  * Exports:
  *   ── Enums ─────────────────────────────────────────────────────────────
  *     PLATFORM            — { ANDROID, IOS, WEB }
@@ -29,11 +59,11 @@
  *     hardwareConcurrency()
  *     deviceMemoryGB()
  *     isMobileUA()
- *     isLowMemoryDevice()
+ *     isLowMemoryDevice()      — mem ≤ 2 GB
  *     isCoarsePointer()
  *     hasTouch()
  *     devicePixelRatio()
- *     getDPRClamped()          — clamped to CONFIG.MAX_DPR's upstream value
+ *     getDPRClamped(max)       — clamped to [1, max]
  *
  *   ── Display / preference (live reads) ─────────────────────────────────
  *     prefersDarkMode()
@@ -245,7 +275,8 @@ export function hardwareConcurrency() {
  * (Firefox, Safari, and older WebViews do not implement `deviceMemory`).
  *
  * Values are capped at 8 by the spec — `deviceMemory === 8` means "8 GB or
- * more", not exactly 8.
+ * more", not exactly 8. Values are bucketed to powers of two by the browser
+ * (0.25, 0.5, 1, 2, 4, 8) to prevent device fingerprinting.
  *
  * Cached — never changes.
  *
@@ -279,13 +310,20 @@ export function isMobileUA() {
 }
 
 /**
- * Conservative low-memory classification: device reports < 4 GB RAM, OR
- * is mobile by UA with ≤ 4 GB reported. Used to size the canvas cache.
+ * Conservative low-memory classification: device reports ≤ 2 GB RAM.
+ *
+ * This is the threshold core.js uses to select the 40 MB canvas-byte cap.
+ * A 4 GB device is deliberately NOT classified as low memory — it belongs
+ * to the 80 MB tier, which is the next band up.
+ *
+ * Because `navigator.deviceMemory` is bucketed to powers of two, this is
+ * equivalent to `< 4` in practice, but "≤ 2" matches the cap tier's own
+ * wording.
  *
  * @returns {boolean}
  */
 export function isLowMemoryDevice() {
-  return deviceMemoryGB() < 4;
+  return deviceMemoryGB() <= 2;
 }
 
 /**
@@ -403,8 +441,17 @@ export function hasSafeAreaSupport() {
 
 /**
  * Read the safe-area insets in CSS pixels. Best-effort: uses a hidden probe
- * element positioned by `env(safe-area-inset-*)` and measures it once.
- * Cached after the first successful read.
+ * element whose padding is set to `env(safe-area-inset-*)`, then reads the
+ * resolved padding via `getComputedStyle`. Cached after the first
+ * successful read.
+ *
+ * WHY PADDING, NOT POSITION:
+ *   The naive approach — position an element via `top: env(...)` and read
+ *   its bounding rect — breaks when the element also has `right: env(...)`
+ *   set with `width: 0`, because the browser resolves the conflicting
+ *   constraints by choosing one edge and ignoring the other. Reading
+ *   computed padding avoids the constraint conflict entirely: each of the
+ *   four insets is resolved independently by the style engine.
  *
  * Prefer CSS `env()` for layout. This function exists for tests and for
  * programmatic layout decisions that need the numeric value.
@@ -428,26 +475,34 @@ export function getSafeAreaInsets() {
     const probe = document.createElement('div');
     probe.style.cssText = [
       'position:fixed',
-      'top:env(safe-area-inset-top,0px)',
-      'right:env(safe-area-inset-right,0px)',
-      'bottom:env(safe-area-inset-bottom,0px)',
-      'left:env(safe-area-inset-left,0px)',
+      'top:0',
+      'left:0',
       'width:0',
       'height:0',
+      'padding-top:env(safe-area-inset-top,0px)',
+      'padding-right:env(safe-area-inset-right,0px)',
+      'padding-bottom:env(safe-area-inset-bottom,0px)',
+      'padding-left:env(safe-area-inset-left,0px)',
       'pointer-events:none',
       'visibility:hidden',
       'z-index:-1',
     ].join(';');
 
     document.body.appendChild(probe);
-    const rect = probe.getBoundingClientRect();
-    document.body.removeChild(probe);
+
+    const style = window.getComputedStyle(probe);
+    const top = parseFloat(style.paddingTop) || 0;
+    const right = parseFloat(style.paddingRight) || 0;
+    const bottom = parseFloat(style.paddingBottom) || 0;
+    const left = parseFloat(style.paddingLeft) || 0;
+
+    probe.remove();
 
     _safeAreaCache = {
-      top: Math.max(0, rect.top || 0),
-      right: Math.max(0, (window.innerWidth || 0) - (rect.right || 0)),
-      bottom: Math.max(0, (window.innerHeight || 0) - (rect.bottom || 0)),
-      left: Math.max(0, rect.left || 0),
+      top: Math.max(0, top),
+      right: Math.max(0, right),
+      bottom: Math.max(0, bottom),
+      left: Math.max(0, left),
     };
     return _safeAreaCache;
   } catch {
@@ -481,6 +536,11 @@ export function isOnline() {
 /**
  * Whether the page is running as an installed PWA (`display-mode: standalone`)
  * or as an iOS home-screen app (`navigator.standalone`).
+ *
+ * Note: a Capacitor Android app is NOT a standalone PWA in this sense — it
+ * has no browser display-mode. Use `isNative()` to detect that case. The
+ * two are orthogonal: a browser-hosted PWA and a Capacitor app are
+ * different deployment targets.
  *
  * @returns {boolean}
  */
@@ -585,6 +645,7 @@ export function getInputProfile() {
  *   hasWebGL: boolean,
  *   hardwareConcurrency: number,
  *   deviceMemoryGB: number,
+ *   isLowMemoryDevice: boolean,
  *   devicePixelRatio: number,
  *   inputKind: string,
  *   colorScheme: 'light'|'dark',
@@ -607,6 +668,7 @@ export function getPlatformSnapshot() {
     hasWebGL: hasWebGL(),
     hardwareConcurrency: hardwareConcurrency(),
     deviceMemoryGB: deviceMemoryGB(),
+    isLowMemoryDevice: isLowMemoryDevice(),
     devicePixelRatio: devicePixelRatio(),
     inputKind: getInputProfile(),
     colorScheme: prefersDarkMode() ? COLOR_SCHEME.DARK : COLOR_SCHEME.LIGHT,

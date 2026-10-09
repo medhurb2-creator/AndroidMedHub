@@ -321,20 +321,36 @@ export class PageRenderer {
 
   // ── Internal ──────────────────────────────────────────────────────────────
 
-  /**
-   * Read DPR from state, clamped to CONFIG.MAX_DPR.
-   * @private
-   * @returns {number}
-   */
-  _getDpr() {
-    try {
-      const state = this._core.getState();
-      const dpr = state ? state.get('dpr') : 1;
-      return clamp(typeof dpr === 'number' ? dpr : 1, 1, CONFIG.MAX_DPR);
-    } catch {
-      return 1;
+/**
+ * Read DPR from state, clamped by the appropriate device-profile cap.
+ *
+ * Capping by profile matters because a 1200-px-wide page at DPR 2
+ * produces a 2400×3400 bitmap — 33 MB of pixels per page. Six of those
+ * in the 100% ring alone would hit the desktop cap. At DPR 1.5 the same
+ * page is 15 MB; the visual difference on a phone screen is negligible.
+ *
+ * @private
+ * @returns {number}
+ */
+_getDpr() {
+  try {
+    const state = this._core.getState();
+    const rawDpr = state ? state.get('dpr') : 1;
+    const profile = state ? state.get('deviceProfile') : null;
+
+    let cap = CONFIG.MAX_DPR;
+    if (profile && profile.isLowMemory) {
+      cap = CONFIG.MAX_DPR_LOW_MEMORY;
+    } else if (profile && profile.isMobile) {
+      cap = CONFIG.MAX_DPR_MOBILE;
     }
+
+    const dpr = typeof rawDpr === 'number' ? rawDpr : 1;
+    return clamp(dpr, 1, cap);
+  } catch {
+    return 1;
   }
+}
 }
 
 // ============================================================================
@@ -991,35 +1007,56 @@ export class RenderScheduler {
     this._kickDrain();
   }
 
-  /**
-   * @private
-   * @param {RenderJob} job
-   * @param {*} result
-   */
-  _handleComplete(job, result) {
-    this._completedCount++;
-    this._completed.set(job.id, { ...result, timestamp: Date.now() });
-    this._pruneMap(this._completed);
+/**
+ * @private
+ * @param {RenderJob} job
+ * @param {*} result
+ */
+_handleComplete(job, result) {
+  this._completedCount++;
 
-    try {
-      this._core.getBus().emit(Events.RENDER_COMPLETE, {
-        jobId: job.id,
-        pageNum: job.pageNum,
-        scale: job.scale,
-        // Ring resolution carried through unchanged. Core records it as
-        // data-res on the slot so the pyramid knows which ring this
-        // completed bitmap belongs to. Without this, the pyramid cannot
-        // tell 100% from 80% and will re-enqueue forever.
-        ringRes: typeof job.ringRes === 'number' ? job.ringRes : 1.0,
-        kind: job.kind,
-        // The rendered scratch canvas. Core copies the bitmap into the
-        // page's slot; it does NOT insert this canvas into the DOM.
-        canvas: result && result.canvas ? result.canvas : null,
-      });
-    } catch { /* ignore */ }
+  const canvas = result && result.canvas ? result.canvas : null;
 
-    try { job.onComplete && job.onComplete(result); } catch { /* ignore */ }
+  // Store metadata ONLY. Holding the canvas in this map was the leak:
+  // each entry pinned a 7–30 MB bitmap, and _pruneMap only dropped the
+  // map entry — it never released the canvas or its MemoryManager
+  // registration. After 20 renders, the cap was exceeded while the
+  // actual working set was five pages.
+  this._completed.set(job.id, {
+    pageNum: job.pageNum,
+    scale: job.scale,
+    kind: job.kind,
+    ringRes: typeof job.ringRes === 'number' ? job.ringRes : 1.0,
+    timestamp: Date.now(),
+  });
+  this._pruneMap(this._completed);
+
+  try {
+    this._core.getBus().emit(Events.RENDER_COMPLETE, {
+      jobId: job.id,
+      pageNum: job.pageNum,
+      scale: job.scale,
+      ringRes: typeof job.ringRes === 'number' ? job.ringRes : 1.0,
+      kind: job.kind,
+      canvas,
+    });
+  } catch { /* ignore */ }
+
+  try { job.onComplete && job.onComplete(result); } catch { /* ignore */ }
+
+  // ── Release the scratch canvas ─────────────────────────────────────────
+  // The bus is synchronous: core's RENDER_COMPLETE handler has already
+  // copied this bitmap into the page's slot canvas by the time emit()
+  // returns. The scratch surface is dead weight from that moment.
+  //
+  // releaseCanvas() also calls MemoryManager.unregisterCanvas(), which
+  // is what actually fixes the leak — the byte count returns to zero for
+  // this render instead of accumulating forever.
+  if (canvas) {
+    try { this._renderer.releaseCanvas(canvas); } catch { /* ignore */ }
   }
+}
+
 
   /**
    * @private

@@ -190,16 +190,18 @@ export async function init(context) {
   //
   // If the URL also carries a share payload (`?share=1&id=…`), the
   // resource browser itself consumes it during this call — it resolves
-  // the id (from the loaded page or the backend), injects it into the
-  // grid, opens the viewer, and strips the share params. No extra
-  // handling is needed here for the cold-start case.
+  // the id (from the loaded page or the backend), injects the shared
+  // document into the grid, highlights it so the recipient can identify
+  // it, and strips the share params. No viewer is opened, no download
+  // is started. The recipient decides what to do with the card.
   await resourceBrowser.initResourceBrowser(subject, type, true);
 
   console.log('[ResourceBrowser] Initialized (forced fresh load)');
 }
 
 /**
- * If the current URL is a share link, resolve and open the shared document.
+ * If the current URL is a share link, resolve and inject the shared
+ * document into the grid as a normal card.
  *
  * Called from the `native:share-arrived` warm-start listener and from the
  * `popstate` listener (browser back/forward onto a share URL).
@@ -209,6 +211,16 @@ export async function init(context) {
  * the URL and consumes them. This helper exists only for arrivals that
  * happen AFTER the page is already initialized: the URL changes without
  * a reload, so `init()` does not run again.
+ *
+ * Behaviour is identical to the cold-start path:
+ *   • The shared document is resolved via the backend (public query).
+ *   • It is injected into the grid as a normal card.
+ *   • The filter is reset to "all" and any active search is cleared so
+ *     the card is guaranteed visible.
+ *   • The card is scrolled into view and briefly highlighted.
+ *   • A toast names the document.
+ *   • The share params are stripped from the URL.
+ *   • NO viewer is opened. NO download is started.
  *
  * Auth is required for the catalogue path, matching the cold-start flow.
  *
@@ -247,8 +259,8 @@ async function _handleShareIfPresent() {
   // idempotent from the caller's perspective: it re-fetches page 1 for
   // the path (or serves it from cache) and then internally calls
   // `_consumeSharedDoc`, which resolves the id via the backend if it
-  // isn't already on screen, opens the viewer, and strips the share
-  // params from the URL.
+  // isn't already on screen, injects it as a card, highlights it, and
+  // strips the share params from the URL.
   //
   // Subscription state is refreshed by `initResourceBrowser` itself, so
   // no separate init is needed here.
