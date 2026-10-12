@@ -223,8 +223,6 @@ export class ScrollManager {
     const clampedToTotal = clamp(pageNum, 1, Math.max(1, totalPages));
     const target = clampedToTotal > effectiveLimit ? effectiveLimit : clampedToTotal;
 
-    // Cancel all queued and running work — the previous scroll's
-    // prefetches are meaningless once we're jumping.
     try {
       const scheduler = this._core.getScheduler();
       if (scheduler && scheduler.cancelAll) {
@@ -236,9 +234,6 @@ export class ScrollManager {
     const viewMode = this._getViewMode();
 
     if (viewMode === 'scroll') {
-      // Ensure real geometry before scrolling. Pages past the eager-
-      // metadata threshold are 200px placeholders, so the target's
-      // offsetTop is far short of its true position.
       try {
         if (typeof this._core._preloadSizesUpTo === 'function') {
           await this._core._preloadSizesUpTo(target);
@@ -249,9 +244,6 @@ export class ScrollManager {
 
       const entry = this._slotCache.find((w) => w.pageNum === target);
       if (entry && this._scrollRoot) {
-        // Long jumps snap; short jumps animate. A smooth scroll across
-        // hundreds of pages takes seconds and races with the pyramid's
-        // ongoing DOM updates.
         const distance = Math.abs(entry.top - this._scrollRoot.scrollTop);
         const smooth = !!(opts && opts.smooth)
           && distance < 4 * this._scrollRoot.clientHeight;
@@ -268,10 +260,6 @@ export class ScrollManager {
       }
     }
 
-    // Emit PAGE_VISIBLE. Core's subscriber sets currentPage and either
-    // slides the pyramid (scroll mode) or rebuilds the layout (page mode).
-    // Do NOT set currentPage here first — the subscriber's guard would
-    // then skip the pyramid for every outline-driven navigation.
     try {
       this._core.getBus().emit(Events.PAGE_VISIBLE, {
         pageNum: target,
@@ -285,8 +273,6 @@ export class ScrollManager {
   refreshVisible() {
     if (this._layoutDirty) this.recomputeLayout();
     this._updateVisiblePages();
-    // The pyramid in core drives rendering; this just reports visibility
-    // state so anything observing visiblePageNumbers sees the current set.
   }
 
   destroy() {
@@ -343,12 +329,6 @@ export class ScrollManager {
     this._lastTimestamp = now;
     this._lastScrollTop = scrollTop;
 
-    // NOTE: _applyVelocityThrottle and _prefetchAdjacent are no longer
-    // called from this frame. Velocity-driven rendering is owned by the
-    // pyramid in core.js, which consumes SCROLL_VELOCITY below. Calling
-    // scheduler.pause() here would freeze the visible ring during a fling
-    // — the opposite of what we want.
-
     this._updateVisiblePages();
 
     try {
@@ -364,9 +344,6 @@ export class ScrollManager {
       });
     } catch { /* ignore */ }
 
-    // Reset the idle timer on every scroll frame. When it fires after
-    // SCROLL_IDLE_MS of quiet, emit a final SCROLL_VELOCITY with velocity 0
-    // so core restores the pyramid to its centred, full-ring state.
     if (this._idleTimer) clearTimeout(this._idleTimer);
     this._idleTimer = setTimeout(() => {
       this._idleTimer = null;
@@ -412,10 +389,7 @@ export class ScrollManager {
     visible.sort((a, b) => b.area - a.area);
 
     const newSet = new Set(visible.map((v) => v.pageNum));
-    const previousSet = this._visibleSet;
     this._visibleSet = newSet;
-    // Newly-entered pages are handled by the pyramid subscriber on
-    // PAGE_VISIBLE; no direct enqueue here.
 
     if (topPage > 0 && topPage !== this._visibleTopPage) {
       this._visibleTopPage = topPage;
@@ -478,21 +452,6 @@ export class ScrollManager {
 
 /**
  * Two-phase zoom targeting .page-container only.
- *
- * Phase A — gesture active: apply a CSS transform to .page-container via the
- * GPU compositor. The transform is `translate(tx, ty) scale(ratio)` where
- * `ratio = targetScale / gestureStartScale` and `tx, ty` keep the focal
- * point anchored. One rAF-batched write per frame; no re-render; no state
- * change.
- *
- * Phase B — gesture end + settle: capture the page-point under the focal
- * point in natural-page coordinates, clear the transform, emit
- * SCALE_APPLIED (core resizes slots to natural × newScale), then on next
- * frame adjust scrollLeft/scrollTop so the same page-point stays under the
- * focal point.
- *
- * If .page-container does not exist, attach(null) makes the manager inert.
- * There is no fallback to #viewer-main.
  */
 export class ZoomManager {
   constructor(core, flags) {
@@ -507,15 +466,8 @@ export class ZoomManager {
     this._gestureActive = false;
     /** @type {string|null} */ this._gestureSource = null;
 
-    // Focal in client (viewport) coords — captured at gesture start and
-    // preserved across settle.
     /** @type {number} */ this._focalClientX = 0;
     /** @type {number} */ this._focalClientY = 0;
-
-    // The transform node's untransformed layout origin, captured once at
-    // gesture start. Its client position is stable during a pinch because
-    // neither the container's layout size nor the viewer's scroll changes
-    // while two fingers are down.
     /** @type {{x:number, y:number}|null} */ this._gestureLayoutOrigin = null;
 
     /** @type {ReturnType<typeof debounce>|null} */ this._settleTimer = null;
@@ -526,10 +478,6 @@ export class ZoomManager {
 
   // ── Public ────────────────────────────────────────────────────────────────
 
-  /**
-   * Attach the transform node. Pass null to make the manager inert (no
-   * fallback to #viewer-main).
-   */
   attach(node) {
     if (this._transformNode === (node || null)) return;
     this._cancelSettle();
@@ -555,11 +503,6 @@ export class ZoomManager {
     this._gestureLayoutOrigin = null;
   }
 
-  /**
-   * Non-gesture zoom (button, keyboard, double-tap, fit, reset).
-   * Behaves as an instantaneous gesture start+end, anchored on the
-   * viewport center.
-   */
   requestZoom(scale, source) {
     const clamped = clamp(scale, CONFIG.MIN_ZOOM, CONFIG.MAX_ZOOM);
     this._targetScale = clamped;
@@ -575,16 +518,11 @@ export class ZoomManager {
       return;
     }
 
-    // Treat as a synthetic gesture whose focal is the viewport center.
     this._beginSyntheticGesture('center');
     this._scheduleTransformWrite();
     this._startSettle();
   }
 
-  /**
-   * Adopt a scale without a gesture, without a transform write, and without
-   * re-rendering. Used by core.js for the initial fit-to-width.
-   */
   syncScale(scale) {
     const clamped = clamp(scale, CONFIG.MIN_ZOOM, CONFIG.MAX_ZOOM);
 
@@ -627,12 +565,6 @@ export class ZoomManager {
       .catch(() => { /* ignore */ });
   }
 
-  /**
-   * Begin a continuous gesture.
-   *
-   * @param {string} source
-   * @param {{x:number, y:number}} [focal] — in CLIENT coords.
-   */
   startGesture(source, focal) {
     if (!this._transformNode) return;
 
@@ -654,8 +586,6 @@ export class ZoomManager {
       this._focalClientY = rect.top + (rect.height || 0) / 2;
     }
 
-    // Cache the transform node's untransformed layout origin in client
-    // coords, so per-frame writes don't force a synchronous reflow.
     const node = this._transformNode;
     const prev = node.style.transform;
     node.style.transform = '';
@@ -669,12 +599,6 @@ export class ZoomManager {
     } catch { /* ignore */ }
   }
 
-  /**
-   * Continuous update during a gesture.
-   *
-   * @param {number} scale — absolute target scale.
-   * @param {{x:number, y:number}} [focal] — in CLIENT coords.
-   */
   updateGesture(scale, focal) {
     if (!this._gestureActive) return;
     const clamped = clamp(scale, CONFIG.MIN_ZOOM, CONFIG.MAX_ZOOM);
@@ -832,16 +756,6 @@ export class ZoomManager {
     this._commitScale(this._targetScale);
   }
 
-  /**
-   * Commit a final scale.
-   *
-   * Steps:
-   *   1. Capture the page-point under the focal point in natural-page coords.
-   *   2. Clear the visual transform.
-   *   3. Emit SCALE_APPLIED — core.js resizes every slot to natural × scale.
-   *   4. On next frame, adjust scroll so the same page-point stays under the
-   *      focal point.
-   */
   _commitScale(scale, opts) {
     const clamped = clamp(scale, CONFIG.MIN_ZOOM, CONFIG.MAX_ZOOM);
     const previousScale = this._currentScale;
@@ -862,8 +776,6 @@ export class ZoomManager {
     let restore = null;
 
     if (main && node && this._gestureActive) {
-      // Where the focal point currently sits, and what page-point (in
-      // natural-page coordinates) is under it.
       const rect = node.getBoundingClientRect();
       const pxNat = (this._focalClientX - rect.left) / clamped;
       const pyNat = (this._focalClientY - rect.top) / clamped;
@@ -880,8 +792,6 @@ export class ZoomManager {
     this._gestureStartScale = clamped;
     this._gestureActive = false;
 
-    // Clear the visual transform. Slots are still at the OLD size — core's
-    // SCALE_APPLIED subscriber is about to resize them.
     if (node) {
       try { node.style.transform = ''; } catch { /* ignore */ }
     }
@@ -902,7 +812,6 @@ export class ZoomManager {
       });
     } catch { /* ignore */ }
 
-    // After core resizes slots, adjust scroll so the focal point is preserved.
     if (restore && main && node) {
       requestAnimationFrame(() => {
         try {
@@ -948,12 +857,7 @@ export class PanManager {
 
 /**
  * Recognises pinch and swipe from raw touch events, and Ctrl/Meta wheel on
- * desktop. Attaches ONLY to .page-container (or null). Every event carries
- * the focal point in CLIENT coords so ZoomManager doesn't need to re-derive
- * it.
- *
- * Single-tap and double-tap live in ui-internal.js as a click-based
- * sequence — this file never synthesises those.
+ * desktop. Attaches ONLY to .page-container (or null).
  */
 export class GestureManager {
   constructor(core) {
@@ -1151,17 +1055,6 @@ export class GestureManager {
 /**
  * Instantiate the interaction managers, wire their cross-references, and
  * subscribe to the events that drive them.
- *
- * Attach contract:
- *   • scroll.attach()                → #viewer-main (the fixed window; scroll is native)
- *   • zoom.attach(pageContainer)     → the ONLY transform target; null if absent
- *   • gestures.attach(pageContainer) → the ONLY gesture target; null if absent
- *   • pan                            → dead stub; never attached, never enabled
- *
- * Re-attachment:
- *   • LAYOUT_CHANGED — after core rebuilds the DOM, re-attach zoom/gestures
- *     to the fresh .page-container.
- *   • DOCUMENT_LOADED — belt-and-braces re-attach.
  */
 export function createInteractionLayer(core) {
   let rawFlags = {};
@@ -1179,7 +1072,7 @@ export function createInteractionLayer(core) {
 
   const scroll = new ScrollManager(core, flags);
   const zoom = new ZoomManager(core, flags);
-  const pan = new PanManager();  // stub
+  const pan = new PanManager();
   const gestures = new GestureManager(core);
 
   scroll.attach();
@@ -1187,7 +1080,6 @@ export function createInteractionLayer(core) {
   const els = getViewerElements();
   const main = els && els.main ? els.main : null;
 
-  // Zoom and gestures target ONLY .page-container. No fallback to main.
   const initialContainer = main ? main.querySelector('.' + CONFIG.PAGE_CONTAINER_CLASS) : null;
   zoom.attach(initialContainer);
   gestures.attach(initialContainer, {
@@ -1199,19 +1091,16 @@ export function createInteractionLayer(core) {
   const teardowns = [];
   const bus = core.getBus();
 
-  // ── Page jump requests (from ui-internal, outline, search) ──────────────
   teardowns.push(bus.on(Events.PAGE_JUMP_REQUESTED, (payload) => {
     if (!payload || typeof payload.pageNum !== 'number') return;
     scroll.navigateTo(payload.pageNum, { smooth: true });
   }));
 
-  // ── Scale requests (from ui-internal buttons/keyboard/double-tap) ───────
   teardowns.push(bus.on(Events.SCALE_REQUESTED, (payload) => {
     if (!payload || typeof payload.scale !== 'number') return;
     zoom.requestZoom(payload.scale, payload.source || 'external');
   }));
 
-  // ── Layout changes — re-attach zoom/gestures to the fresh container ────
   teardowns.push(bus.on(Events.LAYOUT_CHANGED, () => {
     const currentEls = getViewerElements();
     const currentMain = currentEls && currentEls.main ? currentEls.main : null;
@@ -1233,7 +1122,6 @@ export function createInteractionLayer(core) {
     });
   }));
 
-  // ── Render complete — mark layout dirty; clear stale transform on match ─
   teardowns.push(bus.on(Events.RENDER_COMPLETE, (payload) => {
     if (!payload || payload.kind === 'thumbnail' || payload.kind === 'metadata') return;
     scroll.markLayoutDirty();
@@ -1246,13 +1134,11 @@ export function createInteractionLayer(core) {
     }
   }));
 
-  // ── View-mode changed ──────────────────────────────────────────────────
   teardowns.push(core.getState().subscribe('viewMode', () => {
     scroll.markLayoutDirty();
     Promise.resolve().then(() => scroll.recomputeLayout());
   }));
 
-  // ── Swipe (page mode) advances/retreats pages ──────────────────────────
   teardowns.push(bus.on(Events.SWIPE, (payload) => {
     if (!payload || !payload.direction) return;
     const state = core.getState();
@@ -1272,7 +1158,6 @@ export function createInteractionLayer(core) {
     bus.emit(Events.PAGE_JUMP_REQUESTED, { pageNum: target, reason: 'swipe' });
   }));
 
-  // ── Document destroyed — tear down gestures/zoom ────────────────────────
   teardowns.push(bus.on(Events.DOCUMENT_DESTROYED, () => {
     try { scroll.detach(); } catch { /* ignore */ }
     try { scroll.recomputeLayout(); } catch { /* ignore */ }
@@ -1280,7 +1165,6 @@ export function createInteractionLayer(core) {
     try { gestures.detach(); } catch { /* ignore */ }
   }));
 
-  // ── Document loaded — re-attach scroll and re-evaluate the container ────
   teardowns.push(bus.on(Events.DOCUMENT_LOADED, () => {
     try {
       scroll.detach();

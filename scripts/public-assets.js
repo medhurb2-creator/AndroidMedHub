@@ -9,6 +9,8 @@ const ASSET_KEYS = {
 };
 
 const VERSION_STORAGE_KEY = 'publicAssetVersions';
+const LAST_SYNC_KEY = 'publicAssetLastSync';
+const COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
 async function getAssetVersions() {
   try {
@@ -80,6 +82,15 @@ async function downloadAndStoreAsset(key, assetInfo) {
 }
 
 export async function syncPublicAssets() {
+  console.log('[PublicAssets] Checking sync cooldown...');
+  const lastSync = parseInt(localStorage.getItem(LAST_SYNC_KEY) || '0', 10);
+  const now = Date.now();
+
+  if (now - lastSync < COOLDOWN_MS) {
+    console.log('[PublicAssets] Cooldown active (< 24 hours since last sync). Skipping sync.');
+    return;
+  }
+
   console.log('[PublicAssets] Syncing public assets...');
   const versions = await getAssetVersions();
   let updated = false;
@@ -114,6 +125,10 @@ export async function syncPublicAssets() {
   } else {
     console.log('[PublicAssets] All assets up to date. No changes.');
   }
+
+  // Update the last sync timestamp in localStorage to reset the 24-hr window
+  localStorage.setItem(LAST_SYNC_KEY, String(now));
+  console.log('[PublicAssets] Cooldown timestamp updated.');
 }
 
 export async function getPublicAsset(key) {

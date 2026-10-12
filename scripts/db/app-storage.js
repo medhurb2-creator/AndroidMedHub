@@ -12,6 +12,27 @@
  * Higher-level modules (content-store.js) wrap these into async
  * operations where the caller benefits from a promise-shaped API.
  *
+ * ─── STORAGE ROOTS ──────────────────────────────────────────────────────────
+ *
+ * Three roots can exist. The user picks which one NEW writes go to;
+ * reads search all three, so switching the preference never strands an
+ * existing file.
+ *
+ *   'internal' — app-private internal storage. Always available. Never
+ *                visible in Files. Deleted by "clear app data".
+ *
+ *   'external' — Android's emulated external storage. Lives on the
+ *                same physical chip as internal on modern phones.
+ *                Deleted by "clear app data".
+ *
+ *   'sdcard'   — the removable SD card's app-specific directory. Real,
+ *                separate physical volume. Only present when a card is
+ *                mounted. Not deleted by "clear app data".
+ *
+ * getAvailableRoots() reports whichever roots currently exist, with a
+ * `removable` flag and a stable `volumeId`. Devices without an SD card
+ * see two entries.
+ *
  * ─── BINARY READ PATHS ──────────────────────────────────────────────────────
  *
  * Two ways to get bytes out of a file:
@@ -60,6 +81,10 @@ export function isNativeStorageAvailable() {
 /**
  * Absolute path of the current write root.
  * Returns null if the bridge is unavailable or no root resolves.
+ *
+ * This is the root that new writes land in. It is not necessarily the
+ * root holding any particular existing file — see getAvailableRoots()
+ * and fileInRoot() for that.
  */
 export function getStorageRoot() {
     const n = native();
@@ -68,7 +93,14 @@ export function getStorageRoot() {
 }
 
 /**
- * "internal" | "external" | "unavailable"
+ * The ACTUAL root new writes go to.
+ *
+ * "internal" | "external" | "sdcard" | "unavailable"
+ *
+ * If the user chose 'sdcard' but no card is mounted, the native layer
+ * reports 'internal' here, because that is where writes will actually
+ * go. The stored preference is available separately via
+ * getPreferredRoot().
  */
 export function getStorageRootType() {
     const n = native();
@@ -77,8 +109,15 @@ export function getStorageRootType() {
 }
 
 /**
- * The user's preferred root for new writes.
- * "internal" | "external"
+ * The user's stored preference for new writes.
+ *
+ * "internal" | "external" | "sdcard"
+ *
+ * Unlike getStorageRootType(), this reports what the user asked for,
+ * not what is currently in effect. If the user selected 'sdcard' and
+ * the card has since been ejected, this still returns 'sdcard' while
+ * getStorageRootType() returns 'internal'. The gap between the two is
+ * the signal that a fallback is active and the UI should say so.
  */
 export function getPreferredRoot() {
     const n = native();
@@ -88,9 +127,16 @@ export function getPreferredRoot() {
 
 /**
  * Set the preferred root. Takes effect immediately for new writes.
- * Existing files are not moved — use relocateToOtherRoot() per file.
+ * Existing files are not moved — use relocateToRoot() per file, or
+ * leave them; resolveRead() finds files across all three roots.
  *
- * @returns {boolean} true on success
+ * Returns false if:
+ *   • type is not 'internal', 'external', or 'sdcard'
+ *   • type is 'external' and emulated external storage is unavailable
+ *   • type is 'sdcard' and no removable volume is mounted
+ *
+ * @param {'internal'|'external'|'sdcard'} type
+ * @returns {boolean}
  */
 export function setPreferredRoot(type) {
     const n = native();
@@ -99,15 +145,38 @@ export function setPreferredRoot(type) {
 }
 
 /**
- * Both roots with metadata.
+ * Every root that currently exists, with metadata.
  *
  * @returns {Array<{
- *   type: 'internal'|'external',
+ *   type: 'internal'|'external'|'sdcard',
  *   path: string,
  *   available: boolean,
+ *   removable: boolean,
  *   freeBytes: number,
  *   isCurrent: boolean,
+ *   volumeId: string,
  * }>}
+ *
+ * Properties:
+ *   type      — which root this entry describes
+ *   path      — absolute filesystem path (informational; do not store)
+ *   available — true when the root can be read and written right now
+ *   removable — true for the SD card, false for internal and emulated
+ *               external
+ *   freeBytes — free space on the volume backing this root
+ *   isCurrent — true for the root new writes currently go to
+ *   volumeId  — a stable identifier for the physical volume, usable as
+ *               metadata. Stable across app restarts on the same
+ *               install, but the exact string is not guaranteed across
+ *               OEMs. Never use it to reconstruct a path.
+ *
+ * The 'sdcard' entry only appears when a removable volume is mounted.
+ * Filter by `r.type === 'sdcard'` to detect presence of a card.
+ *
+ * Note: a device can have emulated external storage that is
+ * physically on the same chip as internal. Moving files between
+ * 'internal' and 'external' does not free physical space. Only
+ * 'sdcard' is a distinct volume.
  */
 export function getAvailableRoots() {
     const n = native();
@@ -147,7 +216,7 @@ export function isFile(path) {
 }
 
 /**
- * Immediate children of a directory.
+ * Immediate children of a directory in the WRITE root.
  *
  * @returns {Array<{ name: string, isDirectory: boolean, size: number, lastModified: number }>}
  */
@@ -164,9 +233,11 @@ export function listDirectory(path) {
  * Recursively list every file under `subpath` in the given root.
  * Used for root migration.
  *
- * @param {'internal'|'external'} rootType
+ * @param {'internal'|'external'|'sdcard'} rootType
  * @param {string} subpath
- * @returns {string[]}  relative paths, forward-slash separated
+ * @returns {string[]}  relative paths, forward-slash separated.
+ *                      Empty array if the root is unavailable or the
+ *                      subpath does not exist.
  */
 export function listFilesInRoot(rootType, subpath) {
     const n = native();
@@ -189,6 +260,7 @@ export function getDirectorySize(path) {
 
 /**
  * Recursive size of a directory in a specific root.
+ * Returns -1 if the root is unavailable or the path does not exist.
  */
 export function getDirectorySizeInRoot(rootType, subpath) {
     const n = native();
@@ -242,16 +314,77 @@ export function move(fromPath, toPath) {
 }
 
 /**
- * Move a path from whichever root currently holds it to the other.
- * The file's relative path is preserved.
+ * Move a path between 'internal' and 'external' — whichever root does
+ * not currently hold it becomes the destination. The file's relative
+ * path is preserved.
  *
- * Used during root migration. Reads still work in either state, so a
- * partially-completed migration is not a data-loss event.
+ * Retained for backwards compatibility with pre-sdcard callers. New
+ * code should prefer relocateToRoot(relativePath, targetRootType),
+ * which names the target explicitly and works for all three roots.
+ *
+ * Reads still work in either state, so a partially-completed migration
+ * is not a data-loss event.
+ *
+ * @param {string} relativePath
+ * @returns {boolean}
  */
 export function relocateToOtherRoot(relativePath) {
     const n = native();
     if (!n) return false;
     try { return !!n.relocateToOtherRoot(relativePath); } catch { return false; }
+}
+
+/**
+ * Move a single file from whichever root currently holds it to the
+ * specified target root. The relative path is preserved.
+ *
+ * Cross-mount moves (internal ↔ external ↔ sdcard are typically on
+ * different mount points) fall back to copy + size-verify + delete.
+ * A partial copy never survives — the destination is deleted if
+ * verification fails, and the source is left intact.
+ *
+ * Returns false if:
+ *   • the file is not found in any root other than the target
+ *   • the target root is unavailable (e.g. 'sdcard' with no card)
+ *   • the destination already exists (no overwrite)
+ *   • the underlying move or copy fails
+ *
+ * Intended to be called once per file during a root migration. For a
+ * large library, iterate files from listFilesInRoot(sourceRoot,
+ * 'content'), call this per file, and update progress between calls.
+ * Because reads work across all roots, an interrupted migration leaves
+ * every file readable — a resumed migration can skip completed files
+ * via fileInRoot().
+ *
+ * @param {string} relativePath
+ * @param {'internal'|'external'|'sdcard'} targetRootType
+ * @returns {boolean}
+ */
+export function relocateToRoot(relativePath, targetRootType) {
+    const n = native();
+    if (!n) return false;
+    try { return !!n.relocateToRoot(relativePath, targetRootType); } catch { return false; }
+}
+
+/**
+ * True if the file at relativePath currently lives in targetRootType.
+ *
+ * Cheap idempotency check for migration loops. Call before
+ * relocateToRoot() to skip files already in the destination — this is
+ * what makes a migration resumable after an app restart or a crash
+ * without re-doing completed work.
+ *
+ * Returns false if the root is unavailable, the path is invalid, or
+ * the file is not present there.
+ *
+ * @param {string} relativePath
+ * @param {'internal'|'external'|'sdcard'} targetRootType
+ * @returns {boolean}
+ */
+export function fileInRoot(relativePath, targetRootType) {
+    const n = native();
+    if (!n) return false;
+    try { return !!n.fileInRoot(relativePath, targetRootType); } catch { return false; }
 }
 
 // ============================================================================
@@ -266,6 +399,13 @@ export function relocateToOtherRoot(relativePath) {
  *
  * Callers writing large files loop: first chunk with append=false,
  * every subsequent chunk with append=true.
+ *
+ * Destination is the current write root (getStorageRootType()). If the
+ * user's preferred root becomes unavailable mid-write — e.g. the SD
+ * card is ejected — subsequent chunks will silently land in the
+ * fallback root, splitting the file across two volumes. Callers
+ * writing large files should check getStorageRootType() between chunks
+ * and abort if it changes.
  */
 export function writeBase64(path, base64, append = false) {
     const n = native();
@@ -280,6 +420,8 @@ export function writeBase64(path, base64, append = false) {
  * materializes the entire file into a Java byte[], then a Base64
  * string, then a JS string, then the caller's decoded buffer. Peak
  * cost is 4× the file size.
+ *
+ * Searches all three roots. Returns "" if the file is not found.
  */
 export function readBase64(path) {
     const n = native();
@@ -292,6 +434,8 @@ export function readBase64(path) {
  *
  * Pairs with readBase64Range() to drive chunked reads. Most callers
  * should use readBlob() instead of calling this directly.
+ *
+ * Searches all three roots.
  */
 export function fileSize(path) {
     const n = native();
@@ -305,6 +449,8 @@ export function fileSize(path) {
  * Low-level primitive. Prefer readBlob() for whole-file reads — this
  * exists so readBlob can loop over a file without holding more than
  * one chunk in memory at a time.
+ *
+ * Searches all three roots.
  *
  * @param {string} path    relative path resolved by the bridge
  * @param {number} offset  byte offset from start of file
@@ -345,6 +491,10 @@ const CHUNK_BYTES = 4 * 1024 * 1024;
  * This is the entry point every viewer and image renderer should use.
  * It replaces the old readBase64 → atob → Uint8Array → Blob pipeline
  * with one that bounds peak memory regardless of file size.
+ *
+ * Reads via readBase64Range(), which searches all three roots — so a
+ * file downloaded to the SD card remains readable after the user
+ * switches the preferred root to internal, and vice versa.
  *
  * WHY CHUNKED:
  *   The single-call readBase64() loads the whole file into four
@@ -416,12 +566,20 @@ export async function readBlob(path, mimeType) {
 // Text write / read
 // ============================================================================
 
+/**
+ * Write text to a file in the current write root.
+ * Overwrites if the file exists.
+ */
 export function writeText(path, text) {
     const n = native();
     if (!n) return false;
     try { return !!n.writeText(path, text); } catch { return false; }
 }
 
+/**
+ * Read a text file. Searches all three roots.
+ * Returns "" if the file is not found.
+ */
 export function readText(path) {
     const n = native();
     if (!n) return '';

@@ -1628,8 +1628,7 @@ export async function initResourceBrowser(subject, type, forceRefresh = false) {
     currentSubject = subject;
     currentCategory = CATEGORY_MAP[type] || type;
 
-    // Reset per-visit UI state so a filter from a previous subject does
-    // not leak into this one.
+    // Reset per-visit UI state so filters don't leak
     currentFilter = 'all';
     const searchEl = document.getElementById('search-input');
     if (searchEl) searchEl.value = '';
@@ -1653,23 +1652,45 @@ export async function initResourceBrowser(subject, type, forceRefresh = false) {
         );
     }
 
-    // Resolve entitlement before the first render so subscribers never see
-    // a flash of the premium badge. Best-effort: on failure we keep the
-    // previous value (default false on cold start).
     await refreshSubscriptionState();
 
-    await loadResources(true);
-
-    // ── Shared-doc landing ─────────────────────────────────────────
-    // If the URL carries a share payload, resolve it to a real document
-    // (backend by id if not already loaded), inject it as a card, and
-    // highlight it so the recipient can see which one the link points
-    // at. No viewer is opened, no download is started.
-    //
-    // The recipient decides what to do with the card via the normal
-    // Open / Download / Share / Favourite handlers.
+    // ── Deep Link / Share Link Check ──────────────────────────────
+    // If a share link is present, fetch ONLY the specific shared document
+    // and skip loading the rest of the category from the backend.
     const share = readSharedDocFromUrl();
-    if (share) await _consumeSharedDoc(share);
+    if (share) {
+        if (_dbg()) {
+            _logLine('init', `Share link detected for id=${share.id}. Skipping category bulk fetch.`, 'info');
+        }
+
+        const doc = await content.fetchResourceById(share.id);
+        clearSharedDocFromUrl();
+
+        if (!doc) {
+            ui.showToast('Shared document not found', 'error');
+            // Fallback to normal category loading if the shared doc doesn't exist
+            await loadResources(true);
+        } else {
+            docMap.clear();
+            docMap.set(doc._id, doc);
+            allDocuments = [doc];
+            currentCursor = null;
+            hasMore = false;
+
+            const loadMoreBtn = document.getElementById('load-more-btn');
+            const loadMoreSpinner = document.getElementById('load-more-spinner');
+            if (loadMoreBtn) loadMoreBtn.style.display = 'none';
+            if (loadMoreSpinner) loadMoreSpinner.style.display = 'none';
+
+            await hydrateThumbnailCache([doc]);
+            applyFiltersAndRender();
+            _highlightSharedCard(doc._id);
+            ui.showToast(`Shared: ${doc.title}`, 'info');
+        }
+    } else {
+        // Standard flow: call all documents in that category as normal
+        await loadResources(true);
+    }
 
     if (searchEl) {
         searchEl.oninput = null;

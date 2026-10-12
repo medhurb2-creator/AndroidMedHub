@@ -2,6 +2,10 @@ package com.medhurb.app;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.Build;
+import android.os.Environment;
+import android.os.storage.StorageManager;
+import android.os.storage.StorageVolume;
 import android.webkit.JavascriptInterface;
 
 import org.json.JSONArray;
@@ -13,7 +17,9 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 
 /**
  * MedVixStorage
@@ -24,42 +30,51 @@ import java.util.Base64;
  *
  * ─── STORAGE MODEL ──────────────────────────────────────────────────────────
  *
- * Two roots exist on every Android device. The user picks which one NEW
- * writes go to. Reads check both, so switching the preference never
- * strands an existing file.
+ * Three roots can exist on an Android device. The user picks which one
+ * NEW writes go to. Reads check all three, so switching the preference
+ * never strands an existing file.
  *
  *   internal — /data/data/com.medhurb.app/files/
  *              Default. Always available. Never visible in Files.
- *              Survives "clear app data". Fastest.
+ *              Deleted by "clear app data". Fastest.
  *
  *   external — /storage/emulated/0/Android/data/com.medhurb.app/files/
- *              Chosen when the user wants to move data off internal
- *              storage. Deleted by "clear app data". May appear in
- *              Files on Android 10 and below.
+ *              Android's EMULATED external storage. Lives on the same
+ *              physical chip as internal on essentially every modern
+ *              phone. Deleted by "clear app data". May appear in Files
+ *              on Android 10 and below.
  *
- * Note on terminology: on most modern phones, "external" here means
- * Android's emulated external storage, which lives on the same physical
- * chip as internal. It is not a removable SD card. If the user later
- * wants true SD-card storage, that's a third root and a separate change.
- * The methods here are agnostic — they operate on whichever two roots
- * the platform exposes.
+ *   sdcard   — /storage/XXXX-XXXX/Android/data/com.medhurb.app/files/
+ *              The REMOVABLE SD card's app-specific directory, obtained
+ *              from Context.getExternalFilesDirs(). This is real,
+ *              separate physical storage. Only present when a removable
+ *              volume is mounted. Not deleted by "clear app data" for
+ *              this app; IS deleted if the app is uninstalled while the
+ *              card is inserted, or if the card is formatted elsewhere.
+ *
+ * Note on terminology: on most modern phones, "external" means emulated
+ * external storage, which does NOT free up space on the device. Only
+ * "sdcard" is a distinct physical volume. The old two-root model has
+ * been extended rather than replaced — every existing method keeps its
+ * signature and its behaviour for internal and external.
  *
  * ─── SWITCHING ROOTS ────────────────────────────────────────────────────────
  *
  * The switch is a two-phase operation driven from JavaScript:
  *
  *   Phase 1 — warn. JS reads getAvailableRoots() and shows a dialog:
- *             "This will move all downloaded content to external storage.
+ *             "This will move all downloaded content to the SD card.
  *              Do not eject the card or kill the app during the move."
  *
  *   Phase 2 — migrate. JS calls listFilesInRoot(sourceRoot, 'content'),
- *             then relocateToOtherRoot(rel) for each path. Progress is
- *             shown per file. If any file fails, JS can stop, roll back
- *             the preference, and report which items were not moved.
+ *             then relocateToRoot(rel, 'sdcard') for each path. Progress
+ *             is shown per file. If any file fails, JS can stop, roll
+ *             back the preference, and report which items were not
+ *             moved.
  *
  * The preference is only updated AFTER migration completes. Until then,
- * new writes keep going to the old root. Reads never fail because both
- * roots are always checked.
+ * new writes keep going to the old root. Reads never fail because all
+ * three roots are always checked.
  *
  * ─── PATH MODEL ─────────────────────────────────────────────────────────────
  *
@@ -70,7 +85,7 @@ import java.util.Base64;
  *     system/layout.json
  *
  * The DB never stores an absolute path. The same install works whether
- * the active root is internal or external.
+ * the active root is internal, external, or sdcard.
  *
  * ─── READ STRATEGY ──────────────────────────────────────────────────────────
  *
@@ -103,6 +118,12 @@ import java.util.Base64;
  * Every path is canonicalized and refused if it escapes the root.
  * getCanonicalFile() defeats "..", "~", and symlink tricks.
  *
+ * App-specific external storage (both emulated "external" and the
+ * removable "sdcard" root) is private to the app on Android 11+. On
+ * Android 10 and below, other apps with legacy READ_EXTERNAL_STORAGE
+ * may be able to read it. Do not store credentials, tokens, or
+ * encryption keys in any external root — those belong in internal.
+ *
  * ─── ERROR MODEL ────────────────────────────────────────────────────────────
  *
  * Every method returns a primitive sentinel on failure (-1, false, "",
@@ -112,8 +133,13 @@ public class MedVixStorage {
 
     private static final String PREFS_NAME    = "medvix_storage";
     private static final String PREF_KEY_ROOT = "preferred_root";
-    private static final String ROOT_INTERNAL = "internal";
-    private static final String ROOT_EXTERNAL = "external";
+
+    // Root type identifiers. These strings cross the JS boundary and are
+    // stored in SharedPreferences — do not change them without a
+    // migration, or existing user preferences will be ignored.
+    public static final String ROOT_INTERNAL = "internal";
+    public static final String ROOT_EXTERNAL = "external";
+    public static final String ROOT_SDCARD   = "sdcard";
 
     private final Context context;
 
@@ -126,19 +152,26 @@ public class MedVixStorage {
     // =========================================================================
 
     /**
-     * Which root new writes go to.
-     * Returns "internal" or "external".
+     * Which root new writes go to. Reports the ACTUAL root in use, not
+     * the stored preference — if the user chose "sdcard" but no card is
+     * inserted, this returns "internal" so callers get the truth.
+     *
+     * Returns "internal" | "external" | "sdcard".
      */
     @JavascriptInterface
     public String getPreferredRoot() {
         try {
             SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
             String pref = prefs.getString(PREF_KEY_ROOT, ROOT_INTERNAL);
+
+            if (ROOT_SDCARD.equals(pref)) {
+                if (getSdCardRoot() != null) return ROOT_SDCARD;
+                // Chose sdcard, card missing — fall through to internal.
+                return ROOT_INTERNAL;
+            }
             if (ROOT_EXTERNAL.equals(pref)) {
-                // Report internal if external is currently unavailable —
-                // this matches what getWriteRoot() actually does.
-                if (context.getExternalFilesDir(null) == null) return ROOT_INTERNAL;
-                return ROOT_EXTERNAL;
+                if (getExternalRoot() != null) return ROOT_EXTERNAL;
+                return ROOT_INTERNAL;
             }
             return ROOT_INTERNAL;
         } catch (Exception e) {
@@ -152,13 +185,23 @@ public class MedVixStorage {
      *
      * Takes effect immediately for new writes. Does not move existing
      * files.
+     *
+     * Returns false if:
+     *   • type is not one of "internal", "external", "sdcard"
+     *   • type is "external" but emulated external storage is absent
+     *   • type is "sdcard" but no removable volume is mounted
      */
     @JavascriptInterface
     public boolean setPreferredRoot(String type) {
-        if (!ROOT_INTERNAL.equals(type) && !ROOT_EXTERNAL.equals(type)) {
+        if (!ROOT_INTERNAL.equals(type)
+                && !ROOT_EXTERNAL.equals(type)
+                && !ROOT_SDCARD.equals(type)) {
             return false;
         }
-        if (ROOT_EXTERNAL.equals(type) && context.getExternalFilesDir(null) == null) {
+        if (ROOT_SDCARD.equals(type) && getSdCardRoot() == null) {
+            return false;
+        }
+        if (ROOT_EXTERNAL.equals(type) && getExternalRoot() == null) {
             return false;
         }
         try {
@@ -181,15 +224,14 @@ public class MedVixStorage {
 
     /**
      * Type of the current write root.
-     * "internal" | "external" | "unavailable"
+     * "internal" | "external" | "sdcard" | "unavailable"
      */
     @JavascriptInterface
     public String getRootType() {
         try {
-            String pref = getPreferredRoot();
-            if (ROOT_EXTERNAL.equals(pref) && context.getExternalFilesDir(null) != null) {
-                return ROOT_EXTERNAL;
-            }
+            String actual = getPreferredRoot();
+            if (ROOT_SDCARD.equals(actual))   return ROOT_SDCARD;
+            if (ROOT_EXTERNAL.equals(actual)) return ROOT_EXTERNAL;
             if (context.getFilesDir() != null) return ROOT_INTERNAL;
             return "unavailable";
         } catch (Exception e) {
@@ -203,13 +245,25 @@ public class MedVixStorage {
     }
 
     /**
-     * Both roots and their free space. For the Settings → Storage UI.
+     * Every root MedVix can use, with metadata. For the Settings →
+     * Storage UI.
      *
      * Returns JSON:
      *   [
-     *     { "type": "internal", "path": "...", "available": true, "freeBytes": 12345678, "isCurrent": true  },
-     *     { "type": "external", "path": "...", "available": true, "freeBytes": 98765432, "isCurrent": false }
+     *     {
+     *       "type":      "internal" | "external" | "sdcard",
+     *       "path":      string,
+     *       "available": boolean,
+     *       "removable": boolean,
+     *       "freeBytes": number,
+     *       "isCurrent": boolean,
+     *       "volumeId":  string
+     *     },
+     *     ...
      *   ]
+     *
+     * "sdcard" only appears when a removable volume is mounted. Devices
+     * without an SD card see two entries.
      */
     @JavascriptInterface
     public String getAvailableRoots() {
@@ -222,8 +276,10 @@ public class MedVixStorage {
             i.put("type",      ROOT_INTERNAL);
             i.put("path",      internal != null ? internal.getAbsolutePath() : "");
             i.put("available", internal != null);
+            i.put("removable", false);
             i.put("freeBytes", internal != null ? internal.getFreeSpace() : 0L);
             i.put("isCurrent", ROOT_INTERNAL.equals(current));
+            i.put("volumeId",  ROOT_INTERNAL);
             out.put(i);
         } catch (Exception ignored) {}
 
@@ -233,9 +289,26 @@ public class MedVixStorage {
             e.put("type",      ROOT_EXTERNAL);
             e.put("path",      external != null ? external.getAbsolutePath() : "");
             e.put("available", external != null);
+            e.put("removable", false);
             e.put("freeBytes", external != null ? external.getFreeSpace() : 0L);
             e.put("isCurrent", ROOT_EXTERNAL.equals(current));
+            e.put("volumeId",  external != null ? stableVolumeId(external, false) : "");
             out.put(e);
+        } catch (Exception ignored) {}
+
+        try {
+            File sd = getSdCardRoot();
+            if (sd != null) {
+                JSONObject s = new JSONObject();
+                s.put("type",      ROOT_SDCARD);
+                s.put("path",      sd.getAbsolutePath());
+                s.put("available", true);
+                s.put("removable", true);
+                s.put("freeBytes", sd.getFreeSpace());
+                s.put("isCurrent", ROOT_SDCARD.equals(current));
+                s.put("volumeId",  stableVolumeId(sd, true));
+                out.put(s);
+            }
         } catch (Exception ignored) {}
 
         return out.toString();
@@ -303,19 +376,17 @@ public class MedVixStorage {
      *
      * Used for migration. Returns relative paths (relative to that
      * root's base), one per file, so the JS side can iterate and call
-     * relocateToOtherRoot() per item.
+     * relocateToRoot() per item.
+     *
+     * Accepts "internal", "external", or "sdcard". Returns "[]" if the
+     * root is unavailable, the subpath does not exist, or an I/O error
+     * occurs.
      *
      * Returns JSON: ["content/resources/textbooks/robins/document.pdf", ...]
-     * "[]" on failure.
      */
     @JavascriptInterface
     public String listFilesInRoot(String rootType, String subpath) {
-        File root;
-        if (ROOT_EXTERNAL.equals(rootType)) {
-            root = getExternalRoot();
-        } else {
-            root = getInternalRoot();
-        }
+        File root = getRootByType(rootType);
         if (root == null) return "[]";
 
         String trimmed = (subpath == null || subpath.trim().isEmpty()) ? "" : subpath.trim();
@@ -341,11 +412,11 @@ public class MedVixStorage {
 
     /**
      * Recursive size of a directory in the given root.
-     * -1 if the path does not exist.
+     * -1 if the path does not exist or the root is unavailable.
      */
     @JavascriptInterface
     public long getDirectorySizeInRoot(String rootType, String subpath) {
-        File root = ROOT_EXTERNAL.equals(rootType) ? getExternalRoot() : getInternalRoot();
+        File root = getRootByType(rootType);
         if (root == null) return -1L;
         File target = resolveAgainst(root, subpath);
         if (target == null || !target.exists()) return -1L;
@@ -415,7 +486,13 @@ public class MedVixStorage {
 
     /**
      * Move a single file from whichever root currently has it to the
-     * OTHER root. Used per-item during a root migration.
+     * OTHER root. Retained for backwards compatibility with the pre-
+     * sdcard migration UI; its semantics are now "internal ↔ external"
+     * only.
+     *
+     * New code should prefer relocateToRoot(rel, "sdcard") or
+     * relocateToRoot(rel, "internal"), which accept the target root
+     * explicitly.
      *
      * The file's relative path is preserved. Empty parent directories
      * under the old root are not cleaned up automatically — JS can do
@@ -457,6 +534,82 @@ public class MedVixStorage {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    /**
+     * Move a single file from whichever root currently holds it to the
+     * specified target root. The relative path is preserved.
+     *
+     * Target must be "internal", "external", or "sdcard". Returns false
+     * if:
+     *   • the file is not found in any root other than the target,
+     *   • the target root is unavailable (e.g. "sdcard" with no card),
+     *   • the destination already exists (no overwrite),
+     *   • or the underlying move fails.
+     *
+     * Cross-mount moves fall back to copy + size-verify + delete. A
+     * partial copy never survives — the destination is deleted if
+     * verification fails.
+     *
+     * Intended to be called once per file during a root migration.
+     */
+    @JavascriptInterface
+    public boolean relocateToRoot(String relativePath, String targetRootType) {
+        if (relativePath == null || targetRootType == null) return false;
+        String trimmed = relativePath.trim();
+        if (trimmed.isEmpty()) return false;
+
+        File destRoot = getRootByType(targetRootType);
+        if (destRoot == null) return false;
+
+        // Find the file in any non-target root.
+        File source = null;
+        for (File root : getAllRootsOrdered()) {
+            if (root == null) continue;
+            if (root.equals(destRoot)) continue;
+            File candidate = resolveAgainst(root, trimmed);
+            if (candidate != null && candidate.exists()) {
+                source = candidate;
+                break;
+            }
+        }
+        if (source == null) return false;
+
+        File dest = resolveAgainst(destRoot, trimmed);
+        if (dest == null) return false;
+
+        try {
+            File parent = dest.getParentFile();
+            if (parent != null && !parent.exists() && !parent.mkdirs() && !parent.exists()) {
+                return false;
+            }
+            if (dest.exists()) return false;
+            return moveFile(source, dest);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * True if the file at relativePath currently lives in targetRootType.
+     *
+     * Used by migration to skip files already in the destination — cheap
+     * idempotency check that lets a migration be resumed after a crash
+     * without re-doing completed work.
+     *
+     * Returns false if the root is unavailable, the path is invalid, or
+     * the file is not present there.
+     */
+    @JavascriptInterface
+    public boolean fileInRoot(String relativePath, String targetRootType) {
+        if (relativePath == null || targetRootType == null) return false;
+        String trimmed = relativePath.trim();
+        if (trimmed.isEmpty()) return false;
+
+        File root = getRootByType(targetRootType);
+        if (root == null) return false;
+        File f = resolveAgainst(root, trimmed);
+        return f != null && f.exists();
     }
 
     // =========================================================================
@@ -652,7 +805,7 @@ public class MedVixStorage {
     }
 
     // =========================================================================
-    // Internals
+    // Root resolution
     // =========================================================================
 
     private File getInternalRoot() {
@@ -664,12 +817,76 @@ public class MedVixStorage {
     }
 
     /**
-     * The root that NEW writes go to. Prefers external only when the
-     * user chose it AND external is currently mounted. Otherwise internal.
+     * The removable SD card's app-specific files directory, or null if
+     * no removable volume is mounted.
+     *
+     * Uses getExternalFilesDirs(), which returns every app-specific
+     * external dir the platform exposes. Index 0 is always the primary
+     * shared storage. Any further non-null entry corresponds to a
+     * secondary volume — on consumer devices that is the SD card, or
+     * occasionally an OTG drive.
+     *
+     * Removability is determined per entry, not by index, so a device
+     * that exposes three volumes (e.g. two SIM storage partitions plus
+     * an SD card) still resolves the SD card correctly. Devices with no
+     * SD card simply have no removable entry.
+     *
+     * Cached per call rather than across calls: an SD card can be
+     * ejected and re-inserted between two bridge invocations, and a
+     * stale cached File would silently point at an unmounted path.
+     */
+    private File getSdCardRoot() {
+        File[] dirs;
+        try {
+            dirs = context.getExternalFilesDirs(null);
+        } catch (Exception e) {
+            return null;
+        }
+        if (dirs == null) return null;
+
+        for (File dir : dirs) {
+            if (dir == null) continue;
+            if (!dir.exists() && !dir.mkdirs() && !dir.exists()) continue;
+            if (isRemovableVolume(dir)) return dir;
+        }
+        return null;
+    }
+
+    /**
+     * All roots in the order used by resolveRead(): internal first, then
+     * external, then sdcard. Null entries for unavailable roots are
+     * still present so callers do not need to filter — every consumer
+     * null-checks before use.
+     */
+    private List<File> getAllRootsOrdered() {
+        List<File> out = new ArrayList<>(3);
+        out.add(getInternalRoot());
+        out.add(getExternalRoot());
+        out.add(getSdCardRoot());
+        return out;
+    }
+
+    /**
+     * Resolve a root type string to its File, or null if unavailable.
+     */
+    private File getRootByType(String type) {
+        if (ROOT_INTERNAL.equals(type)) return getInternalRoot();
+        if (ROOT_EXTERNAL.equals(type)) return getExternalRoot();
+        if (ROOT_SDCARD.equals(type))   return getSdCardRoot();
+        return null;
+    }
+
+    /**
+     * The root that NEW writes go to. Prefers the user's choice if it
+     * is currently available; otherwise falls back to internal, which
+     * is always available.
      */
     private File getWriteRoot() {
         String pref = getPreferredRoot();
-        if (ROOT_EXTERNAL.equals(pref)) {
+        if (ROOT_SDCARD.equals(pref)) {
+            File sd = getSdCardRoot();
+            if (sd != null) return sd;
+        } else if (ROOT_EXTERNAL.equals(pref)) {
             File ext = getExternalRoot();
             if (ext != null) return ext;
         }
@@ -684,7 +901,14 @@ public class MedVixStorage {
     }
 
     /**
-     * For reads and deletes. Tries the write root first, then the other.
+     * For reads and deletes. Tries the write root first, then every
+     * other available root.
+     *
+     * This is what makes preference changes non-destructive: a file
+     * downloaded to internal remains readable after the user switches
+     * to sdcard, and vice versa. A file left on the SD card after the
+     * user switches to internal remains readable until the card is
+     * ejected.
      */
     private File resolveRead(String relativePath) {
         if (relativePath == null) return null;
@@ -695,22 +919,155 @@ public class MedVixStorage {
         File found = resolveAgainst(writeRoot, trimmed);
         if (found != null && found.exists()) return found;
 
-        File otherRoot;
-        if (writeRoot == null) {
-            otherRoot = getExternalRoot();
-        } else {
-            File internal = getInternalRoot();
-            otherRoot = (writeRoot.equals(internal)) ? getExternalRoot() : internal;
-        }
-        if (otherRoot != null) {
-            File other = resolveAgainst(otherRoot, trimmed);
-            if (other != null && other.exists()) return other;
+        for (File root : getAllRootsOrdered()) {
+            if (root == null) continue;
+            if (writeRoot != null && root.equals(writeRoot)) continue;
+            File candidate = resolveAgainst(root, trimmed);
+            if (candidate != null && candidate.exists()) return candidate;
         }
 
         // Nothing on disk yet — return the write-root path so callers
         // that create on demand get the right location.
         return found;
     }
+
+    // =========================================================================
+    // Removable volume detection
+    // =========================================================================
+
+    /**
+     * Decide whether the storage volume containing appDir is removable.
+     *
+     * API 30+ : match against StorageManager.getStorageVolumes() by
+     *           directory, then read StorageVolume.isRemovable().
+     *           getDirectory() is public on API 30+.
+     *
+     * API 24-29: StorageVolume has no public getDirectory(). Use
+     *           Environment.isExternalStorageRemovable(File), which
+     *           takes a File contained in a volume and reports whether
+     *           that volume is removable. Deprecated on API 30+ but
+     *           accurate on the API range where it is used.
+     *
+     * API < 24 : only Environment.isExternalStorageRemovable is
+     *           available. Same code path as 24-29.
+     *
+     * Returns false on any failure — a false negative (calling a
+     * removable volume non-removable) is far safer than a false
+     * positive (treating the primary internal partition as removable
+     * and offering to move user data to it).
+     */
+    private boolean isRemovableVolume(File appDir) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                StorageManager sm = (StorageManager)
+                        context.getSystemService(Context.STORAGE_SERVICE);
+                if (sm != null) {
+                    for (StorageVolume sv : sm.getStorageVolumes()) {
+                        File svDir = sv.getDirectory();
+                        if (svDir == null) continue;
+                        if (pathContains(svDir, appDir)) {
+                            return sv.isRemovable();
+                        }
+                    }
+                }
+            } catch (Exception ignored) {
+                // Fall through to the heuristic below.
+            }
+        }
+        return legacyIsRemovable(appDir);
+    }
+
+    @SuppressWarnings("deprecation")
+    private boolean legacyIsRemovable(File appDir) {
+        try {
+            return Environment.isExternalStorageRemovable(appDir);
+        } catch (Exception e) {
+            // Last resort: if this dir is not the primary external dir,
+            // treat it as removable. Only reached if the Environment API
+            // itself threw — never on a normal device.
+            File primary = getExternalRoot();
+            if (primary == null) return false;
+            try {
+                return !primary.getCanonicalPath().equals(appDir.getCanonicalPath());
+            } catch (IOException ignored) {
+                return false;
+            }
+        }
+    }
+
+    /**
+     * True if `child` is `parent` or lies beneath it, after canonical
+     * path resolution. Used to match an app-specific directory to its
+     * containing StorageVolume.
+     */
+    private boolean pathContains(File parent, File child) {
+        try {
+            String p = parent.getCanonicalPath();
+            String c = child.getCanonicalPath();
+            return c.equals(p) || c.startsWith(p + File.separator);
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /**
+     * A stable identifier for the volume containing this file.
+     *
+     * Uses StorageVolume.getUuid() (API 24+) when a matching volume can
+     * be found. Falls back to the volume mount path — stable for the
+     * life of the mount, useful for logging and metadata, but not
+     * guaranteed across reboot on every OEM.
+     *
+     * Never used to resolve files. Only reported to JavaScript and
+     * stored as resource metadata alongside relativePath.
+     */
+    private String stableVolumeId(File appDir, boolean removable) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            try {
+                StorageManager sm = (StorageManager)
+                        context.getSystemService(Context.STORAGE_SERVICE);
+                if (sm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    for (StorageVolume sv : sm.getStorageVolumes()) {
+                        File svDir = sv.getDirectory();
+                        if (svDir == null) continue;
+                        if (pathContains(svDir, appDir)) {
+                            String uuid = sv.getUuid();
+                            return uuid != null ? uuid : "path:" + svDir.getAbsolutePath();
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+        try {
+            File root = findVolumeRoot(appDir);
+            if (root != null) return "path:" + root.getCanonicalPath();
+        } catch (IOException ignored) {}
+        return removable ? "removable:unknown" : "primary:unknown";
+    }
+
+    /**
+     * Walk up from an app-specific external directory to the volume
+     * root — the parent of the "Android" directory.
+     *
+     * Example input:  /storage/1234-5678/Android/data/com.medhurb.app/files
+     * Example output: /storage/1234-5678
+     */
+    private File findVolumeRoot(File appDir) {
+        File cur = appDir;
+        while (cur != null) {
+            if ("data".equals(cur.getName())
+                    && cur.getParentFile() != null
+                    && "Android".equals(cur.getParentFile().getName())) {
+                return cur.getParentFile().getParentFile();
+            }
+            cur = cur.getParentFile();
+        }
+        return null;
+    }
+
+    // =========================================================================
+    // Path safety
+    // =========================================================================
 
     /**
      * Canonicalize `relativePath` against `root` and refuse anything
@@ -736,11 +1093,15 @@ public class MedVixStorage {
         }
     }
 
+    // =========================================================================
+    // File operations
+    // =========================================================================
+
     /**
      * Move a file or directory. Tries renameTo first — works within the
-     * same mount point. If that fails (internal and external can be on
-     * different mount points on some devices), falls back to copy+delete.
-     * Cleans up partial copies on failure.
+     * same mount point. If that fails (internal, external, and SD card
+     * are typically on different mount points), falls back to
+     * copy + size-verify + delete. Cleans up partial copies on failure.
      */
     private boolean moveFile(File from, File to) {
         if (from.renameTo(to)) return true;

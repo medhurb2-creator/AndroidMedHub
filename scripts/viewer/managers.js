@@ -746,11 +746,9 @@ export class MemoryManager {
     const bytes = this._canvasBytes(canvas);
     const pinned = !!(options && options.pinned);
 
-    // Single-canvas-larger-than-cap: admit and clear everything else.
     if (bytes > this._capBytes) {
       this._evictAllExcept(canvas);
     } else {
-      // Evict before registering so the cap is never exceeded.
       const needed = (this._bytesUsed + this._bytesPinned + bytes) - this._capBytes;
       if (needed > 0) {
         this._evictToTarget(
@@ -909,7 +907,6 @@ export class MemoryManager {
       candidates.push({ canvas, rec });
     }
 
-    // Sort: farthest from keepPage first, then oldest registration.
     candidates.sort((a, b) => {
       const da = Math.abs(a.rec.pageNum - keepPage);
       const db = Math.abs(b.rec.pageNum - keepPage);
@@ -1165,16 +1162,6 @@ export class SearchManager {
    * Render highlight overlays for every page with a rendered canvas. Called
    * on RENDER_COMPLETE (page-scoped) and SCALE_APPLIED (all pages).
    *
-   * INVARIANTS:
-   *   • Highlights are drawn only over a slot whose class is .page (a
-   *     rendered canvas). A .cover slot is skipped — no visible content to
-   *     highlight yet.
-   *   • The layer is a child of .page-container, positioned absolutely to
-   *     match the slot's exact geometry.
-   *   • rect.x/y/width/height are stored at scale-1 page coordinates;
-   *     multiplying by the current display scale keeps them aligned across
-   *     zoom without recomputation.
-   *
    * @param {number} [onlyPageNum]
    * @returns {void}
    */
@@ -1188,12 +1175,10 @@ export class SearchManager {
     const container = els.main.querySelector('.' + CONFIG.PAGE_CONTAINER_CLASS);
     if (!container) return;
 
-    // Make .page-container the positioning context for the highlight layers.
     if (container.style.position !== 'relative') {
       container.style.position = 'relative';
     }
 
-    // Group this render's matches by page.
     const grouped = new Map();
     for (const match of this._matches) {
       if (typeof onlyPageNum === 'number' && match.pageNum !== onlyPageNum) continue;
@@ -1207,10 +1192,8 @@ export class SearchManager {
       const slot = container.querySelector(`[data-page="${pageNum}"]`);
       if (!slot) continue;
 
-      // Only render over a rendered canvas — a cover has nothing to show.
       if (!slot.classList.contains(CONFIG.PAGE_CLASS)) continue;
 
-      // Get or create the layer for this page.
       let layer = this._highlightLayer.get(pageNum);
       if (!layer || !layer.isConnected || layer.parentElement !== container) {
         layer = document.createElement('div');
@@ -1223,7 +1206,6 @@ export class SearchManager {
         this._highlightLayer.set(pageNum, layer);
       }
 
-      // Anchor the layer exactly over the slot's rendered box.
       const containerRect = container.getBoundingClientRect();
       const slotRect = slot.getBoundingClientRect();
       layer.style.left = (slotRect.left - containerRect.left) + 'px';
@@ -1751,22 +1733,6 @@ function computeRectsForMatch(match, items, viewport) {
 /**
  * Renders the document outline as a collapsible tree into the sidebar's
  * "outline" panel and translates item clicks into PAGE_JUMP_REQUESTED events.
- *
- * NAVIGATION MODEL — why buttons, not anchors:
- *   Outline items are <button> elements, not <a href="#...">. An anchor
- *   inside an SPA shell can be intercepted by a router, or (on Android
- *   WebView) trigger a reload when the default action isn't prevented in
- *   time. Buttons have no default navigation, so the reload vector is
- *   eliminated structurally — no reliance on preventDefault succeeding.
- *
- * TREE MODEL:
- *   • Level 0 items start expanded if they have children.
- *   • Deeper levels start collapsed.
- *   • A disclosure triangle (▸/▾) toggles children on click.
- *   • Clicking the label (not the triangle) navigates to the destination.
- *
- * Levels beyond 3 are flattened to level 3 to prevent runaway indentation
- * on malformed outlines.
  */
 export class OutlineManager {
   /** @param {import('./core.js').ViewerCore} core */
@@ -1841,14 +1807,33 @@ export class OutlineManager {
     this._empty = true;
   }
 
-  /** @param {any} dest @returns {Promise<void>} */
-  async navigateToDest(dest) {
+/** @param {any} dest @returns {Promise<void>} */
+async navigateToDest(dest) {
     if (!dest) return;
     const engine = this._core.getEngine();
-    if (!engine || !engine.getPageIndex) return;
+    if (!engine) return;
     try {
-      const index = await engine.getPageIndex(dest);
+      let resolvedDest = dest;
+
+      // If the destination is a named destination (string), resolve it via the engine first
+      if (typeof dest === 'string') {
+        if (typeof engine.getDestination === 'function') {
+          resolvedDest = await engine.getDestination(dest);
+        } else if (engine._pdfDoc && typeof engine._pdfDoc.getDestination === 'function') {
+          resolvedDest = await engine._pdfDoc.getDestination(dest);
+        }
+      }
+
+      // Extract the page reference object if resolvedDest is a destination array [ref, ...]
+      let pageRef = resolvedDest;
+      if (Array.isArray(resolvedDest)) {
+        pageRef = resolvedDest[0];
+      }
+
+      if (typeof engine.getPageIndex !== 'function') return;
+      const index = await engine.getPageIndex(pageRef);
       if (typeof index !== 'number' || index < 0) return;
+      
       const pageNum = index + 1;
       this._core.getBus().emit(Events.PAGE_JUMP_REQUESTED, {
         pageNum,
@@ -1907,12 +1892,9 @@ export class OutlineManager {
 
       const hasChildren = Array.isArray(item.items) && item.items.length > 0;
 
-      // Row wraps toggle + label. Clicking the toggle expands/collapses;
-      // clicking the label navigates.
       const row = document.createElement('div');
       row.className = 'outline-row';
 
-      // Disclosure triangle (or a spacer to keep labels aligned).
       if (hasChildren) {
         const toggle = document.createElement('button');
         toggle.type = 'button';
@@ -1921,7 +1903,6 @@ export class OutlineManager {
         toggle.textContent = level === 0 ? '▾' : '▸';
         row.appendChild(toggle);
 
-        // Nested children, hidden unless this is a top-level expanded item.
         const childUl = this._renderItems(item.items, level + 1);
         childUl.classList.add('outline-nested');
         const startExpanded = level === 0;
@@ -1945,8 +1926,6 @@ export class OutlineManager {
         row.appendChild(spacer);
       }
 
-      // The label. Uses <button>, never <a href>. Buttons have no default
-      // navigation, so a router or WebView cannot trigger a reload on click.
       const label = document.createElement('button');
       label.type = 'button';
       label.className = 'outline-link';
@@ -2219,28 +2198,6 @@ function formatPdfDate(raw) {
 /**
  * Instantiate all managers, wire cross-module subscriptions, and return the
  * aggregate plus a teardown function.
- *
- * Panel wiring:
- *   The drawer's `data-panel` attribute is the single source of truth for
- *   which panel is active. A MutationObserver watches both `data-panel` and
- *   `class` (for the `.open` toggle) on the drawer element. Whenever either
- *   changes, the corresponding manager's renderPanel method is invoked.
- *
- *   `dispatchPanel(panel)` is exposed on the aggregate so ui-internal can
- *   force a render explicitly — this is a belt-and-braces path for the
- *   "same panel, drawer re-opened" case, where the attribute doesn't change
- *   and therefore the observer doesn't fire.
- *
- * @param {import('./core.js').ViewerCore} core
- * @returns {{
- *   cache: CacheManager,
- *   memory: MemoryManager,
- *   search: SearchManager,
- *   outline: OutlineManager,
- *   more: MorePanel,
- *   dispatchPanel: (panel: string) => Promise<void>,
- *   teardown: () => void,
- * }}
  */
 export function createManagers(core) {
   let rawFlags = {};
@@ -2260,31 +2217,26 @@ export function createManagers(core) {
   const outline = new OutlineManager(core);
   const more = new MorePanel(core);
 
-  // ── Cross-module subscriptions ────────────────────────────────────────────
   /** @type {Array<() => void>} */
   const teardowns = [];
   const bus = core.getBus();
 
-  // RENDER_COMPLETE → refresh highlights on that page only.
   teardowns.push(bus.on(Events.RENDER_COMPLETE, (payload) => {
     if (!payload || typeof payload.pageNum !== 'number') return;
     if (search.matchCount() === 0) return;
     try { search.renderHighlights(payload.pageNum); } catch { /* ignore */ }
   }));
 
-  // SCALE_APPLIED → refresh all highlights (rects scale with the pages).
   teardowns.push(bus.on(Events.SCALE_APPLIED, () => {
     if (search.matchCount() === 0) return;
     try { search.renderHighlights(); } catch { /* ignore */ }
   }));
 
-  // DOCUMENT_LOADED → hand the outline tree to OutlineManager.
   teardowns.push(bus.on(Events.DOCUMENT_LOADED, (payload) => {
     if (!payload || !Array.isArray(payload.outline)) return;
     try { outline.build(payload.outline); } catch { /* ignore */ }
   }));
 
-  // DOCUMENT_DESTROYED → clear all manager state.
   teardowns.push(bus.on(Events.DOCUMENT_DESTROYED, () => {
     try { search.clear(); } catch { /* ignore */ }
     try { outline.clear(); } catch { /* ignore */ }
@@ -2292,25 +2244,15 @@ export function createManagers(core) {
     try { cache.evictAll(); } catch { /* ignore */ }
   }));
 
-  // MEMORY_PRESSURE (critical) → enforce cache eviction.
-  //
-  // MemoryManager now evicts before registering, so it rarely emits at
-  // critical level. When it does, the pyramid could not keep up — the
-  // cache tiers are swept in addition to whatever MemoryManager did.
   teardowns.push(bus.on(Events.MEMORY_PRESSURE, (payload) => {
     if (!payload || payload.level !== 'critical') return;
     try { cache._onMemoryPressure(payload); } catch { /* ignore */ }
   }));
 
-  // ── Panel dispatch ────────────────────────────────────────────────────────
-
-  /** @param {'outline'|'search'|'more'|null|undefined} panel */
   async function _dispatchPanel(panel) {
     const drawer = document.getElementById('viewer-outline-drawer');
     if (!drawer) return;
 
-    // Only render into an open drawer. Rendering into a hidden drawer
-    // wastes metadata calls and runs layout work nobody will see.
     if (!drawer.classList.contains('open')) return;
 
     switch (panel) {
@@ -2330,7 +2272,6 @@ export function createManagers(core) {
     }
   }
 
-  // Watch the drawer for panel changes and open/close transitions.
   let drawerObserver = null;
   try {
     const drawer = document.getElementById('viewer-outline-drawer');
@@ -2364,7 +2305,6 @@ export function createManagers(core) {
     /** @param {string} panel */
     dispatchPanel: (panel) => _dispatchPanel(panel),
 
-    /** Idempotent teardown. */
     teardown() {
       for (const fn of teardowns.splice(0)) {
         try { fn(); } catch { /* ignore */ }

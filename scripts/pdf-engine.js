@@ -1,5 +1,5 @@
 /**
- * MedVix Unified PDF Engine v7.0
+ * MedVix Unified PDF Engine v7.0 (Patched & Dynamic Timeout Enabled)
  * File 1 of 8 — Root Entry Point & Platform Storage Bridge
  * ─────────────────────────────────────────────────────────────────────────────
  *
@@ -39,7 +39,7 @@ import { compileDocumentToTypst } from './pdf-engine/compiler.js';
 
 const LOG_PREFIX            = '[pdf-engine]';
 const WORKER_URL            = new URL('./pdf-engine/worker.js', import.meta.url);
-const COMPILE_TIMEOUT_MS    = 20_000;
+const COMPILE_TIMEOUT_MS    = 60_000;              // Increased baseline to 60 seconds
 const PRELOAD_TIMEOUT_MS    = 30_000;
 const BLOB_REVOKE_DELAY_MS  = 30_000;
 const MAX_FILENAME_LENGTH   = 120;                 // includes ".pdf"
@@ -121,7 +121,7 @@ function spawnWorker() {
     );
   }
 
-  // ── Normal response ──
+  // ── Normal response with robust schema support ──
   w.addEventListener('message', (ev) => {
     if (generation !== workerGeneration) return;   // stale — worker was replaced
 
@@ -143,24 +143,24 @@ function spawnWorker() {
       return;
     }
 
-    if (msg.success) {
-      // The transferred Uint8Array may be a view over a larger buffer;
-      // clone into a tight copy so byteLength is authoritative downstream.
-      const raw = msg.pdfBuffer;
+    // Support both success=true and hasError=false/undefined response schemas
+    const isSuccess = msg.success === true || (msg.hasError === false || (msg.hasError === undefined && !msg.error));
+
+    if (isSuccess) {
+      const raw = msg.pdfBuffer || msg.buffer;
       const src = raw instanceof Uint8Array ? raw : new Uint8Array(raw || 0);
       const out = new Uint8Array(src.byteLength);
       out.set(src);
       job.resolve(out);
     } else {
-      job.reject(new PdfEngineError(
-        ErrorCode.COMPILE,
-        msg.error || 'Typst compile failed',
-        msg.diagnostics
-      ));
+      const errorMsg = msg.error || (Array.isArray(msg.diagnostics) && msg.diagnostics.length > 0 
+        ? JSON.stringify(msg.diagnostics) 
+        : 'Typst compile failed');
+      job.reject(new PdfEngineError(ErrorCode.COMPILE, errorMsg, msg.diagnostics));
     }
   });
 
-  // ── Worker crashed (uncaught exception inside the worker) ──
+  // ── Worker crashed ──
   w.addEventListener('error', (ev) => {
     if (generation !== workerGeneration) return;
     const message = (ev && ev.message) ? ev.message : 'Worker crashed';
@@ -174,10 +174,10 @@ function spawnWorker() {
       job.reject(new PdfEngineError(ErrorCode.WORKER, message));
     }
 
-    worker = null;   // next getWorker() respawns cleanly
+    worker = null;
   });
 
-  // ── Structured-clone failure (should not occur with our message shape) ──
+  // ── Structured-clone failure ──
   w.addEventListener('messageerror', (ev) => {
     if (generation !== workerGeneration) return;
     log.error('Worker message error (structured-clone failed):', ev);
@@ -202,16 +202,68 @@ function getWorker() {
 }
 
 // ── Compile serialization ───────────────────────────────────────────────────
-// Typst WASM is not reentrant: two concurrent compiles corrupt internal state.
-// Every compile is chained behind the previous one.
-//
-// The tail never rejects, so the next queued compile always gets its turn
-// even if the previous one failed.
 
 function serialized(fn) {
   const next = compileQueueTail.then(fn, fn);
   compileQueueTail = next.catch(() => {});
   return next;
+}
+
+// ── Dynamic Timeout Calculation ─────────────────────────────────────────────
+/**
+ * Computes an adaptive compilation timeout budget based on the workload size
+ * (e.g., number of questions, sections, items, or raw data size).
+ * 
+ * @param {object} rawData          The raw document input data
+ * @param {object} [options]        Options containing optional manual timeoutMs override
+ * @returns {number}                Calculated timeout in milliseconds
+ */
+function computeDynamicTimeout(rawData, options = {}) {
+  if (typeof options.timeoutMs === 'number' && options.timeoutMs > 0) {
+    return options.timeoutMs;
+  }
+
+  let itemCount = 0;
+  if (rawData) {
+    const keysToCheck = ['questions', 'items', 'sections', 'chapters', 'topics', 'modules', 'data'];
+    for (const key of keysToCheck) {
+      if (Array.isArray(rawData[key])) {
+        itemCount += rawData[key].length;
+      }
+    }
+
+    if (Array.isArray(rawData.sections)) {
+      for (const sec of rawData.sections) {
+        if (sec && typeof sec === 'object') {
+          for (const subKey of ['questions', 'items', 'content']) {
+            if (Array.isArray(sec[subKey])) itemCount += sec[subKey].length;
+          }
+        }
+      }
+    }
+
+    if (itemCount === 0) {
+      for (const val of Object.values(rawData)) {
+        if (Array.isArray(val)) {
+          itemCount += val.length;
+        }
+      }
+    }
+
+    if (itemCount > 0) {
+      const calculatedFromItems = COMPILE_TIMEOUT_MS + (itemCount * 400);
+      return Math.min(240_000, Math.max(COMPILE_TIMEOUT_MS, calculatedFromItems));
+    }
+
+    try {
+      const jsonString = JSON.stringify(rawData);
+      const sizeKb = jsonString.length / 1024;
+      const calculatedFromSize = Math.round(COMPILE_TIMEOUT_MS + (sizeKb * 150));
+      return Math.min(180_000, Math.max(COMPILE_TIMEOUT_MS, calculatedFromSize));
+    } catch (_) {}
+  }
+
+  return COMPILE_TIMEOUT_MS;
 }
 
 // ── Compile dispatch ────────────────────────────────────────────────────────
@@ -242,7 +294,7 @@ function runCompile(typstMarkup, { signal, timeoutMs = COMPILE_TIMEOUT_MS } = {}
       cleanup: null
     };
 
-    // Hard timeout — a stuck WASM thread cannot be interrupted, only killed.
+    // Hard timeout based on dynamic workload budget
     job.timer = setTimeout(() => {
       if (!pendingJobs.has(id)) return;
       pendingJobs.delete(id);
@@ -251,7 +303,6 @@ function runCompile(typstMarkup, { signal, timeoutMs = COMPILE_TIMEOUT_MS } = {}
 
       try { w.terminate(); } catch (_) { /* ignore */ }
 
-      // Reject any other jobs still attached to this dying worker.
       const stale = Array.from(pendingJobs.entries());
       pendingJobs.clear();
       for (const [, other] of stale) {
@@ -264,7 +315,6 @@ function runCompile(typstMarkup, { signal, timeoutMs = COMPILE_TIMEOUT_MS } = {}
       reject(new PdfEngineError(ErrorCode.TIMEOUT, `Compile timed out after ${timeoutMs}ms`));
     }, timeoutMs);
 
-    // Cancellation via AbortSignal — removes its listener on settle.
     if (signal) {
       const onAbort = () => { job.cancelled = true; };
       signal.addEventListener('abort', onAbort, { once: true });
@@ -311,9 +361,7 @@ function getPlatform() {
   }
 }
 
-// ── Base64 conversion (for Capacitor Filesystem) ───────────────────────────
-// Filesystem.writeFile accepts base64, not a typed array. The chunked loop
-// prevents stack overflow on multi-megabyte payloads.
+// ── Base64 conversion ───────────────────────────────────────────────────────
 
 function uint8ToBase64(u8) {
   const CHUNK = 0x8000;   // 32 KB
@@ -351,7 +399,6 @@ async function saveViaBrowser(filename, u8) {
     throw new PdfEngineError(ErrorCode.DOWNLOAD, `Browser download failed: ${err.message}`, err);
   }
 
-  // Give the browser time to start consuming the blob before revoking.
   setTimeout(() => {
     try { URL.revokeObjectURL(url); } catch (_) { /* ignore */ }
   }, BLOB_REVOKE_DELAY_MS);
@@ -399,11 +446,11 @@ function safeFilename(stem) {
     .replace(/^[._-]+/, '')
     .replace(/[._-]+$/, '');
 
-  const maxStemLen = MAX_FILENAME_LENGTH - 4;   // reserve room for ".pdf"
+  const maxStemLen = MAX_FILENAME_LENGTH - 4;
   return cleaned.slice(0, maxStemLen) || DEFAULT_FILENAME_STEM;
 }
 
-// ── Progress dispatch (isolated — a throwing callback must not break export) ─
+// ── Progress dispatch ───────────────────────────────────────────────────────
 
 function emitProgress(onProgress, stage, detail) {
   if (typeof onProgress !== 'function') return;
@@ -413,18 +460,19 @@ function emitProgress(onProgress, stage, detail) {
   }
 }
 
-// ── Internal: prepare a PDF end-to-end (without writing to disk) ────────────
+// ── Internal: prepare a PDF end-to-end ──────────────────────────────────────
 
-async function preparePdf(type, rawData, { signal, onProgress } = {}) {
+async function preparePdf(type, rawData, options = {}) {
+  const { signal, onProgress, timeoutMs } = options;
 
-  // 1. Assets (memoized by File 3).
+  // 1. Assets
   emitProgress(onProgress, Progress.LOADING_ASSETS);
   await loadAssets();
   if (signal && signal.aborted) {
     throw new PdfEngineError(ErrorCode.CANCELLED, 'Aborted after asset load');
   }
 
-  // 2. Validate + sanitize the AST (File 2).
+  // 2. Validate + sanitize the AST
   emitProgress(onProgress, Progress.VALIDATING);
   let data;
   try {
@@ -437,7 +485,7 @@ async function preparePdf(type, rawData, { signal, onProgress } = {}) {
     );
   }
 
-  // 3. Compile the AST into Typst source (File 7).
+  // 3. Compile AST into Typst source
   emitProgress(onProgress, Progress.COMPILING_MARKUP);
   let typstMarkup;
   try {
@@ -456,11 +504,15 @@ async function preparePdf(type, rawData, { signal, onProgress } = {}) {
     );
   }
 
-  // 4. Render the markup to a PDF byte stream (File 8 via worker).
-  emitProgress(onProgress, Progress.RENDERING_PDF);
-  const u8 = await runCompile(typstMarkup, { signal });
+  // 4. Determine dynamic timeout budget based on workload magnitude
+  const resolvedTimeout = computeDynamicTimeout(rawData, { timeoutMs });
+  log.debug(`Assigned dynamic compile timeout of ${resolvedTimeout}ms for type "${type}"`);
 
-  // 5. Derive the filename from the validated id.
+  // 5. Render markup to PDF byte stream via worker with dynamic timeout
+  emitProgress(onProgress, Progress.RENDERING_PDF);
+  const u8 = await runCompile(typstMarkup, { signal, timeoutMs: resolvedTimeout });
+
+  // 6. Derive filename
   const filename = safeFilename(data.id) + '.pdf';
 
   return { u8, filename, data };
@@ -468,20 +520,6 @@ async function preparePdf(type, rawData, { signal, onProgress } = {}) {
 
 // ── Public API: exportDocument ──────────────────────────────────────────────
 
-/**
- * Generate a PDF from the given document type and data, then save it
- * silently to the platform's default location.
- *
- *   Web        → browser download via Blob
- *   Capacitor  → Filesystem.writeFile into DOCUMENTS (no dialog)
- *
- * @param {string} type               Document type key (e.g. 'notes', 'exam')
- * @param {object} rawData            Raw document data (validated by File 2)
- * @param {object} [options]
- * @param {AbortSignal} [options.signal]     Cancel the export
- * @param {Function}    [options.onProgress] Progress callback
- * @returns {Promise<{filename:string,size:number,duration:number,uri:string|null}>}
- */
 export async function exportDocument(type, rawData, options = {}) {
   const now = () =>
     (typeof performance !== 'undefined' && performance.now)
@@ -522,11 +560,6 @@ export async function exportDocument(type, rawData, options = {}) {
 }
 
 // ── Public API: printDocument ───────────────────────────────────────────────
-// This is NOT "open the system print dialog". It opens the generated PDF
-// in a viewer so the user can inspect or print via the viewer's own UI.
-//
-//   Web        → new tab with the blob URL
-//   Capacitor  → Filesystem (CACHE) + FileOpener (system PDF viewer)
 
 export async function printDocument(type, rawData, options = {}) {
   try {
@@ -601,8 +634,6 @@ export async function printDocument(type, rawData, options = {}) {
 }
 
 // ── Public API: preload ─────────────────────────────────────────────────────
-// Warms assets + WASM + font registration before the first real export.
-// Failures are non-fatal — a later export retries from scratch.
 
 export function preload() {
   if (preloadPromise) return preloadPromise;
@@ -616,13 +647,12 @@ export function preload() {
 
     try {
       await loadAssets();
-      // A trivial compile forces WASM init + font registration in the worker.
       await runCompile('Hello', { timeoutMs: PRELOAD_TIMEOUT_MS });
       log.info(`Preload complete in ${Math.round(now() - t0)}ms`);
       return true;
     } catch (err) {
       log.warn(`Preload failed (non-fatal): ${err && err.message ? err.message : err}`);
-      preloadPromise = null;   // allow the next caller to retry
+      preloadPromise = null;
       return false;
     }
   })();
@@ -654,8 +684,6 @@ export function shutdown() {
 }
 
 // ── Legacy window attachments ───────────────────────────────────────────────
-// The v7 API is named-export based, but existing call sites often use
-// window globals. Attach the public surface without exposing internals.
 
 if (typeof window !== 'undefined') {
   window.exportDocument    = exportDocument;
@@ -672,4 +700,4 @@ if (typeof window !== 'undefined') {
 
 // ── Ready ───────────────────────────────────────────────────────────────────
 
-log.info('Module ready — public API attached');
+log.info('Module ready — dynamic timeout & robust worker handling attached');

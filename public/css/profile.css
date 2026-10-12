@@ -5,7 +5,7 @@
    .page-container base, keyframes shimmer/spin).
    Adds ONLY: page container block, page-sticky fixed-header, tabs override,
    profile form, subscription card, devices, stats, institution dropdown,
-   shimmer skeleton, responsive overrides.
+   storage tab, shimmer skeleton, responsive overrides.
    ========================================================================== */
 
 /* ---------- Page container override ----------
@@ -324,6 +324,11 @@ footer {
 /* ================================================================
    STORAGE TAB
    ================================================================ */
+
+/* ---------- Summary card ----------
+   Three read-only rows: writing-new-files-to, path, used-by-MedVix.
+   The row layout is shared by label + value, with .storage-path used
+   for the monospace path so it visually reads as data, not prose. */
 .storage-card {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
@@ -384,11 +389,179 @@ footer {
     max-width: 600px;
 }
 
+/* ---------- Roots list ----------
+   One .storage-root card per available root, in the order the native
+   layer reports them: internal, external, sdcard. The current write
+   root gets .is-current (accent strip on the left, matching the
+   .device-item.current-device convention). Unavailable roots keep
+   their card so the user can see that an SD card is present-but-
+   ejected — they are dimmed, with action buttons hidden by CSS. */
+.storage-roots-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin: 0.75rem 0 1.5rem;
+}
+
+.storage-root {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+    background: var(--bg-card);
+    transition: border-color 0.15s ease;
+}
+.storage-root:hover {
+    border-color: var(--accent);
+}
+
+.storage-root.is-unavailable {
+    opacity: 0.55;
+}
+.storage-root.is-unavailable .storage-root-actions {
+    display: none;
+}
+
+.storage-root.is-current {
+    border-left: 4px solid var(--success);
+    padding-left: calc(1.25rem - 3px);
+}
+
+.storage-root-header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.storage-root-name {
+    font-weight: 600;
+    font-size: 1rem;
+    color: var(--text-primary);
+    line-height: 1.3;
+}
+
+.storage-root-badge {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    font-weight: 500;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+.storage-root-badge-removable {
+    background: var(--accent);
+    color: #fff;
+}
+.storage-root-badge-current {
+    background: var(--success);
+    color: #fff;
+}
+.storage-root-badge-unavailable {
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+}
+
+.storage-root-path {
+    display: block;
+    font-family: 'Courier New', Consolas, Monaco, monospace;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    padding: 0.35rem 0.55rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    word-break: break-all;
+    margin-bottom: 0.5rem;
+    line-height: 1.4;
+}
+
+.storage-root-meta {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-bottom: 0.75rem;
+    line-height: 1.4;
+}
+
+.storage-root-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+/* Scoped button sizing inside root cards — the page-level pill
+   overrides are wide; inside a card the buttons should be tighter
+   so two of them fit on a single narrow-phone row. */
+.storage-root-actions .btn-secondary,
+.storage-root-actions .btn-text {
+    font-size: 0.85rem;
+    padding: 0.4rem 0.9rem;
+    min-height: 36px;
+}
+
+/* ---------- Migration progress ----------
+   Shown only while a migration is running. The panel is hidden via
+   the [hidden] attribute on the container, which the browser maps to
+   display:none without needing a class. */
+.storage-migration-panel {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+    background: var(--bg-secondary);
+    margin: 1rem 0 1.5rem;
+}
+.storage-migration-panel[hidden] {
+    display: none;
+}
+
+.storage-migration-panel h3 {
+    font-size: 1rem;
+    margin: 0 0 0.75rem;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.storage-migration-bar {
+    height: 6px;
+    background: var(--bg-card);
+    border-radius: 3px;
+    overflow: hidden;
+    margin: 0.5rem 0 0.75rem;
+    border: 1px solid var(--border);
+}
+
+.storage-migration-fill {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width 0.15s ease-out;
+}
+
+.storage-migration-status {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    word-break: break-all;
+    margin: 0.3rem 0 0.75rem;
+    min-height: 1.2em;
+    line-height: 1.4;
+}
+
+.storage-migration-panel .btn-secondary {
+    font-size: 0.85rem;
+    padding: 0.4rem 0.9rem;
+}
+
 #deleteAllDataBtn {
     margin-bottom: 1rem;
 }
 
-/* Small phones */
+/* Small phones — the summary rows stack, values left-align, and the
+   root-card action buttons go full-width so the tap targets stay
+   comfortable. */
 @media (max-width: 400px) {
     .storage-row {
         flex-direction: column;
@@ -400,7 +573,34 @@ footer {
         max-width: 100%;
         text-align: left;
     }
+    .storage-root {
+        padding: 0.85rem 0.9rem;
+    }
+    .storage-root.is-current {
+        padding-left: calc(0.9rem - 3px);
+    }
+    .storage-root-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .storage-root-actions .btn-secondary,
+    .storage-root-actions .btn-text {
+        width: 100%;
+        text-align: center;
+    }
+    .storage-migration-panel {
+        padding: 0.85rem 0.9rem;
+    }
 }
+
+/* Phones 401–640px — the two action buttons wrap naturally; nothing
+   else needs adjusting. */
+@media (min-width: 401px) and (max-width: 640px) {
+    .storage-root-actions {
+        flex-wrap: wrap;
+    }
+}
+
 /* ================================================================
    SHIMMER LOADER
    ================================================================ */

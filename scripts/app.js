@@ -94,11 +94,6 @@ const MIGRATION_KEY = 'medvix.storage.migrated.v13';
 /**
  * Register app-facing namespaces and scaffold the base directory
  * tree. Idempotent.
- *
- * NOTE: this does synchronous native bridge work (mkdir per namespace).
- * It is NOT awaited on the critical path — see scheduleDeferredWork().
- * If any page needs these namespaces before the deferred tick, call
- * this function directly from that page's init.
  */
 function initStorageLayout() {
     layout.registerNamespace('resources', {
@@ -130,11 +125,6 @@ function initStorageLayout() {
     return false;
 }
 
-// ── CHANGED ──
-// Small IDB helpers so we can stream records one at a time instead of
-// pulling every blob into memory with getAll(). Each call opens its own
-// short-lived transaction, which is the safe pattern when the handler
-// itself awaits other async work.
 function _idbReadKeys(database, storeName) {
     return new Promise((resolve, reject) => {
         const store = database.transaction(storeName, 'readonly').objectStore(storeName);
@@ -174,7 +164,6 @@ async function migrateLegacyBlobs() {
     try {
         const database = await db.initDatabase();
 
-        // ── Sweep 'files' store — one record at a time ──────────────
         const fileKeys = await _idbReadKeys(database, 'files');
         for (const key of fileKeys) {
             let record;
@@ -202,7 +191,6 @@ async function migrateLegacyBlobs() {
             }
         }
 
-        // ── Sweep 'publicAssets' store — one record at a time ───────
         const assetKeys = await _idbReadKeys(database, 'publicAssets');
         for (const key of assetKeys) {
             let record;
@@ -248,9 +236,6 @@ async function migrateLegacyBlobs() {
     });
 }
 
-// ── CHANGED ──
-// Yields to the event loop every N relocations so the synchronous
-// bridge loop does not lock the UI thread for the whole migration.
 async function migrateStorageRoots() {
     if (!storage.isNativeStorageAvailable()) {
         return { ok: false, moved: 0, failed: 0, reason: 'Native storage unavailable' };
@@ -295,9 +280,6 @@ async function migrateStorageRoots() {
             failed++;
         }
 
-        // Yield every 10 relocations. relocateToOtherRoot is a
-        // synchronous JS-bridge call; without this the UI thread
-        // freezes for the duration of the loop.
         if (++processed % 10 === 0) {
             await new Promise(r => setTimeout(r, 0));
         }
@@ -337,6 +319,25 @@ let appInitialized = false;
 let appAuthenticated = false;
 let referralCode = null;
 let redirectTarget = null;
+
+// ============================================================
+// FIRST-LAUNCH GATE — install-referrer deferred deep link
+// ============================================================
+// The Play Install Referrer is only meaningful on the very first
+// launch after install. Every subsequent launch it returns null
+// (sometimes after a slow round-trip), so we gate the deferred
+// deep-link poll behind a persistent flag.
+const FIRST_LAUNCH_KEY = 'medvix.firstLaunch.v1';
+
+function isFirstLaunch() {
+    return !utils.getLocalStorage(FIRST_LAUNCH_KEY);
+}
+
+function markLaunched() {
+    try {
+        utils.setLocalStorage(FIRST_LAUNCH_KEY, Date.now());
+    } catch { /* ignore */ }
+}
 
 // ============================================================
 // FILE-OPEN — EXTERNAL FILE INTENTS (ANDROID)
@@ -519,7 +520,6 @@ async function captureLaunchUrl() {
     }
 }
 
-// ── CHANGED ── idempotent listener registration
 let _appUrlListenerRegistered = false;
 function registerAppUrlListener() {
     if (_appUrlListenerRegistered) return;
@@ -558,31 +558,12 @@ function drainEarlyQueue() {
     }
 }
 
-// ============================================================
-// DEEP LINK — DEFERRED (PLAY INSTALL REFERRER)
-// ────────────────────────────────────────────────────────────
-// On first install via a Play Store link that carries a
-// "deep_link" referrer payload, MainActivity.retrieveInstallReferrer()
-// stashes the destination into SharedPreferences. This function
-// polls the native plugin until either a route is available or the
-// native side confirms the lookup has finished (checked === true).
-//
-// The native lookup runs during MainActivity.onCreate(), so by the
-// time this module runs the answer is usually already waiting.
-// We cap the poll at 6 s; if the referrer lookup is still pending
-// after that, we give up — a future cold launch will retry, since
-// MainActivity deliberately does not set referrer_checked on a
-// transient SERVICE_UNAVAILABLE.
-//
-// The promise is created once and memoised — every caller awaits
-// the same native round-trip.
 let _pendingDeepLinkPromise = null;
 
 function capturePendingDeepLink() {
     if (_pendingDeepLinkPromise) return _pendingDeepLinkPromise;
 
     if (!MedvixApp || typeof MedvixApp.getPendingDeepLink !== 'function') {
-        // Native build predates this feature; silently no-op.
         _pendingDeepLinkPromise = Promise.resolve(null);
         return _pendingDeepLinkPromise;
     }
@@ -601,10 +582,8 @@ function capturePendingDeepLink() {
                 }
 
                 if (res && res.checked) {
-                    // Native side has confirmed: no deferred route.
                     return null;
                 }
-                // Otherwise: still in flight — back off and retry.
             } catch (err) {
                 console.warn('[DeepLink] getPendingDeepLink failed:', err);
                 return null;
@@ -671,8 +650,6 @@ function showFlexibleUpdateBanner() {
     banner.show();
 }
 
-// ── CHANGED ── guard against double-registration of the downloaded
-// listener; the Play Store check may be run more than once per session.
 let _playUpdateListenerWired = false;
 async function runPlayUpdateCheck() {
     if (!appUpdate.isAppUpdateSupported()) {
@@ -718,25 +695,6 @@ async function runPlayUpdateCheck() {
 }
 
 // ============================================================
-// SAFE REDIRECT (fallback if router fails)
-// ============================================================
-function safeRedirect(targetPath) {
-    let target = targetPath;
-    if (target.startsWith('/pages/')) target = target.replace('/pages/', '');
-    if (target.endsWith('.html')) target = target.replace('.html', '');
-    if (referralCode && !target.includes('ref=')) {
-        const sep = target.includes('?') ? '&' : '?';
-        target += sep + 'ref=' + encodeURIComponent(referralCode);
-    }
-    console.log('[App] Redirecting (safe) to:', target);
-    if (typeof navigateTo === 'function') {
-        navigateTo(target);
-    } else {
-        window.location.href = target;
-    }
-}
-
-// ============================================================
 // PROGRESS BAR
 // ============================================================
 let progressFill = null;
@@ -757,10 +715,6 @@ function completeProgress() {
 
 // ============================================================
 // SPLASH CLEANUP
-// ── CHANGED ──
-// Removed the hardcoded 500 ms sleep. We now wait for the opacity
-// transition to actually finish (or 400 ms, whichever is sooner) and
-// fire the orientation release without awaiting it.
 // ============================================================
 async function destroySplash() {
     console.log('[Splash] Destroying splash resources...');
@@ -774,7 +728,6 @@ async function destroySplash() {
 
     progressFill = null;
 
-    // Fire-and-forget. The OS doesn't need our ack to rotate.
     releaseSplashOrientation().catch(() => {});
 
     if (splash) {
@@ -788,7 +741,9 @@ async function destroySplash() {
                 resolve();
             };
             splash.addEventListener('transitionend', finish, { once: true });
-            setTimeout(finish, 400);
+            // Fallback shortened from 400ms → 300ms. transitionend still
+            // wins when it fires; this only pays out on missed events.
+            setTimeout(finish, 300);
         });
     }
 
@@ -797,11 +752,6 @@ async function destroySplash() {
 
 // ============================================================
 // TIMEOUT HELPER
-// ── CHANGED ──
-// Optional AbortController. When the timeout fires we abort the
-// underlying request so it doesn't linger in the connection pool.
-// Callers must thread `signal` through their fetch to benefit;
-// without it the behaviour is unchanged.
 // ============================================================
 function withTimeout(promise, ms = 8000, controller = null) {
     return Promise.race([
@@ -819,15 +769,6 @@ function withTimeout(promise, ms = 8000, controller = null) {
 
 // ============================================================
 // INITIALIZATION
-// ── CHANGED ──
-// Split into two phases:
-//   • initializeAppLocal()    — synchronous + local IDB reads only.
-//                               Fast, awaited before the router mounts.
-//   • initializeNetworkPhase() — refresh + sync. Deferred to after
-//                               the first paint. Fire-and-forget.
-//
-// initializeApp() is retained for backwards compatibility — it calls
-// both in sequence. New callers should prefer the split.
 // ============================================================
 export async function initializeApp() {
     const ok = await initializeAppLocal();
@@ -841,8 +782,6 @@ async function initializeAppLocal() {
     warmDeviceIdentity();
 
     try {
-        // 1. Referral code detection (sync). Validation is a network
-        //    call — see initializeNetworkPhase for the deferred version.
         if (!utils.getLocalStorage('accessToken')) {
             const urlToCheck = pendingAppUrl || undefined;
             const refCode = referral.detectReferralFromURL(urlToCheck);
@@ -852,21 +791,16 @@ async function initializeAppLocal() {
         }
         updateProgress(15);
 
-        // 2. App settings (sync localStorage read).
         const savedSettings = utils.getLocalStorage('appSettings', null);
         if (savedSettings) ui.setAppSettings(savedSettings);
         updateProgress(30);
 
-        // 3. Time verification (sync). Bail out of local init if the
-        //    device clock looks tampered — matches previous behaviour.
         if (!timeVerifier.verifyTime()) {
             console.warn('[App] Time verification failed — aborting local init');
             return false;
         }
         updateProgress(50);
 
-        // 4. Auth + subscription in parallel. Both read from local
-        //    storage; running them together halves the wait.
         await Promise.all([
             auth.initUser(),
             subscription.initSubscription(),
@@ -890,14 +824,12 @@ async function initializeNetworkPhase() {
         return;
     }
 
-    // Notifications — fire-and-forget. They do not gate anything.
     if (notifications && typeof notifications.init === 'function') {
         try { notifications.init(); } catch (e) {
             console.warn('[App] notifications.init failed', e);
         }
     }
 
-    // Referral validation — best-effort network check.
     if (!utils.getLocalStorage('accessToken')) {
         const refCode = referral.detectReferralFromURL(pendingAppUrl || undefined);
         if (refCode) {
@@ -912,8 +844,6 @@ async function initializeNetworkPhase() {
         }
     }
 
-    // Silent token refresh. 4 s is plenty — anything longer means the
-    // network is broken and we're better off with cached data.
     let validToken = false;
     try {
         console.log('[App] Online with token – silent refresh...');
@@ -929,7 +859,6 @@ async function initializeNetworkPhase() {
 
     if (!validToken) return;
 
-    // Sync — both calls run together, both capped at 5 s.
     try {
         const ac1 = new AbortController();
         const ac2 = new AbortController();
@@ -954,8 +883,6 @@ window.addEventListener('time-tamper-detected', async () => {
 
 // ============================================================
 // FIRST-RENDER WAIT
-// ── CHANGED ── extracted so scheduleDeferredWork can be called
-// after the observer resolves.
 // ============================================================
 function waitForFirstRender() {
     const appRoot = document.getElementById('app-root');
@@ -973,37 +900,26 @@ function waitForFirstRender() {
 
 // ============================================================
 // DEFERRED WORK
-// ── CHANGED ── everything that used to block the boot path.
-// Called once, after the splash has been torn down and the user is
-// looking at a real page.
 // ============================================================
 function scheduleDeferredWork() {
-    // Storage namespaces — synchronous bridge work. Push it to the
-    // next tick so the current frame finishes cleanly first.
     setTimeout(() => {
         try { initStorageLayout(); }
         catch (e) { console.warn('[Storage] initStorageLayout failed', e); }
     }, 0);
 
-    // Play Store round-trip — the single biggest source of boot delay.
-    // Fire it and forget it.
     runPlayUpdateCheck().catch(e => console.warn('[PlayUpdate]', e));
 
-    // Update listener (service-worker updates) — register once.
     try { updates.registerUpdateListener(); }
     catch (e) { console.warn('[App] registerUpdateListener failed', e); }
 
-    // Network phase — refresh, sync, referral validation.
     initializeNetworkPhase().catch(e => console.warn('[App] network init', e));
 
-    // Legacy blob migration — already delayed, keep the delay.
     setTimeout(() => {
         migrateLegacyBlobs().catch((e) =>
             console.warn('[Storage] Migration failed:', e)
         );
     }, 2000);
 
-    // Service worker — never blocks anything.
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('/service-worker.js').catch(() => {});
     }
@@ -1011,46 +927,46 @@ function scheduleDeferredWork() {
 
 // ============================================================
 // SPA BOOTSTRAP
-// ── CHANGED ── reordered so first paint depends on almost nothing.
 // ============================================================
 async function bootstrap() {
     const t0 = (typeof performance !== 'undefined' && performance.now)
         ? performance.now() : Date.now();
 
     try {
-        // ── 0. Fire-and-forget warm-ups ─────────────────────────────────
         warmDeviceIdentity();
-
-        // ── 1. Consume early deep link captured by index.html ───────────
         consumeEarlyDeepLink();
-
-        // ── 2. Synchronous plugin handle lookup ─────────────────────────
         importCapacitor();
 
-        // ── 3. Register listeners BEFORE capturing launch intents ───────
-        // A warm-start event that fires while we're awaiting
-        // captureLaunchFile() would otherwise be lost.
+        // --- Apply saved theme BEFORE any await ---
+        // Prevents a light flash on dark-mode cold starts. Idempotent
+        // with the same read inside initializeAppLocal().
+        const savedSettings = utils.getLocalStorage('appSettings', null);
+        if (savedSettings) ui.setAppSettings(savedSettings);
+        if (ui.applyTheme)    ui.applyTheme();
+        if (ui.syncStatusBar) ui.syncStatusBar();
+
         registerFileListener();
         registerAppUrlListener();
 
-        // ── 4. Capture cold-start file + URL in parallel ────────────────
-        // Both are quick native round-trips. Running them together
-        // halves the wait versus the original serial order.
-        await Promise.all([captureLaunchFile(), captureLaunchUrl()]);
+        // --- Run local init in parallel with native captures ---
+        // initializeAppLocal() only logs a referral hint from pendingAppUrl;
+        // the real validation happens in initializeNetworkPhase(), which
+        // re-reads pendingAppUrl after captures have settled.
+        const capturesPromise  = Promise.all([captureLaunchFile(), captureLaunchUrl()]);
+        const localInitPromise = initializeAppLocal();
 
-        // ── 4b. Kick off the deferred deep-link lookup ──────────────────
-        // Fire-and-forget here; we await it (with a short cap) just
-        // before route resolution, and attach a late-arrival handler
-        // after the router is live. See step 8b and step 13b below.
-        const deferredDeepLinkPromise = capturePendingDeepLink();
+        // --- Deferred install-referrer poll: first launch only ---
+        const firstLaunch = isFirstLaunch();
+        const deferredDeepLinkPromise = firstLaunch
+            ? capturePendingDeepLink()
+            : Promise.resolve(null);
 
-        // ── 5. Splash orientation — fire-and-forget ─────────────────────
-        // The splash HTML already renders portrait via CSS; this just
-        // tells the OS not to rotate the window during boot. No need
-        // to await it.
         lockSplashOrientation().catch(() => {});
 
-        // ── 6. Referral detection (sync) ────────────────────────────────
+        // Captures must settle before we can read pendingAppUrl /
+        // fileLaunchPending for referral badge + route resolution.
+        await capturesPromise;
+
         referralCode = pendingAppUrl
             ? referral.detectReferralFromURL(pendingAppUrl)
             : referral.detectReferralFromURL();
@@ -1063,49 +979,39 @@ async function bootstrap() {
             }
         }
 
-        // ── 7. Local-only init (no network) ─────────────────────────────
-        const localOk = await initializeAppLocal();
+        const localOk = await localInitPromise;
 
-        // ── 8. Resolve auth state from cache ────────────────────────────
         appAuthenticated = auth.checkAuth();
         appInitialized = true;
 
-        // ── 8b. Deferred deep link — grace window ───────────────────────
-        // We reached this point having started the native referrer
-        // poll at step 4b; by now it has usually finished. If it has
-        // a route and no App Link is already pending, adopt it so
-        // resolveInitialRoute() picks it up.
-        //
-        // If the poll is still in flight, wait up to 1500 ms — a
-        // reasonable cap for Play Services. Anything slower is
-        // handled by the late-arrival handler at step 13b.
-        if (!pendingAppUrl) {
-            const raceResult = await Promise.race([
-                deferredDeepLinkPromise,
-                new Promise((resolve) => setTimeout(() => resolve(null), 1500)),
-            ]);
+        // --- First-launch only: short race on the deferred deep link ---
+        // The late-dispatch .then() below still honors a slow-arriving
+        // referrer, so a short timeout is safe on first launch and we
+        // skip the wait entirely on every subsequent launch.
+        if (firstLaunch) {
+            if (!pendingAppUrl) {
+                const raceResult = await Promise.race([
+                    deferredDeepLinkPromise,
+                    new Promise((resolve) => setTimeout(() => resolve(null), 400)),
+                ]);
 
-            if (typeof raceResult === 'string' && raceResult) {
-                pendingAppUrl = raceResult;
-                console.log(
-                    '[DeepLink] Deferred route adopted before route resolution:',
-                    raceResult
-                );
+                if (typeof raceResult === 'string' && raceResult) {
+                    pendingAppUrl = raceResult;
+                    console.log(
+                        '[DeepLink] Deferred route adopted before route resolution:',
+                        raceResult
+                    );
+                }
             }
+            markLaunched();
         }
 
-        // ── 9. Resolve the initial route ────────────────────────────────
         redirectTarget = resolveInitialRoute();
         console.log('[App] Initial route:', redirectTarget,
                     '| authed:', appAuthenticated,
                     '| fileLaunch:', fileLaunchPending,
                     '| deepLink:', !!pendingAppUrl);
 
-        // ── 10. Theme + status bar ──────────────────────────────────────
-        if (ui.applyTheme) ui.applyTheme();
-        if (ui.syncStatusBar) ui.syncStatusBar();
-
-        // ── 11. Set the URL bar to match the resolved route ─────────────
         const currentFull = window.location.pathname + window.location.search + window.location.hash;
         if (redirectTarget && redirectTarget !== currentFull) {
             const fullTarget = redirectTarget.startsWith('/') ? redirectTarget : '/' + redirectTarget;
@@ -1113,23 +1019,9 @@ async function bootstrap() {
             catch (err) { console.warn('[App] history.replaceState failed:', err); }
         }
 
-        // ── 12. Start the router ────────────────────────────────────────
         initRouter();
-
-        // ── 13. Drain warm-start URLs buffered during bootstrap ─────────
         drainEarlyQueue();
 
-        // ── 13b. Deferred deep link — late arrival ──────────────────────
-        // If the referrer lookup finished after the grace window at
-        // step 8b, dispatch it now that the router is live.
-        //
-        // Guards:
-        //   • No URL            → nothing to do.
-        //   • pendingAppUrl set → either an App Link won, or we already
-        //                         adopted the deferred route at 8b.
-        //                         Either way, do not double-fire.
-        //   • appInitialized false → impossible here, but kept for
-        //                            defensive clarity.
         deferredDeepLinkPromise.then((url) => {
             if (!url) return;
             if (pendingAppUrl) return;
@@ -1138,22 +1030,15 @@ async function bootstrap() {
             dispatchDeepLink(url);
         });
 
-        // ── 14. Freeze the early queue ──────────────────────────────────
         if (window.__deepLink) window.__deepLink.frozen = true;
 
-        // ── 15. Wait for the first render ───────────────────────────────
         await waitForFirstRender();
-
-        // ── 16. Destroy splash (fast) ───────────────────────────────────
         await destroySplash();
 
         const t1 = (typeof performance !== 'undefined' && performance.now)
             ? performance.now() : Date.now();
         console.log(`[Boot] First paint + splash teardown: ${Math.round(t1 - t0)}ms`);
 
-        // ── 17. Everything non-critical, deferred ───────────────────────
-        // Play update, network refresh, sync, storage layout,
-        // migration, service worker — none of it gates the user.
         if (localOk) {
             scheduleDeferredWork();
         } else {
@@ -1201,14 +1086,12 @@ import * as payment from './payment.js';
 window.app = {
     initializeApp,
 
-    // Device identity (warm-up + direct access)
     warmDeviceIdentity,
     getDeviceId: security.getDeviceId,
     getDeviceInfo: security.getDeviceInfo,
     getCachedDeviceId: security.getCachedDeviceId,
     getCachedDeviceInfo: security.getCachedDeviceInfo,
 
-    // Auth
     setToken: auth.setToken,
     clearToken: auth.clearToken,
     checkAuth: auth.checkAuth,
@@ -1221,14 +1104,12 @@ window.app = {
     loginWithGoogle: auth.loginWithGoogle,
     linkGoogleAccount: auth.linkGoogleAccount,
 
-    // Subscription
     setSubscription: subscription.setSubscription,
     getSubscription: subscription.getSubscription,
     hasActiveSubscription: subscription.hasActiveSubscription,
     clearSubscription: subscription.clearSubscription,
     refreshSubscription: subscription.refreshSubscription,
 
-    // Exam
     setExamState: examEngine.setExamState,
     getExamState: examEngine.getExamState,
     clearExamState: examEngine.clearExamState,
@@ -1236,22 +1117,18 @@ window.app = {
     getExamConfig: examEngine.getExamConfig,
     clearExamConfig: examEngine.clearExamConfig,
 
-    // UI
     setAppSetting: ui.setAppSetting,
     getAppSetting: ui.getAppSetting,
     toggleTheme: ui.toggleTheme,
 
-    // Payment
     setSelectedPlan: payment.setSelectedPlan,
     getSelectedPlan: payment.getSelectedPlan,
     setCurrentTransaction: payment.setCurrentTransaction,
     getCurrentTransaction: payment.getCurrentTransaction,
 
-    // Updates
     checkForUpdates: updates.checkForUpdates,
     skipWaitingAndReload: updates.skipWaitingAndReload,
 
-    // Sync
     syncUserData: sync.syncUserData,
     triggerFullSync: sync.triggerFullSync,
     syncData: sync.syncData,
@@ -1259,28 +1136,26 @@ window.app = {
     syncUserProfile: sync.syncUserProfile,
     syncSubscription: sync.syncSubscription,
 
-    // Events
     events: events.events,
 
-    // Play update
     checkPlayUpdate: runPlayUpdateCheck,
     applyPlayUpdate: appUpdate.applyDownloadedUpdate,
     isPlayUpdateSupported: appUpdate.isAppUpdateSupported,
 
-    // Deep-link debug helpers
     extractDeepLinkPath,
     dispatchDeepLink,
-    capturePendingDeepLink,   // ← NEW: exposes the deferred-referrer poll
+    capturePendingDeepLink,
 
-    // File-intent debug helpers
     isFileLaunchPending: () => fileLaunchPending,
     stashFilePayload: _stashFilePayload,
 
-    // Orientation debug helpers
     lockSplashOrientation,
     releaseSplashOrientation,
 
-    // ── Storage — root info ────────────────────────────────────────────
+    // First-launch helpers (useful for QA / devtools)
+    isFirstLaunch,
+    markLaunched,
+
     storageRoot:           () => window.MedVixStorage?.getRoot?.()           || null,
     storageRootType:       () => window.MedVixStorage?.getRootType?.()       || 'unavailable',
     storageAvailable:      () => !!window.MedVixStorage?.isAvailable?.()    ,
@@ -1294,15 +1169,12 @@ window.app = {
     storageSetPreferredRoot: (type) =>
         !!window.MedVixStorage?.setPreferredRoot?.(type),
 
-    // ── Storage — content operations ───────────────────────────────────
     storageStats:      () => contentStore.getStorageStats(),
     storageClearCache: () => contentStore.clearCache(),
 
-    // ── Storage — high-level actions ───────────────────────────────────
     storageMigrateRoots: migrateStorageRoots,
     storageDeleteAll:    deleteAllLocalData,
 
-    // ── Storage — diagnostics ──────────────────────────────────────────
     storageLayoutDescriptor:     () => layout.readLayoutDescriptor(),
     storageRegisteredNamespaces: () => layout.getRegisteredNamespaces(),
     storageMigrationRan:         () => !!utils.getLocalStorage(MIGRATION_KEY),

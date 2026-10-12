@@ -1,5 +1,5 @@
 // public/service-worker.js
-const CACHE_VERSION = 'v3.1';
+const CACHE_VERSION = 'v3.3';
 const CACHE_NAME = `medexam-${CACHE_VERSION}`;
 
 // ====== DECRYPTION KEY (MUST match encrypt-json.js) ======
@@ -177,6 +177,7 @@ const STATIC_ASSETS = [
     '/pages/subjects.html',
     '/pages/subscription.html',
     '/pages/terms.html',
+    '/pages/viewer.html',
     '/pages/welcome.html',
 
     // Offline fallback
@@ -223,7 +224,8 @@ self.addEventListener('install', event => {
                         .catch(err => console.warn(`[SW] Failed to cache ${url}:`, err.message))
                 )
             );
-        }).then(() => self.skipWaiting())
+        })
+        // NOTE: skipWaiting() removed to prevent abrupt control-takeover reloads
     );
 });
 
@@ -233,7 +235,7 @@ self.addEventListener('activate', event => {
     event.waitUntil(
         caches.keys().then(keys =>
             Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-        ).then(() => self.clients.claim())
+        )
     );
 });
 

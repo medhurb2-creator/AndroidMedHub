@@ -8,6 +8,7 @@ import * as security from '../security.js';
 import * as db from '../db.js';
 import * as analytics from '../analytics.js';
 import * as subscription from '../subscription.js';
+import * as contentStore from '../db/content-store.js';
 
 let $;
 
@@ -94,7 +95,7 @@ export async function init(context) {
   // Load statistics
   await loadStatistics();
 
-  // Load storage info (new Storage tab)
+  // Load storage info (Storage tab)
   await loadStorageInfo();
 
   // Set device fingerprint display
@@ -317,14 +318,17 @@ function attachEventListeners(context) {
   }
 
   // ── Storage tab ──────────────────────────────────────────────────
+  // The roots list and its per-root action buttons are rendered
+  // dynamically by renderRootsList(), so their listeners are attached
+  // there. Only the tab-level controls are wired here.
   const deleteAllDataBtn = $('#deleteAllDataBtn');
   if (deleteAllDataBtn) {
     deleteAllDataBtn.addEventListener('click', deleteAllData);
   }
 
-  const migrateDataBtn = $('#migrateDataBtn');
-  if (migrateDataBtn) {
-    migrateDataBtn.addEventListener('click', migrateData);
+  const cancelMigrationBtn = $('#cancelMigrationBtn');
+  if (cancelMigrationBtn) {
+    cancelMigrationBtn.addEventListener('click', cancelMigration);
   }
 
   const tabs = context.root.querySelectorAll('.tab-button');
@@ -509,7 +513,7 @@ async function savePreferences() {
 async function loadStatistics() {
   try {
     const allResults = await db.getAllExamResults() || [];
-    
+
     const totalExams = allResults.length;
     let totalQuestions = 0;
     let totalCorrect = 0;
@@ -572,7 +576,7 @@ async function exportData() {
   }
 }
 
-// ==================== ACCOUNT DELETION (UPDATED) ====================
+// ==================== ACCOUNT DELETION ====================
 
 /**
  * Show a custom modal for account deletion with password confirmation.
@@ -704,16 +708,12 @@ async function deleteAccount() {
     ui.showLoading('Deleting account...');
     try {
       await auth.deleteAccount(password);
-      // auth.deleteAccount already clears local data, logs out, and navigates to welcome.html.
-      // We hide loading manually (auth.deleteAccount doesn't hide it).
       ui.hideLoading();
-      // No need to navigate – auth.deleteAccount does that.
     } catch (error) {
       ui.hideLoading();
       ui.showToast(error.message || 'Deletion failed. Please try again.', 'error');
     }
   } catch (error) {
-    // User cancelled
     if (error.message !== 'Deletion cancelled') {
       ui.showToast(error.message || 'Operation cancelled', 'info');
     }
@@ -722,89 +722,412 @@ async function deleteAccount() {
 
 // ==================== STORAGE ====================
 //
-// Two controls, both scoped to this device:
+// Three roots can exist on Android:
 //
-//   • Migrate — moves all downloaded content to the other storage
-//     location (internal ↔ external). The DB's relative paths are
-//     unchanged, so nothing above this layer notices. Preference is
-//     committed only after every file has landed.
+//   internal  — app-private internal storage.
+//   external  — Android's emulated external storage (same physical chip
+//               as internal on modern phones; moving here does not free
+//               space).
+//   sdcard    — the removable SD card's app-specific directory. Real,
+//               separate physical volume. Only present when a card is
+//               mounted.
 //
-//   • Delete all data — wipes every IndexedDB store AND the on-disk
-//     content/ and cache/ trees. The user stays logged in. This is a
-//     device-scoped wipe, not an account deletion — the Security tab's
-//     Delete Account remains the account-level action.
+// The user picks which one NEW writes go to. Reads work across all
+// three, so switching the preference never strands an existing file.
+//
+// This panel:
+//   • Lists every available root with free space and a removable
+//     badge for the SD card.
+//   • Lets the user switch the write preference without moving
+//     anything ("Switch without moving") or move all existing content
+//     to a chosen root ("Move content here").
+//   • Deletes all data (DB + on-disk content + cache).
+//
+// Migration drives content-store.migrateContentToRoot(), which is
+// idempotent and resumable — files already in the target are skipped
+// via fileInRoot(), so a run that is cancelled, crashes, or is killed
+// by the OS can be restarted without re-doing completed work.
+//
+// All styling lives in profile.css under the "STORAGE TAB" section.
+// This module only writes class names — never inline styles — so the
+// stylesheet and the markup cannot drift.
+
+// Module-scoped abort controller so Cancel can stop an in-flight
+// migration. Null when no migration is running.
+let _migrationController = null;
 
 /**
- * Refresh the storage tab's read-only rows and the migrate button's
- * availability. Called once from init() and again after any action
- * that changes storage state.
+ * Read every available root from the native bridge.
+ * Returns [] on any failure (bridge absent, malformed JSON).
+ *
+ * @returns {Array<{
+ *   type: 'internal'|'external'|'sdcard',
+ *   path: string,
+ *   available: boolean,
+ *   removable: boolean,
+ *   freeBytes: number,
+ *   isCurrent: boolean,
+ *   volumeId: string,
+ * }>}
+ */
+function getNativeRoots() {
+  try {
+    const raw = window.MedVixStorage?.getAvailableRoots?.();
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+/**
+ * Human-readable label for a root type.
+ */
+function rootLabel(type) {
+  if (type === 'internal') return 'Internal storage';
+  if (type === 'external') return 'Emulated external';
+  if (type === 'sdcard')   return 'SD card';
+  return type || 'Unknown';
+}
+
+/**
+ * Format a byte count as a short human-readable string.
+ */
+function formatBytes(bytes) {
+  const n = Number(bytes) || 0;
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+/**
+ * Shorten a long relative path for display in the migration status.
+ * "content/resources/textbooks/foo/bar.pdf" → "…/foo/bar.pdf"
+ */
+function shortenPath(rel) {
+  if (!rel) return '';
+  const parts = String(rel).split('/');
+  if (parts.length <= 3) return rel;
+  return '…/' + parts.slice(-3).join('/');
+}
+
+/**
+ * Refresh the storage tab: current-root summary, usage, and the list
+ * of available roots with their per-root actions.
+ *
+ * Called once from init() and again after every preference change or
+ * completed migration.
  */
 async function loadStorageInfo() {
-  const rootTypeEl  = $('#storage-current-root');
-  const rootPathEl  = $('#storage-current-path');
-  const usageEl     = $('#storage-usage');
-  const migrateBtn  = $('#migrateDataBtn');
-  const migrateHint = $('#migrate-hint');
+  const rootTypeEl = $('#storage-current-root');
+  const rootPathEl = $('#storage-current-path');
+  const usageEl    = $('#storage-usage');
+  const listEl     = $('#storage-roots-list');
 
-  // Native bridge availability. On web dev this whole panel is inert.
-  if (!window.app?.storageAvailable?.()) {
-    if (rootTypeEl)  rootTypeEl.textContent = 'Not available';
-    if (rootPathEl)  rootPathEl.textContent = '—';
-    if (usageEl)     usageEl.textContent = '—';
-    if (migrateBtn) {
-      migrateBtn.disabled = true;
-      migrateBtn.textContent = 'Migrate to other storage';
-    }
-    if (migrateHint) {
-      migrateHint.textContent =
-        'Storage controls are available only in the installed app.';
+  // If neither the app-level wrapper nor the native bridge is present
+  // (web dev build), mark the whole panel inert.
+  const hasApp    = !!window.app?.storageAvailable?.();
+  const hasNative = !!window.MedVixStorage?.isAvailable?.();
+  if (!hasApp && !hasNative) {
+    if (rootTypeEl) rootTypeEl.textContent = 'Not available';
+    if (rootPathEl) rootPathEl.textContent = '—';
+    if (usageEl)    usageEl.textContent = '—';
+    if (listEl) {
+      listEl.innerHTML =
+        '<p class="storage-hint">Storage controls are available only in the installed app.</p>';
     }
     return;
   }
 
-  // Current root.
-  const type = window.app.storageRootType();
-  const path = window.app.storageRoot();
+  // Current write root. Prefer the app-level wrapper if it exists;
+  // otherwise fall back to the native bridge directly.
+  const currentType =
+    (window.app?.storageRootType?.()) ||
+    (window.MedVixStorage?.getRootType?.()) ||
+    'internal';
+  const currentPath =
+    (window.app?.storageRoot?.()) ||
+    (window.MedVixStorage?.getRoot?.()) ||
+    '';
 
-  if (rootTypeEl) {
-    rootTypeEl.textContent = type === 'external' ? 'External' : 'Internal';
-  }
-  if (rootPathEl) {
-    rootPathEl.textContent = path || '—';
-  }
+  if (rootTypeEl) rootTypeEl.textContent = rootLabel(currentType);
+  if (rootPathEl) rootPathEl.textContent = currentPath || '—';
 
-  // Usage.
+  // Total bytes used by MedVix.
   try {
-    const stats = await window.app.storageStats();
+    const stats = await (window.app?.storageStats?.() ?? Promise.resolve(null));
     const bytes = Number(stats?.totalBytes) || 0;
-    const mb = (bytes / 1024 / 1024).toFixed(1);
-    if (usageEl) usageEl.textContent = `${mb} MB`;
+    if (usageEl) usageEl.textContent = formatBytes(bytes);
   } catch {
     if (usageEl) usageEl.textContent = '—';
   }
 
-  // Migrate availability.
-  let otherRoot = null;
+  // Roots list.
+  const roots = getNativeRoots();
+  renderRootsList(roots, currentType);
+}
+
+/**
+ * Render one card per available root. Each non-current, available root
+ * gets a "Move content here" button (migration + preference commit)
+ * and a lighter "Switch without moving" text button (preference only).
+ */
+function renderRootsList(roots, currentType) {
+  const listEl = $('#storage-roots-list');
+  if (!listEl) return;
+
+  if (!roots || roots.length === 0) {
+    listEl.innerHTML = '<p class="storage-hint">No storage locations detected.</p>';
+    return;
+  }
+
+  listEl.innerHTML = '';
+  for (const root of roots) {
+    listEl.appendChild(buildRootCard(root, currentType));
+  }
+}
+
+/**
+ * Build a single root card.
+ *
+ * Styling lives entirely in profile.css (.storage-root and friends).
+ * The class names are the contract; do not inline style here or the
+ * stylesheet will be shadowed.
+ */
+function buildRootCard(root, currentType) {
+  const isCurrent   = root.type === currentType;
+  const isAvailable = !!root.available;
+
+  const card = document.createElement('div');
+  card.className = 'storage-root';
+  if (isCurrent)    card.classList.add('is-current');
+  if (!isAvailable) card.classList.add('is-unavailable');
+
+  // Header row: name + badges.
+  const header = document.createElement('div');
+  header.className = 'storage-root-header';
+
+  const name = document.createElement('span');
+  name.className = 'storage-root-name';
+  name.textContent = rootLabel(root.type);
+  header.appendChild(name);
+
+  if (root.removable) {
+    const badge = document.createElement('span');
+    badge.className = 'storage-root-badge storage-root-badge-removable';
+    badge.textContent = 'SD Card';
+    header.appendChild(badge);
+  }
+
+  if (isCurrent) {
+    const badge = document.createElement('span');
+    badge.className = 'storage-root-badge storage-root-badge-current';
+    badge.textContent = 'Current';
+    header.appendChild(badge);
+  }
+
+  if (!isAvailable) {
+    const badge = document.createElement('span');
+    badge.className = 'storage-root-badge storage-root-badge-unavailable';
+    badge.textContent = 'Not available';
+    header.appendChild(badge);
+  }
+
+  card.appendChild(header);
+
+  // Path.
+  const path = document.createElement('code');
+  path.className = 'storage-root-path';
+  path.textContent = root.path || '—';
+  card.appendChild(path);
+
+  // Free space.
+  const free = document.createElement('div');
+  free.className = 'storage-root-meta';
+  free.textContent = `${formatBytes(root.freeBytes)} free`;
+  card.appendChild(free);
+
+  // Action buttons — only for non-current, available roots.
+  // (CSS hides .storage-root-actions on .is-unavailable, but we also
+  // skip constructing them so there are no listeners to leak.)
+  if (!isCurrent && isAvailable) {
+    const actions = document.createElement('div');
+    actions.className = 'storage-root-actions';
+
+    const moveBtn = document.createElement('button');
+    moveBtn.type = 'button';
+    moveBtn.className = 'btn-secondary';
+    moveBtn.textContent = 'Move content here';
+    moveBtn.addEventListener('click', () => moveContentTo(root.type));
+    actions.appendChild(moveBtn);
+
+    const switchBtn = document.createElement('button');
+    switchBtn.type = 'button';
+    switchBtn.className = 'btn-text';
+    switchBtn.textContent = 'Switch without moving';
+    switchBtn.addEventListener('click', () => switchPreferenceOnly(root.type));
+    actions.appendChild(switchBtn);
+
+    card.appendChild(actions);
+  }
+
+  return card;
+}
+
+/**
+ * Switch the write preference without moving any existing file.
+ * Reads continue to work across all roots, so this is safe at any time.
+ */
+async function switchPreferenceOnly(targetType) {
+  const ok = window.MedVixStorage?.setPreferredRoot?.(targetType);
+  if (!ok) {
+    ui.showToast(`Could not switch to ${rootLabel(targetType)}`, 'error');
+    return;
+  }
+  ui.showToast(`New downloads will use ${rootLabel(targetType)}`, 'success');
+  await loadStorageInfo();
+}
+
+/**
+ * Move every content file from every other available root to the
+ * target, then commit the preference on success.
+ *
+ * Idempotent: files already in the target are skipped. Resumable: a
+ * cancelled or interrupted run can be restarted — the scan re-reads
+ * each source root fresh, and fileInRoot() filters out what has
+ * already moved.
+ */
+async function moveContentTo(targetType) {
+  if (_migrationController) {
+    ui.showToast('A migration is already running', 'warning');
+    return;
+  }
+
+  const label = rootLabel(targetType);
+  const isRemovableTarget = targetType === 'sdcard';
+
+  const extraWarning = isRemovableTarget
+    ? ' If the card is ejected later, the moved content will be unavailable until you re-insert it.'
+    : '';
+
+  const confirmed = await ui.showConfirmationDialog(
+    `Move content to ${label}`,
+    `All downloaded content on this device will be moved to ${label}.` +
+    extraWarning +
+    ' The app may briefly freeze while moving large files. ' +
+    'Do not close the app or eject the card during the move.',
+    'info'
+  );
+  if (!confirmed) return;
+
+  showMigrationPanel();
+
+  _migrationController = new AbortController();
+
   try {
-    const roots = window.app.storageAvailableRoots() || [];
-    otherRoot = roots.find(r => r.type !== type && r.available) || null;
-  } catch { /* ignore */ }
+    const result = await contentStore.migrateContentToRoot(targetType, {
+      onProgress: updateMigrationProgress,
+      signal: _migrationController.signal,
+    });
 
-  if (migrateBtn) {
-    if (!otherRoot) {
-      migrateBtn.disabled = true;
-      migrateBtn.textContent = 'Migrate to other storage';
+    hideMigrationPanel();
+
+    if (result.ok) {
+      // Commit the preference only after every file landed. Until
+      // this point the write root is unchanged, so new downloads
+      // during the migration keep going to the old root — which is
+      // fine because migrateContentToRoot() re-scans on the next run.
+      window.MedVixStorage?.setPreferredRoot?.(targetType);
+
+      const n = result.migrated.length;
+      const skipped = result.skipped.length;
+      const msg = skipped > 0
+        ? `Moved ${n} file${n === 1 ? '' : 's'} to ${label} (${skipped} already there)`
+        : `Moved ${n} file${n === 1 ? '' : 's'} to ${label}`;
+      ui.showToast(msg, 'success');
+    } else if (result.aborted) {
+      ui.showToast(
+        `Migration cancelled. ${result.migrated.length} file(s) already moved — preference unchanged.`,
+        'info',
+        5000
+      );
     } else {
-      migrateBtn.disabled = false;
-      migrateBtn.textContent = `Migrate to ${otherRoot.type}`;
+      ui.showToast(
+        `${result.migrated.length} moved, ${result.failed.length} failed. Preference unchanged.`,
+        'warning',
+        6000
+      );
     }
+  } catch (e) {
+    hideMigrationPanel();
+    ui.showToast(e.message || 'Migration failed', 'error');
+  } finally {
+    _migrationController = null;
+    await loadStorageInfo();
+  }
+}
+
+/**
+ * Signal an in-flight migration to stop. The currently-processing file
+ * finishes (the native move is atomic per call); the loop exits before
+ * starting the next one.
+ */
+function cancelMigration() {
+  if (_migrationController) {
+    _migrationController.abort();
+    ui.showToast('Cancelling migration…', 'info');
+  }
+}
+
+function showMigrationPanel() {
+  const panel = $('#storage-migration-panel');
+  if (panel) panel.hidden = false;
+  updateMigrationProgress({ phase: 'scan' });
+}
+
+function hideMigrationPanel() {
+  const panel = $('#storage-migration-panel');
+  if (panel) panel.hidden = true;
+  const fill = $('#storage-migration-fill');
+  if (fill) fill.style.width = '0%';
+}
+
+/**
+ * Update the migration status line and progress bar.
+ *
+ * Called by content-store.migrateContentToRoot() with a fresh progress
+ * object per phase transition and per file. Never throws — missing DOM
+ * elements are silently ignored so a template change cannot break
+ * migration.
+ *
+ * The fill width is the only inline style kept: it is a per-frame
+ * numeric value with no useful CSS-class equivalent.
+ */
+function updateMigrationProgress(p) {
+  const statusEl = $('#storage-migration-status');
+  const fillEl   = $('#storage-migration-fill');
+  if (!statusEl || !fillEl) return;
+
+  let text = '';
+  let pct  = 0;
+
+  if (p.phase === 'scan') {
+    text = `Scanning ${p.sourceRoot || 'sources'}…`;
+    pct  = 2;
+  } else if (p.phase === 'migrate') {
+    text = `Moving: ${shortenPath(p.rel)}`;
+    pct  = p.total ? Math.round((p.index / p.total) * 100) : 0;
+  } else if (p.phase === 'skip') {
+    text = `Already there: ${shortenPath(p.rel)}`;
+    pct  = p.total ? Math.round((p.index / p.total) * 100) : 0;
+  } else if (p.phase === 'fail') {
+    text = `Failed: ${shortenPath(p.rel)}`;
+    pct  = p.total ? Math.round((p.index / p.total) * 100) : 0;
+  } else if (p.phase === 'complete') {
+    text = `Done. ${p.migrated || 0} moved, ${p.skipped || 0} skipped, ${p.failed || 0} failed.`;
+    pct  = 100;
   }
 
-  if (migrateHint) {
-    migrateHint.textContent = otherRoot
-      ? `Moves all downloaded content to ${otherRoot.type} storage. Do not close the app during the move.`
-      : 'The other storage location is not available on this device.';
-  }
+  statusEl.textContent = text;
+  fillEl.style.width = `${pct}%`;
 }
 
 /**
@@ -845,94 +1168,12 @@ async function deleteAllData() {
   }
 }
 
-/**
- * Move every file under content/ from the current root to the other
- * root, then commit the preference. Reads stay working throughout —
- * the native bridge checks both roots on every get.
- */
-async function migrateData() {
-  if (!window.app?.storageAvailable?.()) {
-    ui.showToast('Storage not available on this device', 'warning');
-    return;
-  }
-  if (!window.MedVixStorage?.listFilesInRoot || !window.MedVixStorage?.relocateToOtherRoot) {
-    ui.showToast('Migration not supported in this build', 'warning');
-    return;
-  }
-
-  const from = window.app.storageRootType();
-  let roots = [];
-  try { roots = window.app.storageAvailableRoots() || []; } catch { /* ignore */ }
-  const other = roots.find(r => r.type !== from && r.available);
-
-  if (!other) {
-    ui.showToast('No alternate storage location available', 'warning');
-    return;
-  }
-
-  const confirmed = await ui.showConfirmationDialog(
-    `Migrate to ${other.type} storage`,
-    `All downloaded content will be moved from ${from} to ${other.type}. ` +
-    'Do not close the app during the move. The move runs in the foreground ' +
-    'and may take a while for large libraries.',
-    'info'
-  );
-  if (!confirmed) return;
-
-  ui.showLoading(`Migrating to ${other.type} storage…`);
-
-  try {
-    // Enumerate every file under content/ in the source root.
-    const raw = window.MedVixStorage.listFilesInRoot(from, 'content');
-    let list = [];
-    try { list = JSON.parse(raw || '[]'); } catch { list = []; }
-
-    if (list.length === 0) {
-      // Nothing to move. Commit the preference so future writes go to
-      // the other root.
-      window.MedVixStorage.setPreferredRoot(other.type);
-      ui.hideLoading();
-      ui.showToast(`Switched to ${other.type} storage (no files to move)`, 'success');
-      await loadStorageInfo();
-      return;
-    }
-
-    let moved = 0;
-    let failed = 0;
-
-    for (const rel of list) {
-      const ok = window.MedVixStorage.relocateToOtherRoot(rel);
-      if (ok) moved++;
-      else    failed++;
-    }
-
-    if (failed === 0) {
-      // All files landed. Commit the preference so new writes go to
-      // the other root from now on.
-      window.MedVixStorage.setPreferredRoot(other.type);
-      ui.hideLoading();
-      ui.showToast(`Migrated ${moved} file${moved === 1 ? '' : 's'} to ${other.type}`, 'success');
-    } else {
-      // Partial. Leave the preference unchanged — reads still find
-      // every file because the bridge checks both roots. The user can
-      // retry; already-moved files will be skipped via the dest.exists
-      // guard inside relocateToOtherRoot.
-      ui.hideLoading();
-      ui.showToast(
-        `${moved} moved, ${failed} could not be moved. Preference unchanged.`,
-        'warning',
-        5000
-      );
-    }
-
-    await loadStorageInfo();
-  } catch (e) {
-    ui.hideLoading();
-    ui.showToast(e.message || 'Migration failed', 'error');
-  }
-}
-
 // ==================== DESTROY ====================
 export function destroy() {
-  // Cleanup if needed
+  // Abort any in-flight migration when the page is torn down so its
+  // loop does not keep running against a detached DOM.
+  if (_migrationController) {
+    try { _migrationController.abort(); } catch { /* ignore */ }
+    _migrationController = null;
+  }
 }

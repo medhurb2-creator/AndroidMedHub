@@ -240,13 +240,13 @@
         </div>
         <button id="viewAnalyticsBtn" class="btn-secondary">View Detailed Analytics →</button>
       </div>
-            <!-- Storage Tab -->
+      <!-- Storage Tab -->
       <div id="storage-tab" class="tab-content">
         <h3>Storage</h3>
 
         <div class="storage-card">
           <div class="storage-row">
-            <span class="storage-label">Location</span>
+            <span class="storage-label">Writing new files to</span>
             <span class="storage-value" id="storage-current-root">—</span>
           </div>
           <div class="storage-row">
@@ -259,13 +259,23 @@
           </div>
         </div>
 
-        <h3>Move downloaded content</h3>
-        <p class="storage-hint" id="migrate-hint">
-          Moves all downloaded content to the other storage location.
+        <h3>Available locations</h3>
+        <p class="storage-hint">
+          New downloads go to the location marked <strong>Current</strong>.
+          Choose another location to switch, or move existing content to it.
         </p>
-        <button id="migrateDataBtn" class="btn-secondary">
-          Migrate to other storage
-        </button>
+        <div id="storage-roots-list" class="storage-roots-list">
+          <p class="storage-hint">Detecting storage locations…</p>
+        </div>
+
+        <div id="storage-migration-panel" class="storage-migration-panel" hidden>
+          <h3>Moving content…</h3>
+          <div class="storage-migration-bar">
+            <div class="storage-migration-fill" id="storage-migration-fill"></div>
+          </div>
+          <p class="storage-migration-status" id="storage-migration-status">Preparing…</p>
+          <button id="cancelMigrationBtn" class="btn-secondary">Cancel</button>
+        </div>
 
         <hr>
 
