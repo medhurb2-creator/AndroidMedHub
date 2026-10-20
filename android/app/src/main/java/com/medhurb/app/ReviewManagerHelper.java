@@ -10,11 +10,11 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import com.google.android.gms.tasks.OnCompleteListener;
+import com.google.android.gms.tasks.Task;
 import com.google.android.play.core.review.ReviewInfo;
 import com.google.android.play.core.review.ReviewManager;
 import com.google.android.play.core.review.ReviewManagerFactory;
-import com.google.android.play.core.tasks.OnCompleteListener;
-import com.google.android.play.core.tasks.Task;
 
 /**
  * Drives the Google Play In-App Review flow with:
@@ -26,6 +26,14 @@ import com.google.android.play.core.tasks.Task;
  *
  * Not a Capacitor plugin — MedvixReviewPlugin wraps this and exposes
  * it to JavaScript. See that class for the JS contract.
+ *
+ * Import note: Task / OnCompleteListener come from
+ * com.google.android.gms.tasks, NOT com.google.android.play.core.tasks.
+ * The old play.core.tasks package was removed when Google split the
+ * Play Core monolith into feature-specific artifacts. The current
+ * com.google.android.play:review:2.0.1 dependency pulls
+ * play-services-tasks in transitively, so these imports resolve with
+ * no extra Gradle changes.
  */
 public class ReviewManagerHelper {
 

@@ -8,6 +8,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
@@ -16,7 +17,7 @@ import com.android.installreferrer.api.InstallReferrerStateListener;
 import com.android.installreferrer.api.ReferrerDetails;
 import com.getcapacitor.BridgeActivity;
 
-import ee.forg.capacitor.social.login.ModifiedMainActivityForSocialLoginPlugin;
+import ee.forgr.capacitor.social.login.ModifiedMainActivityForSocialLoginPlugin;
 
 public class MainActivity extends BridgeActivity implements ModifiedMainActivityForSocialLoginPlugin {
 
@@ -66,6 +67,7 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
         //   • MedvixAppPlugin         — deep links, lifecycle, app info,
         //                               back-button dispatch.
         //   • MedvixOrientationPlugin — portrait lock during splash.
+        //   • MedvixReviewPlugin      — Google Play in-app review sheet.
         //
         //   Viewer-side (scripts/viewer/native-bridge.js):
         //   • MedvixStatusBarPlugin   — immersive mode, status bar control.
@@ -84,6 +86,48 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
         registerPlugin(MedvixReviewPlugin.class);
 
         super.onCreate(savedInstanceState);
+
+        // ── Hardware back button — OnBackPressedDispatcher ─────────────
+        //
+        // We no longer override onBackPressed() directly. That method is
+        // deprecated on API 33+ and the compiler on this toolchain
+        // rejects the @Override because the current supertype chain
+        // does not expose it as overridable. The dispatcher callback
+        // below is the modern equivalent and behaves identically.
+        //
+        // Order of precedence when the user presses back:
+        //
+        //   1. If a JS 'backButton' listener is registered — the
+        //      viewer's native-bridge.js attaches one when the viewer
+        //      mounts — MedvixAppPlugin.dispatchBackButton() fires the
+        //      event and returns true. We consume the press; the
+        //      WebView stays open and JS decides what to do (close a
+        //      drawer, dismiss the search bar, exit fullscreen, or
+        //      navigate back in the SPA router).
+        //
+        //   2. Otherwise we disable this callback, re-dispatch the
+        //      press, and let the next registered callback run. In
+        //      Capacitor that is the WebView's own back handler, which
+        //      walks WebView history and finishes the activity when
+        //      the history is empty.
+        //
+        // Registered AFTER super.onCreate() so it sits on top of
+        // Capacitor's own callback in the LIFO dispatch order.
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                if (MedvixAppPlugin.sInstance != null
+                        && MedvixAppPlugin.sInstance.dispatchBackButton()) {
+                    return; // JS consumed the press
+                }
+
+                // Pass through to the next callback (WebView history).
+                // Temporarily disable ourselves so we don't recurse.
+                setEnabled(false);
+                getOnBackPressedDispatcher().onBackPressed();
+                setEnabled(true);
+            }
+        });
 
         // ── Deferred deep link (Play Install Referrer) ──────────────────
         //
@@ -160,6 +204,11 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
         // else as-is. Clearing that flag tells the system to draw
         // light (white) icons. The opposite call — passing the flag in
         // both positions — would draw dark icons for a light theme.
+        //
+        // NOTE: APPEARANCE_LIGHT_STATUS_BARS requires androidx.core
+        // 1.5.0 or newer. See app/build.gradle — the dependency must
+        // be declared explicitly so transitive version pins cannot
+        // pull it below 1.5.0.
         WindowInsetsControllerCompat insetsController =
                 WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
         insetsController.setSystemBarsAppearance(
@@ -237,38 +286,6 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
         // Capacitor's bridge (it walks every registered plugin). Nothing
         // to invoke here — the plugin fires the 'appUrlOpen' event on
         // its own, and app.js's listener dispatches the route.
-    }
-
-    /**
-     * Hardware back button.
-     *
-     * Android calls this when the user presses back and nothing earlier
-     * in the focus chain has consumed the event.
-     *
-     * We give MedvixAppPlugin first refusal. If a JS 'backButton'
-     * listener is registered — the viewer's native-bridge.js attaches
-     * one when the viewer mounts — the plugin fires the event and
-     * returns true, and we consume the press. The WebView stays open,
-     * and JS decides what to do: close a drawer, dismiss the search
-     * bar, exit fullscreen, or navigate back in the SPA router.
-     *
-     * If no JS listener is registered (the user is on a page that
-     * doesn't handle back), the plugin returns false and we fall
-     * through to super.onBackPressed(). Android then does its default
-     * thing — WebView history back if there is history, otherwise
-     * finish the activity.
-     *
-     * Capacitor v6 does not route the back button through the plugin
-     * base class, which is why this explicit dispatch exists. See
-     * MedvixAppPlugin.dispatchBackButton() for the other half.
-     */
-    @Override
-    public void onBackPressed() {
-        if (MedvixAppPlugin.sInstance != null
-                && MedvixAppPlugin.sInstance.dispatchBackButton()) {
-            return;
-        }
-        super.onBackPressed();
     }
 
     /**
