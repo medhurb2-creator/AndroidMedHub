@@ -728,6 +728,53 @@
     })();
     </script>
 
+    <!-- ============================================================
+         GLOBAL BROKEN IMAGE HANDLER
+         Catches images that fail to load across the entire app.
+         If an image fails, it hides the image and its wrapper to
+         prevent ugly "alt" text and floating close buttons.
+         ============================================================ -->
+    <script>
+    (function() {
+        function handleBrokenImage(img) {
+            if (!img || img.tagName !== 'IMG') return;
+            
+            const alt = (img.getAttribute('alt') || '').toLowerCase();
+            
+            // Specifically target the "Enlarged image" placeholder
+            if (alt.includes('enlarged image')) {
+                // Hide the broken image itself
+                img.style.display = 'none';
+                
+                // Try to hide the parent container so we don't leave a floating '✕' button
+                const wrapper = img.parentElement;
+                if (wrapper) {
+                    // If the wrapper only contains the image and a close button, hide the whole row
+                    if (wrapper.children.length <= 2) {
+                        wrapper.style.display = 'none';
+                    }
+                }
+            }
+        }
+
+        // 1. Listen for errors on images dynamically added by the SPA
+        window.addEventListener('error', function(event) {
+            if (event.target && event.target.tagName === 'IMG') {
+                handleBrokenImage(event.target);
+            }
+        }, true); // Use capture phase to catch it before it bubbles
+
+        // 2. Check images that might have already failed before this script loaded
+        window.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('img').forEach(img => {
+                if (img.complete && img.naturalWidth === 0) {
+                    handleBrokenImage(img);
+                }
+            });
+        });
+    })();
+    </script>
+
 </body>
 
 </html>

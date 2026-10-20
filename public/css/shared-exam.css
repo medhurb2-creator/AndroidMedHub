@@ -1,18 +1,35 @@
 /* ==========================================================================
    SHARED EXAM — Android-first fixed-shell layout
+   Root wrapper: .shared-exam-page
+   (from <section class="page shared-exam-page">)
+
    Requires common.css (reset, tokens, buttons base, .modal-overlay base,
-   .modal-close base, keyframes).
+   .modal-close base, --success, --success-rgb, --danger-rgb, --warning-rgb,
+   --accent-rgb, --overlay).
+
    Adds ONLY: page shell (fixed viewport height), fixed header, notice bar,
    scroll content, compact summary, topic performance, review list,
    fixed footer, error state, modal card + actions, responsive.
+
+   7-RULE COMPLIANCE
+   Rule 1: every selector prefixed with .shared-exam-page (or
+           body:has(.shared-exam-page) for the body override).
+   Rule 2: .summary-compact uses auto minmax(0, 1fr); .review-answers uses
+           repeat(2, minmax(0, 1fr)) / minmax(0, 1fr) on mobile.
+   Rule 3: box-sizing: border-box on all layout containers.
+   Rule 4: 100vh has 100dvh fallback (already correct in original).
+   Rule 5: body override via :has(); .page-container / .modal-overlay /
+           .modal-close / .no-data / .btn-sm-* all scoped.
+   Rule 6: fixed shell with overflow management already correct.
+   Rule 7: N/A (no loaders on this page).
    ========================================================================== */
 
 /* ---------- Body override — fixed-viewport shell ----------
-   Common provides background/color/line-height/transition.
-   Page pins the shell to the viewport and blocks common's
-   `min-height: 100vh` (which would otherwise force the body to
-   `100vh` even when `100dvh` is smaller on mobile). */
-body {
+   CRITICAL FIX: the original `body { overflow: hidden; height: 100vh }`
+   at top level killed scrolling on EVERY page loaded after this CSS.
+   Now scoped — when the page unmounts, body reverts to common.css
+   behavior and other pages scroll normally. */
+body:has(.shared-exam-page) {
     overflow: hidden;
     height: 100vh;
     height: 100dvh;
@@ -20,9 +37,9 @@ body {
 }
 
 /* ---------- Page container ----------
-   Blocks common's horizontal padding (0 1.5rem), which would inset
-   the whole shell and misalign the header/notice bar. */
-.page-container {
+   Previously bare — every page's container became a fixed-viewport
+   flex column. Now scoped. */
+.shared-exam-page .page-container {
     display: flex;
     flex-direction: column;
     height: 100vh;
@@ -31,41 +48,44 @@ body {
     max-width: 100%;
     margin: 0 auto;
     padding: 0;
+    box-sizing: border-box;
 }
 
 /* ============================================================
    FIXED HEADER (Row 1)
    ============================================================ */
-.fixed-header {
+.shared-exam-page .fixed-header {
     flex-shrink: 0;
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 0.5rem 1rem;
+    box-sizing: border-box;
     background: var(--bg-card);
     border-bottom: 1px solid var(--border);
     height: 56px;
     min-height: 56px;
     z-index: 10;
 }
-.fixed-header .logo {
+.shared-exam-page .fixed-header .logo {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     font-weight: 600;
     font-size: 1.1rem;
 }
-.fixed-header .logo img {
+.shared-exam-page .fixed-header .logo img {
     width: 32px;
     height: 32px;
     border-radius: 6px;
+    flex-shrink: 0;
 }
-.fixed-header .header-right {
+.shared-exam-page .fixed-header .header-right {
     display: flex;
     align-items: center;
     gap: 0.5rem;
 }
-.fixed-header .btn-outline {
+.shared-exam-page .fixed-header .btn-outline {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     padding: 0.3rem 0.6rem;
@@ -75,7 +95,7 @@ body {
     line-height: 1;
     transition: background 0.2s, color 0.2s;
 }
-.fixed-header .btn-outline:hover:not(:disabled) {
+.shared-exam-page .fixed-header .btn-outline:hover:not(:disabled) {
     background: var(--accent);
     color: #fff;
     border-color: var(--accent);
@@ -84,10 +104,11 @@ body {
 /* ============================================================
    FIXED NOTICE BAR (Row 2)
    ============================================================ */
-.fixed-notice {
+.shared-exam-page .fixed-notice {
     flex-shrink: 0;
     background: var(--bg-secondary);
     padding: 0.5rem 1rem;
+    box-sizing: border-box;
     border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
@@ -97,13 +118,14 @@ body {
     min-height: 52px;
     z-index: 9;
 }
-.fixed-notice .left {
+.shared-exam-page .fixed-notice .left {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     flex-wrap: wrap;
+    min-width: 0;
 }
-.share-badge {
+.shared-exam-page .share-badge {
     background: var(--warning);
     color: #fff;
     padding: 0.15rem 0.6rem;
@@ -113,17 +135,19 @@ body {
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
-.read-only-note {
+.shared-exam-page .read-only-note {
     font-size: 0.8rem;
     color: var(--text-secondary);
     margin: 0;
 }
-.fixed-notice .actions {
+.shared-exam-page .fixed-notice .actions {
     display: flex;
     gap: 0.5rem;
     flex-wrap: wrap;
 }
-.fixed-notice .btn-sm {
+
+/* .btn-sm and its variants — scoped to this page only */
+.shared-exam-page .fixed-notice .btn-sm {
     padding: 0.3rem 0.8rem;
     border-radius: 30px;
     font-size: 0.75rem;
@@ -137,51 +161,84 @@ body {
     align-items: center;
     gap: 0.3rem;
 }
-.btn-sm-primary {
+.shared-exam-page .btn-sm-primary {
     background: var(--accent);
     color: #fff;
 }
-.btn-sm-primary:hover { background: var(--accent-dark); }
+.shared-exam-page .btn-sm-primary:hover {
+    background: var(--accent-dark);
+}
 
-.btn-sm-success {
+.shared-exam-page .btn-sm-success {
     background: var(--success);
     color: #fff;
 }
-.btn-sm-success:hover { background: #0e9f6e; }
+.shared-exam-page .btn-sm-success:hover {
+    background: #0e9f6e;
+}
 
-.btn-sm-secondary {
+.shared-exam-page .btn-sm-secondary {
     background: var(--bg-secondary);
     color: var(--text-primary);
     border: 1px solid var(--border);
 }
-.btn-sm-secondary:hover { background: var(--border); }
+.shared-exam-page .btn-sm-secondary:hover {
+    background: var(--border);
+}
 
 /* ============================================================
    SCROLLABLE CONTENT
    ============================================================ */
-.scroll-content {
+.shared-exam-page .scroll-content {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     padding: 0.75rem 1rem 1rem;
+    box-sizing: border-box;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+
+    /* Persistent scrollbar — Firefox */
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent) var(--bg-secondary);
+    scrollbar-gutter: stable;
+}
+.shared-exam-page .scroll-content::-webkit-scrollbar {
+    width: 10px;
+}
+.shared-exam-page .scroll-content::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+.shared-exam-page .scroll-content::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    border-radius: 8px;
+    border: 2px solid var(--bg-secondary);
+    min-height: 40px;
+}
+.shared-exam-page .scroll-content::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-dark);
 }
 
 /* ============================================================
    SUMMARY CARD (compact 3-row layout)
    ============================================================ */
-.summary-compact {
+.shared-exam-page .summary-compact {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 0.75rem 1rem;
+    box-sizing: border-box;
     margin-bottom: 1rem;
     display: grid;
-    grid-template-columns: auto 1fr;
+    /* Rule 2: minmax(0, 1fr) so long subject names wrap rather than
+       blowing out the column width. */
+    grid-template-columns: auto minmax(0, 1fr);
     gap: 0.3rem 0.8rem;
     align-items: center;
     box-shadow: var(--shadow-sm);
 }
-.summary-compact .pie-cell {
+.shared-exam-page .summary-compact .pie-cell {
     grid-row: 1 / 4;
     display: flex;
     align-items: center;
@@ -189,7 +246,7 @@ body {
     width: 72px;
     height: 72px;
 }
-.summary-compact .pie-cell .score-circle {
+.shared-exam-page .summary-compact .pie-cell .score-circle {
     width: 72px;
     height: 72px;
     border-radius: 50%;
@@ -203,57 +260,66 @@ body {
     box-shadow: var(--shadow-sm);
     flex-shrink: 0;
 }
-.summary-compact .meta-item {
+.shared-exam-page .summary-compact .meta-item {
     display: flex;
     justify-content: space-between;
     align-items: baseline;
     padding: 0.1rem 0;
     font-size: 0.82rem;
+    gap: 0.5rem;
     border-bottom: 1px dashed var(--border-light, rgba(0, 0, 0, 0.04));
 }
-.summary-compact .meta-item:last-child { border-bottom: none; }
-.summary-compact .meta-label {
+.shared-exam-page .summary-compact .meta-item:last-child {
+    border-bottom: none;
+}
+.shared-exam-page .summary-compact .meta-label {
     color: var(--text-muted);
     font-weight: 400;
     font-size: 0.7rem;
     text-transform: uppercase;
     letter-spacing: 0.3px;
+    flex-shrink: 0;
 }
-.summary-compact .meta-value {
+.shared-exam-page .summary-compact .meta-value {
     font-weight: 500;
     color: var(--text-primary);
     text-align: right;
+    min-width: 0;
+    word-break: break-word;
 }
-.summary-compact .meta-value.subject {
+.shared-exam-page .summary-compact .meta-value.subject {
     font-weight: 600;
     font-size: 0.95rem;
 }
-.summary-compact .meta-value.score {
+.shared-exam-page .summary-compact .meta-value.score {
     color: var(--accent);
     font-weight: 700;
 }
-.summary-compact .meta-value.mode { text-transform: capitalize; }
+.shared-exam-page .summary-compact .meta-value.mode {
+    text-transform: capitalize;
+}
 
 /* ============================================================
    TOPIC PERFORMANCE
    ============================================================ */
-.topic-section {
+.shared-exam-page .topic-section {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 0.75rem 1rem;
+    box-sizing: border-box;
     margin-bottom: 1rem;
 }
-.topic-section h3 {
+.shared-exam-page .topic-section h3 {
     font-size: 0.95rem;
     margin: 0 0 0.5rem 0;
 }
-.topic-list {
+.shared-exam-page .topic-list {
     list-style: none;
     padding: 0;
     margin: 0;
 }
-.topic-list li {
+.shared-exam-page .topic-list li {
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -261,23 +327,26 @@ body {
     border-bottom: 1px solid var(--border-light, rgba(0, 0, 0, 0.04));
     font-size: 0.8rem;
 }
-.topic-list li:last-child { border-bottom: none; }
-.topic-name {
+.shared-exam-page .topic-list li:last-child {
+    border-bottom: none;
+}
+.shared-exam-page .topic-name {
     flex: 1;
+    min-width: 0;
     font-weight: 500;
 }
-.topic-score {
+.shared-exam-page .topic-score {
     font-weight: 600;
     min-width: 44px;
     text-align: right;
 }
-.topic-count {
+.shared-exam-page .topic-count {
     color: var(--text-muted);
     font-size: 0.7rem;
     min-width: 44px;
     text-align: right;
 }
-.topic-bar {
+.shared-exam-page .topic-bar {
     flex: 1;
     min-width: 60px;
     height: 5px;
@@ -285,7 +354,7 @@ body {
     border-radius: 9999px;
     overflow: hidden;
 }
-.bar-fill {
+.shared-exam-page .bar-fill {
     height: 100%;
     transition: width 0.3s ease;
 }
@@ -293,32 +362,32 @@ body {
 /* ============================================================
    QUESTION REVIEW
    ============================================================ */
-.review-section h2 {
+.shared-exam-page .review-section h2 {
     font-size: 1rem;
     margin: 0 0 0.5rem 0;
 }
-.review-list {
+.shared-exam-page .review-list {
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
 }
-.review-item {
+.shared-exam-page .review-item {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 0.6rem 0.8rem;
+    box-sizing: border-box;
 }
-.review-item.correct   { border-left: 3px solid var(--success); }
-.review-item.incorrect { border-left: 3px solid var(--danger);  }
+.shared-exam-page .review-item.correct   { border-left: 3px solid var(--success); }
+.shared-exam-page .review-item.incorrect { border-left: 3px solid var(--danger);  }
 
 /* ---------- Question image in the shared-exam review ---------- */
-.shared-exam-image {
+.shared-exam-page .shared-exam-image {
     display: flex;
     justify-content: center;
     margin: 0.5rem 0;
 }
-
-.shared-exam-image img {
+.shared-exam-page .shared-exam-image img {
     display: inline-block;
     max-width: 100%;
     max-height: 300px;
@@ -326,31 +395,35 @@ body {
     height: auto;
     border-radius: var(--radius-small, 8px);
     object-fit: contain;
-    background: var(--bg-secondary, #f5f5f5);
+    background: var(--bg-secondary);
     padding: 4px;
-    border: 1px solid var(--border, #e5e5e5);
+    border: 1px solid var(--border);
+    box-sizing: border-box;
 }
-
 @media (max-width: 480px) {
-    .shared-exam-image img { max-height: 220px; }
+    .shared-exam-page .shared-exam-image img {
+        max-height: 220px;
+    }
 }
 
-.review-header {
+.shared-exam-page .review-header {
     display: flex;
     gap: 0.5rem;
     align-items: center;
     flex-wrap: wrap;
     margin-bottom: 0.3rem;
 }
-.review-header .q-num {
+.shared-exam-page .review-header .q-num {
     font-weight: 600;
     background: var(--bg-secondary);
     padding: 0.1rem 0.4rem;
     border-radius: var(--radius-sm);
     font-size: 0.7rem;
 }
-.review-header .status { font-size: 0.9rem; }
-.review-header .topic-tag {
+.shared-exam-page .review-header .status {
+    font-size: 0.9rem;
+}
+.shared-exam-page .review-header .topic-tag {
     background: var(--bg-secondary);
     padding: 0.1rem 0.5rem;
     border-radius: 9999px;
@@ -358,43 +431,52 @@ body {
     color: var(--text-secondary);
     border: 1px solid var(--border);
 }
-.review-header .time-spent {
+.shared-exam-page .review-header .time-spent {
     color: var(--text-muted);
     font-size: 0.65rem;
     margin-left: auto;
 }
-.review-question {
+.shared-exam-page .review-question {
     font-weight: 500;
     font-size: 0.9rem;
     margin-bottom: 0.3rem;
 }
-.review-answers {
+
+/* Rule 2: minmax(0, 1fr) so long answer strings wrap rather than
+   forcing the columns wider than 50%. */
+.shared-exam-page .review-answers {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.3rem;
     background: var(--bg-secondary);
     padding: 0.3rem 0.6rem;
+    box-sizing: border-box;
     border-radius: var(--radius-sm);
     font-size: 0.78rem;
     margin-bottom: 0.3rem;
 }
-.review-answers div { word-break: break-word; }
-.review-explanation {
+.shared-exam-page .review-answers div {
+    word-break: break-word;
+}
+.shared-exam-page .review-explanation {
     background: var(--bg-secondary);
     padding: 0.3rem 0.6rem;
+    box-sizing: border-box;
     border-radius: var(--radius-sm);
     font-size: 0.78rem;
     color: var(--text-secondary);
     border-left: 2px solid var(--accent);
 }
-.review-explanation .explanation-parts {
+.shared-exam-page .review-explanation .explanation-parts {
     display: flex;
     flex-direction: column;
     gap: 0.15rem;
 }
-.review-explanation .explanation-parts strong { color: var(--text-primary); }
+.shared-exam-page .review-explanation .explanation-parts strong {
+    color: var(--text-primary);
+}
 
-.flagged-badge {
+.shared-exam-page .flagged-badge {
     display: inline-block;
     background: var(--warning);
     color: #fff;
@@ -404,8 +486,9 @@ body {
     margin-top: 0.2rem;
 }
 
-/* Override common's .no-data padding (2rem 1rem) */
-.no-data {
+/* ---------- No-data override ----------
+   Previously bare — overrode common's .no-data (2rem 1rem) globally. */
+.shared-exam-page .no-data {
     padding: 0.5rem 0;
     font-size: 0.85rem;
 }
@@ -413,12 +496,13 @@ body {
 /* ============================================================
    FIXED FOOTER
    ============================================================ */
-.fixed-footer {
+.shared-exam-page .fixed-footer {
     flex-shrink: 0;
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 0.5rem 1rem;
+    box-sizing: border-box;
     background: var(--bg-card);
     border-top: 1px solid var(--border);
     height: 56px;
@@ -426,7 +510,7 @@ body {
     gap: 0.5rem;
     z-index: 10;
 }
-.fixed-footer .btn-text {
+.shared-exam-page .fixed-footer .btn-text {
     background: none;
     border: none;
     color: var(--text-secondary);
@@ -439,11 +523,11 @@ body {
     border-radius: 30px;
     transition: background 0.2s;
 }
-.fixed-footer .btn-text:hover {
+.shared-exam-page .fixed-footer .btn-text:hover {
     background: var(--bg-secondary);
     color: var(--text-primary);
 }
-.fixed-footer .btn-share {
+.shared-exam-page .fixed-footer .btn-share {
     background: var(--accent);
     color: #fff;
     border: none;
@@ -457,33 +541,36 @@ body {
     gap: 0.3rem;
     transition: background 0.2s;
 }
-.fixed-footer .btn-share:hover { background: var(--accent-dark); }
+.shared-exam-page .fixed-footer .btn-share:hover {
+    background: var(--accent-dark);
+}
 
 /* ============================================================
    ERROR / LOADING STATES
    ============================================================ */
-.error-state {
+.shared-exam-page .error-state {
     text-align: center;
     padding: 2rem 1rem;
+    box-sizing: border-box;
 }
-.error-state h2 {
+.shared-exam-page .error-state h2 {
     font-size: 1.2rem;
     margin-bottom: 0.5rem;
     color: var(--danger);
 }
-.error-state p {
+.shared-exam-page .error-state p {
     color: var(--text-secondary);
     margin-bottom: 1rem;
     font-size: 0.9rem;
 }
 
 /* ============================================================
-   MODAL
+   MODAL — scoped override of common
    ============================================================ */
-.modal-overlay {
+.shared-exam-page .modal-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
+    background: var(--overlay);
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
     display: none;
@@ -491,48 +578,53 @@ body {
     justify-content: center;
     z-index: 2000;
     padding: 1rem;
+    box-sizing: border-box;
 }
-.modal-overlay.active { display: flex; }
+.shared-exam-page .modal-overlay.active {
+    display: flex;
+}
 
-.modal-card {
+.shared-exam-page .modal-card {
     background: var(--bg-card);
     border-radius: var(--radius-lg);
     max-width: 380px;
     width: 100%;
     padding: 1.5rem;
+    box-sizing: border-box;
     box-shadow: var(--shadow-lg);
     text-align: center;
-    animation: fadeSlideUp 0.3s ease;
+    animation: shared-exam-fade-slide-up 0.3s ease;
     position: relative;
 }
-@keyframes fadeSlideUp {
+@keyframes shared-exam-fade-slide-up {
     from { opacity: 0; transform: translateY(20px); }
     to   { opacity: 1; transform: translateY(0);    }
 }
-.modal-card h3 {
+.shared-exam-page .modal-card h3 {
     margin-top: 0;
     font-size: 1.2rem;
 }
-.modal-card p {
+.shared-exam-page .modal-card p {
     color: var(--text-secondary);
     margin-bottom: 1.2rem;
     font-size: 0.9rem;
 }
-.modal-actions {
+.shared-exam-page .modal-actions {
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
     align-items: center;
 }
-.modal-actions .btn {
+.shared-exam-page .modal-actions .btn {
     width: 100%;
     padding: 0.5rem;
+    box-sizing: border-box;
     border-radius: 30px;
     font-weight: 500;
     font-size: 0.9rem;
 }
 
-.modal-close {
+.shared-exam-page .modal-close {
     position: absolute;
     top: 0.3rem;
     right: 0.6rem;
@@ -546,26 +638,26 @@ body {
     border-radius: 50%;
     transition: background 0.2s;
 }
-.modal-close:hover {
+.shared-exam-page .modal-close:hover {
     background: var(--bg-secondary);
     color: var(--text-primary);
 }
 
-.modal-divider {
+.shared-exam-page .modal-divider {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     width: 100%;
     margin: 0.2rem 0;
 }
-.modal-divider::before,
-.modal-divider::after {
+.shared-exam-page .modal-divider::before,
+.shared-exam-page .modal-divider::after {
     content: "";
     flex: 1;
     height: 1px;
     background: var(--border);
 }
-.modal-divider span {
+.shared-exam-page .modal-divider span {
     color: var(--text-muted);
     font-size: 0.75rem;
 }
@@ -574,31 +666,36 @@ body {
    RESPONSIVE
    ============================================================ */
 @media (max-width: 480px) {
-    .fixed-notice .left {
+    .shared-exam-page .fixed-notice .left {
         flex-direction: column;
         align-items: flex-start;
         gap: 0.1rem;
     }
-    .fixed-notice .actions {
+    .shared-exam-page .fixed-notice .actions {
         width: 100%;
         justify-content: flex-end;
     }
-    .summary-compact {
+    .shared-exam-page .summary-compact {
         padding: 0.5rem 0.75rem;
         gap: 0.2rem 0.5rem;
     }
-    .summary-compact .pie-cell {
+    .shared-exam-page .summary-compact .pie-cell {
         width: 60px;
         height: 60px;
     }
-    .summary-compact .pie-cell .score-circle {
+    .shared-exam-page .summary-compact .pie-cell .score-circle {
         width: 60px;
         height: 60px;
         font-size: 1rem;
     }
-    .review-answers { grid-template-columns: 1fr; }
-    .fixed-footer .btn-text { font-size: 0.75rem; }
-    .fixed-footer .btn-share {
+    /* Rule 2: single-column reviews on narrow screens */
+    .shared-exam-page .review-answers {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .shared-exam-page .fixed-footer .btn-text {
+        font-size: 0.75rem;
+    }
+    .shared-exam-page .fixed-footer .btn-share {
         font-size: 0.7rem;
         padding: 0.3rem 0.6rem;
     }

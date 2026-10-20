@@ -72,7 +72,23 @@
           <span id="notificationBadge" class="notification-badge" style="display:none;">0</span>
         </button>
         <button id="themeToggle" class="btn-outline">🌓</button>
-        <button id="logoutBtn" class="btn-text">Logout</button>
+        
+        <!-- NEW: User Avatar Menu -->
+        <div class="user-menu-wrapper">
+          <button id="userMenuBtn" class="avatar-btn" aria-label="User Menu">
+            <span id="userAvatarText">U</span>
+            <img id="userAvatarImg" src="" alt="User Avatar" style="display:none;" />
+          </button>
+          
+          <div id="userDropdown" class="user-dropdown">
+            <button id="switchAccountBtn">
+              <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i> Switch Account
+            </button>
+            <button id="logoutBtn" class="danger-text">
+              <i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i> Log Out
+            </button>
+          </div>
+        </div>
       </div>
     </header>
 

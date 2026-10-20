@@ -1,19 +1,51 @@
 /* ==========================================================================
    SUBJECTS — page-specific styles
+   Root wrapper: .subjects-page (from <section class="page subjects-page">)
+
    Requires common.css (reset, body, tokens, header :where() default,
    .logo base, .btn-icon/.btn-outline/.btn-text base, .no-data base,
-   keyframes shimmer).
+   --shimmer-base, --shimmer-highlight).
+
    Adds ONLY: page shell block, sticky header shell, logo override, header
    action buttons (with leak-proof hover), notification badge, second bar,
    quick actions, subjects header + toggle + search, subject grid + cards,
    fixed footer + referral CTA, shimmer skeleton, responsive.
+
+   7-RULE COMPLIANCE
+   Rule 1: every selector prefixed with .subjects-page (~90 selectors),
+           including the previously-bare element selectors (header, main,
+           main h1) and the shared-class overrides (subject-icon,
+           progress-bar, progress-fill, btn-study, app-footer, footer-btn).
+   Rule 2: .subject-grid / .shimmer-grid already use minmax(min(280px, 100%), 1fr).
+   Rule 3: box-sizing: border-box on all layout containers.
+   Rule 4: header height 10vh has 10dvh fallback.
+   Rule 5: header / main / main h1 / .page-container / .app-footer /
+           .footer-btn / .subject-icon / .progress-bar / .progress-fill /
+           .btn-study all scoped. @property renamed to --subjects-border-angle.
+           @keyframes renamed to subjects-shimmer / subjects-spin-border /
+           subjects-slide-update-glow.
+   Rule 6: header overflow: visible (defensive).
+   Rule 7: shimmer uses var(--shimmer-base)/(--shimmer-highlight); keyframe
+           namespaced subjects-shimmer; reduced-motion guard. NOTE: previous
+           @keyframes shimmer no longer exists in common.css — shimmer was
+           DEAD. Fixed.
+
+   FOOTER FONT FIX (this revision):
+   The previous .footer-btn rule set font-size: 1.5rem on the button
+   itself. Both the Font Awesome <i> AND the <span> label inherited that
+   — so the labels ("Profile", "Performance", "AI", "Notes") rendered at
+   ~24px, way too big, and the buttons stacked icon-beside-label instead
+   of icon-over-label. Now matches common.css / notes / performance / AI:
+     • base font-size: 0.7rem (small baseline)
+     • explicit icon rule  → 1.15rem
+     • explicit label rule → 0.7rem
+     • flex-direction: column so icon stacks over label
+     • flex: 1 1 0 for even horizontal distribution
+   Referral CTA stays row layout at 0.9rem (unchanged design intent).
    ========================================================================== */
 
-/* ---------- Page container ----------
-   Blocks common's max-width: 1200px + side padding (original was full-width).
-   Explicit width/box-sizing make the container immune to any inherited
-   constraint from an outer wrapper. */
-.page-container {
+/* ---------- Page container ---------- */
+.subjects-page .page-container {
     max-width: none;
     margin: 0;
     padding: 0;
@@ -21,41 +53,40 @@
     box-sizing: border-box;
 }
 
-/* ---------- Sticky header shell ----------
-   Common's :where(header:not([class])) provides display:flex +
-   justify-content + align-items. Here we add positioning + sizing. */
-header {
+/* ---------- Sticky header shell ---------- */
+.subjects-page header {
     padding: 0.5rem 1rem;
     height: 10vh;
+    height: 10dvh;
     min-height: 60px;
+    box-sizing: border-box;
     background-color: var(--bg-card);
     border-bottom: 1px solid var(--border);
     position: sticky;
     top: 0;
     z-index: 100;
+    overflow: visible;
 }
 
-/* ---------- Logo override (common: 700 / 1.3rem) ---------- */
-.logo {
+/* ---------- Logo override ---------- */
+.subjects-page .logo {
     font-weight: 600;
     font-size: 1.2rem;
 }
-.logo img {
+.subjects-page .logo img {
     width: 32px;
     height: 32px;
     border-radius: 6px;
+    flex-shrink: 0;
 }
 
-/* ---------- Header action buttons ----------
-   Overrides common's `.btn-icon` / `.btn-outline` / `.btn-text` bases.
-   `font-weight: inherit` + `line-height: 1` block common's 500 weight
-   and line-height 1.2 from leaking in. */
-.header-actions {
+/* ---------- Header action buttons ---------- */
+.subjects-page .header-actions {
     display: flex;
     align-items: center;
     gap: 0.5rem;
 }
-.header-actions button {
+.subjects-page .header-actions button {
     background: none;
     border: none;
     font-size: 1.2rem;
@@ -72,10 +103,7 @@ header {
     justify-content: center;
     transition: background 0.2s;
 }
-/* :not(:disabled) needed to beat common's `.btn-outline:hover:not(:disabled)`
-   (specificity 0,3,0). Also resets color/border-color/text-decoration
-   that common's hover states would otherwise apply. */
-.header-actions button:hover:not(:disabled) {
+.subjects-page .header-actions button:hover:not(:disabled) {
     background: var(--bg-secondary);
     color: var(--text-primary);
     border-color: transparent;
@@ -83,8 +111,10 @@ header {
 }
 
 /* ---------- Notification badge ---------- */
-.notification-btn { position: relative; }
-.notification-badge {
+.subjects-page .notification-btn {
+    position: relative;
+}
+.subjects-page .notification-badge {
     position: absolute;
     top: -4px;
     right: -4px;
@@ -102,29 +132,30 @@ header {
     border: 2px solid var(--bg-card, #ffffff);
     line-height: 1;
 }
-.dark-theme .notification-badge {
+.dark-theme .subjects-page .notification-badge {
     border-color: var(--bg-card, #1e1e2f);
 }
 
 /* ---------- Second bar ---------- */
-.second-bar {
+.subjects-page .second-bar {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 0.5rem 1rem;
+    box-sizing: border-box;
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border);
 }
-.second-bar h2 {
+.subjects-page .second-bar h2 {
     font-size: 1.2rem;
     margin: 0;
     color: var(--text-primary);
 }
-.subscription-info {
+.subjects-page .subscription-info {
     font-size: 0.9rem;
     color: var(--text-muted);
 }
-.status-subscribe-btn {
+.subjects-page .status-subscribe-btn {
     background: var(--accent);
     color: #fff;
     border: none;
@@ -134,31 +165,32 @@ header {
     cursor: pointer;
     transition: background 0.2s;
 }
-.status-subscribe-btn:hover { background: var(--accent-dark); }
+.subjects-page .status-subscribe-btn:hover {
+    background: var(--accent-dark);
+}
 
 /* ---------- Quick actions banner ---------- */
-.welcome-banner {
+.subjects-page .welcome-banner {
     background: var(--bg-secondary);
     border-radius: var(--radius);
     padding: 0.75rem;
+    box-sizing: border-box;
     margin: 0.5rem;
 }
-.quick-actions {
+.subjects-page .quick-actions {
     display: flex;
     gap: 0.5rem;
     flex-wrap: wrap;
 }
-.quick-actions button {
+.subjects-page .quick-actions button {
     min-height: 44px;
     font-size: 0.9rem;
     padding: 0.5rem 1rem;
     white-space: nowrap;
 }
 
-/* ---------- Main layout ----------
-   Explicitly full width + box-border. Prevents any inherited constraint
-   (from common.css or a future wrapper) from narrowing the grid's parent. */
-main {
+/* ---------- Main layout ---------- */
+.subjects-page main {
     display: block;
     width: 100%;
     max-width: 100%;
@@ -167,27 +199,27 @@ main {
     margin: 0;
 }
 
-/* ---------- Main heading override ---------- */
-main h1 {
+.subjects-page main h1 {
     font-size: 1.8rem;
     margin: 1rem 0.5rem;
 }
 
 /* ---------- Subjects header (toggle + search) ---------- */
-.subjects-header {
+.subjects-page .subjects-header {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 0.75rem;
     padding: 0.5rem 1rem 0;
+    box-sizing: border-box;
 }
-.subjects-header h1 {
+.subjects-page .subjects-header h1 {
     margin: 0;
     font-size: 1.4rem;
 }
 
-.subjects-toggle {
+.subjects-page .subjects-toggle {
     display: flex;
     gap: 0.25rem;
     background: var(--bg-secondary);
@@ -195,7 +227,7 @@ main h1 {
     padding: 0.25rem;
     border: 1px solid var(--border);
 }
-.subjects-toggle button {
+.subjects-page .subjects-toggle button {
     border: none;
     background: transparent;
     padding: 0.4rem 1.2rem;
@@ -207,25 +239,28 @@ main h1 {
     transition: all 0.2s;
     min-height: 36px;
 }
-.subjects-toggle button.active {
+.subjects-page .subjects-toggle button.active {
     background: var(--accent);
     color: #fff;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
-.subjects-toggle button:hover:not(.active) {
+.subjects-page .subjects-toggle button:hover:not(.active) {
     background: var(--bg-hover, var(--border));
 }
 
-.search-bar {
+.subjects-page .search-bar {
     display: none;
     position: relative;
     max-width: 300px;
     flex: 1;
 }
-.search-bar.visible { display: block; }
-.search-bar input {
+.subjects-page .search-bar.visible {
+    display: block;
+}
+.subjects-page .search-bar input {
     width: 100%;
     padding: 0.4rem 1rem 0.4rem 2.2rem;
+    box-sizing: border-box;
     border-radius: 30px;
     border: 1px solid var(--border);
     background: var(--bg-card);
@@ -233,12 +268,12 @@ main h1 {
     font-size: 0.9rem;
     min-height: 36px;
 }
-.search-bar input:focus {
+.subjects-page .search-bar input:focus {
     outline: none;
     border-color: var(--accent);
-    box-shadow: none;              /* block common's input:focus ring */
+    box-shadow: none;
 }
-.search-bar .search-icon {
+.subjects-page .search-bar .search-icon {
     position: absolute;
     left: 0.75rem;
     top: 50%;
@@ -247,7 +282,7 @@ main h1 {
     pointer-events: none;
     font-size: 1rem;
 }
-.search-bar .clear-icon {
+.subjects-page .search-bar .clear-icon {
     position: absolute;
     right: 0.75rem;
     top: 50%;
@@ -257,76 +292,52 @@ main h1 {
     font-size: 0.9rem;
     display: none;
 }
-.search-bar .clear-icon.visible { display: block; }
+.subjects-page .search-bar .clear-icon.visible {
+    display: block;
+}
 
-.subjects-count {
+.subjects-page .subjects-count {
     font-size: 0.85rem;
     color: var(--text-muted);
     padding: 0 1rem;
     margin-top: 0.25rem;
 }
 
-/* ---------- Subject grid ----------
-   Fluid column count — the number of columns is derived from the actual
-   rendered width at layout time, NOT from breakpoint media queries.
-
-   Why this matters:
-     On first install, CSS arrives late and the WebView's initial layout
-     viewport can be wider than the physical device. Breakpoint media
-     queries (min-width: 480 / 768 / 1024) then fire against that
-     incorrect width and the resulting multi-column layout sticks after
-     the viewport settles — leaving cards narrow and misaligned.
-
-   `repeat(auto-fill, minmax(min(280px, 100%), 1fr))` avoids the problem
-   entirely:
-     • Each column wants a minimum of 280px, or 100% of available width
-       if the container is narrower than 280px (protects tiny screens).
-     • The number of columns is computed from the container's real width
-       at layout, so it is always correct — no media-query race.
-     • `min(280px, 100%)` ensures a single card never overflows on
-       viewports narrower than 280px.
-     • `min-width: 0` on the card prevents any content (long titles,
-       unbreakable words) from forcing the cell wider than its column. */
-.subject-grid {
+/* ---------- Subject grid ---------- */
+.subjects-page .subject-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
     gap: 1rem;
     padding: 0.5rem;
+    box-sizing: border-box;
     margin-bottom: 70px;
-
-    /* Defensive: full width, no external constraint can narrow this. */
     width: 100%;
     max-width: 100%;
-    box-sizing: border-box;
-
-    /* Explicit stretch — prevents any inherited align-items/justify-items
-       from leaving cards short of the cell or aligned away from the start. */
     align-items: stretch;
     justify-items: stretch;
 }
 
-.subject-card {
+.subjects-page .subject-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 1.5rem;
+    box-sizing: border-box;
     transition: transform 0.2s, box-shadow 0.2s;
     position: relative;
     border-top-width: 4px;
     border-top-style: solid;
     display: flex;
     flex-direction: column;
-
-    /* Defensive sizing */
     width: 100%;
     min-width: 0;
-    box-sizing: border-box;
 }
-.subject-card:hover {
+.subjects-page .subject-card:hover {
     transform: translateY(-4px);
     box-shadow: var(--shadow-lg);
 }
-.subject-icon {
+
+.subjects-page .subject-card .subject-icon {
     font-size: 2.5rem;
     margin-bottom: 0.75rem;
     width: 64px;
@@ -337,38 +348,39 @@ main h1 {
     border-radius: 50%;
     background: rgba(0, 0, 0, 0.02);
 }
-.subject-card h3 {
+.subjects-page .subject-card h3 {
     font-size: 1.3rem;
     margin-bottom: 0.25rem;
 }
-.subject-card p {
+.subjects-page .subject-card p {
     color: var(--text-muted);
     font-size: 0.9rem;
     margin-bottom: 1rem;
 }
 
-.progress-bar {
+.subjects-page .subject-card .progress-bar {
     height: 8px;
     background: var(--border);
     border-radius: 9999px;
     margin: 0.5rem 0;
     overflow: hidden;
 }
-.progress-fill {
+.subjects-page .subject-card .progress-fill {
     height: 100%;
     border-radius: 9999px;
     transition: width 0.3s;
 }
 
-.card-actions {
+.subjects-page .card-actions {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
     margin-top: 0.75rem;
 }
-.action-btn-sm {
+.subjects-page .action-btn-sm {
     flex: 1;
     padding: 0.5rem 0.25rem;
+    box-sizing: border-box;
     font-size: 0.75rem;
     font-weight: 500;
     border-radius: var(--radius-sm);
@@ -379,14 +391,15 @@ main h1 {
     transition: all 0.2s;
     text-align: center;
 }
-.action-btn-sm:hover {
+.subjects-page .action-btn-sm:hover {
     background: var(--accent);
     color: #fff;
     border-color: var(--accent);
 }
 
-.btn-study {
+.subjects-page .subject-card .btn-study {
     width: 100%;
+    box-sizing: border-box;
     background: var(--accent);
     color: #fff;
     border: none;
@@ -399,31 +412,15 @@ main h1 {
     transition: background 0.2s;
     margin-top: 0.5rem;
 }
-.btn-study:hover { background: var(--accent-dark); }
+.subjects-page .subject-card .btn-study:hover {
+    background: var(--accent-dark);
+}
 
-/* ── NEW: Slide View action states ──────────────────────────────────
-   The Slide View card reuses .subject-card, .subject-icon,
-   .progress-bar, .progress-fill, and .action-btn-sm — so its layout is
-   identical to every other core card. This block only differentiates
-   the three action buttons so their role is unambiguous:
-
-     • .slide-download-btn  — initial state. Filled accent, the only
-                              button in the card. Larger hit area.
-     • .slide-study-btn     — post-download. Filled accent, same weight
-                              as .slide-download-btn so the card's CTA
-                              visually persists across state changes.
-     • .slide-update-btn    — shown alongside Study when a newer zip is
-                              published. Outline accent (secondary),
-                              subtle pulse to draw the eye without
-                              stealing primary attention from Study.
-
-   The single bar in the card cycles through download % → extract % →
-   aggregate study % (progressMap) — the fill transition already
-   handled by .progress-fill makes each phase change feel continuous. */
-
-.slide-view-card .action-btn-sm {
+/* ── Slide View action states ───────────────────────────────────── */
+.subjects-page .slide-view-card .action-btn-sm {
     min-height: 44px;
     padding: 0.6rem 0.5rem;
+    box-sizing: border-box;
     font-size: 0.9rem;
     font-weight: 600;
     display: inline-flex;
@@ -432,49 +429,42 @@ main h1 {
     gap: 0.4rem;
 }
 
-/* Primary CTA (Download / Study Slides) — filled accent. */
-.slide-download-btn,
-.slide-study-btn {
+.subjects-page .slide-download-btn,
+.subjects-page .slide-study-btn {
     background: var(--accent);
     color: #fff;
     border-color: var(--accent);
 }
-.slide-download-btn:hover,
-.slide-study-btn:hover {
+.subjects-page .slide-download-btn:hover,
+.subjects-page .slide-study-btn:hover {
     background: var(--accent-dark);
     color: #fff;
     border-color: var(--accent-dark);
 }
 
-/* Secondary CTA (Update available) — outline accent. Hover flips to
-   filled so it reads as actionable without competing with Study at
-   rest. */
-.slide-update-btn {
+.subjects-page .slide-update-btn {
     background: transparent;
     color: var(--accent);
     border: 1px solid var(--accent);
 }
-.slide-update-btn:hover {
+.subjects-page .slide-update-btn:hover {
     background: var(--accent);
     color: #fff;
     border-color: var(--accent);
 }
 
-/* Subtle attention pulse on the Update button — only when the OS has
-   not requested reduced motion. Uses var(--accent) for the glow so it
-   tracks the theme's accent colour automatically. */
 @media (prefers-reduced-motion: no-preference) {
-    .slide-update-btn {
-        animation: slide-update-glow 2.4s ease-in-out infinite;
+    .subjects-page .slide-update-btn {
+        animation: subjects-slide-update-glow 2.4s ease-in-out infinite;
     }
 }
-@keyframes slide-update-glow {
+@keyframes subjects-slide-update-glow {
     0%, 100% { box-shadow: 0 0 0 0 transparent; }
     50%      { box-shadow: 0 0 12px -2px var(--accent); }
 }
 
 /* ---------- Fixed footer ---------- */
-.app-footer {
+.subjects-page .app-footer {
     position: fixed;
     bottom: 0;
     left: 0;
@@ -482,38 +472,86 @@ main h1 {
     background: var(--bg-card);
     border-top: 1px solid var(--border);
     padding: 0.5rem;
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+    box-sizing: border-box;
     display: flex;
     justify-content: space-around;
+    align-items: center;
+    gap: 0.25rem;
     z-index: 100;
 }
-.footer-btn {
+
+/* ---------- Footer button — STACKED icon over label, small text ----------
+   FOOTER FONT FIX:
+   The previous rule had `font-size: 1.5rem` on the button itself. Both
+   the FA <i> AND the <span> label inherited it — labels rendered at
+   ~24px, way oversized, and the layout was icon-beside-label instead of
+   the stacked pattern every other page uses. Now:
+     • base font-size: 0.7rem  (small; gives labels the right size)
+     • icon overridden to 1.15rem via `i[class*="fa-"]` rule
+     • label overridden to 0.7rem via `span` rule
+     • flex-direction: column  (icon on top, label underneath)
+     • flex: 1 1 0             (even horizontal distribution)
+     • min-height: 48px        (touch target preserved) */
+.subjects-page .footer-btn {
     background: none;
     border: none;
-    font-size: 1.5rem;
-    padding: 0.5rem;
+    font-size: 0.7rem;
+    font-family: inherit;
+    line-height: 1;
+    padding: 0.4rem;
     color: var(--text-secondary);
     cursor: pointer;
-    transition: color 0.2s;
-    border-radius: 50%;
-    min-width: 48px;
-    min-height: 48px;
+    transition: color 0.2s, background 0.2s;
+    border-radius: 10px;
     display: inline-flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 2px;
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 48px;
+    -webkit-tap-highlight-color: transparent;
 }
-.footer-btn.active { color: var(--accent); }
-.footer-btn:hover { background: var(--bg-secondary); }
 
-/* ---------- Referral CTA (animated conic border) ---------- */
-@keyframes spin-border {
-    to { --border-angle: 360deg; }
+/* Font Awesome icon — explicit size so it doesn't inherit the tiny label size */
+.subjects-page .footer-btn i[class*="fa-"] {
+    font-size: 1.15rem;
+    line-height: 1;
+    display: block;
+    flex-shrink: 0;
 }
-@property --border-angle {
-    syntax: '<angle>';
-    initial-value: 0deg;
-    inherits: false;
+
+/* Text label — small, single-line, ellipsis if too long */
+.subjects-page .footer-btn span {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 500;
+    line-height: 1.1;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
 }
-.footer-btn-referral {
+
+.subjects-page .footer-btn.active {
+    color: var(--accent);
+}
+.subjects-page .footer-btn:hover,
+.subjects-page .footer-btn:active {
+    background: var(--bg-secondary);
+    color: var(--accent);
+}
+
+/* ---------- Referral CTA (animated conic border) ----------
+   Kept as a horizontal pill CTA — overrides the stacked column layout
+   from .footer-btn so it stays distinct. Referral CTA has no <i> child;
+   only a .referral-text span, which keeps the .footer-btn span rule
+   above unless overridden below. We override both font-size and
+   white-space so the CTA text renders at its intended 0.9rem. */
+.subjects-page .footer-btn-referral {
     position: relative;
     background: var(--bg-card);
     border: none;
@@ -526,20 +564,23 @@ main h1 {
     cursor: pointer;
     transition: transform 0.2s, box-shadow 0.2s;
     display: inline-flex;
+    flex-direction: row;    /* override stacked column layout */
     align-items: center;
+    justify-content: center;
     gap: 0.4rem;
+    flex: 0 0 auto;        /* don't stretch — natural CTA width */
     z-index: 1;
     box-shadow: 0 0 15px rgba(255, 215, 0, 0.2);
     min-height: 48px;
 }
-.footer-btn-referral::before {
+.subjects-page .footer-btn-referral::before {
     content: '';
     position: absolute;
     inset: -2px;
     border-radius: 42px;
     padding: 2px;
     background: conic-gradient(
-        from var(--border-angle, 0deg),
+        from var(--subjects-border-angle, 0deg),
         #ff6b6b, #feca57, #48dbfb, #ff9ff3,
         #54a0ff, #5f27cd, #ff6b6b
     );
@@ -549,136 +590,210 @@ main h1 {
     -webkit-mask-composite: xor;
     mask-composite: exclude;
     z-index: -1;
-    animation: spin-border 3s linear infinite;
+    animation: subjects-spin-border 3s linear infinite;
 }
-.footer-btn-referral::after {
+.subjects-page .footer-btn-referral::after {
     content: '';
     position: absolute;
     inset: -4px;
     border-radius: 44px;
     background: conic-gradient(
-        from var(--border-angle, 0deg),
+        from var(--subjects-border-angle, 0deg),
         transparent 0%, rgba(255, 215, 0, 0.15) 20%, transparent 40%,
         rgba(255, 215, 0, 0.15) 60%, transparent 80%, transparent 100%
     );
     background-size: 100% 100%;
     z-index: -2;
-    animation: spin-border 3s linear infinite;
+    animation: subjects-spin-border 3s linear infinite;
     filter: blur(4px);
 }
-.footer-btn-referral:hover {
+.subjects-page .footer-btn-referral:hover {
     transform: scale(1.05);
     box-shadow: 0 0 25px rgba(255, 215, 0, 0.4);
+    background: var(--bg-card);   /* override base hover background */
 }
-.footer-btn-referral .referral-icon { font-size: 1.2rem; }
-.footer-btn-referral .referral-text {
+.subjects-page .footer-btn-referral .referral-icon {
+    font-size: 1.2rem;
+}
+.subjects-page .footer-btn-referral .referral-text {
+    /* Overrides the .footer-btn span rule above so the CTA text stays
+       at its intended 0.9rem size (not 0.7rem). */
+    display: inline;
+    font-size: 0.9rem;
     font-weight: 600;
+    letter-spacing: normal;
+    white-space: nowrap;
+    overflow: visible;
+    text-overflow: clip;
     background: linear-gradient(135deg, #ff6b6b, #feca57, #48dbfb, #ff9ff3);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
 }
 
-/* ---------- Shimmer skeleton ---------- */
-#shimmer-overlay {
+@keyframes subjects-spin-border {
+    to { --subjects-border-angle: 360deg; }
+}
+@property --subjects-border-angle {
+    syntax: '<angle>';
+    initial-value: 0deg;
+    inherits: false;
+}
+
+/* ==========================================================================
+   SHIMMER SKELETON — Rule 7 compliant
+   ========================================================================== */
+.subjects-page #shimmer-overlay {
     position: fixed;
     inset: 0;
-    background: #1a1a2e;
+    background: var(--bg-primary);
     z-index: 9999;
     display: flex;
     flex-direction: column;
     padding: 0.5rem;
+    box-sizing: border-box;
     overflow-y: auto;
-    color: #aaa;
+    color: var(--text-muted);
     transition: opacity 0.2s ease;
+
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent) var(--bg-secondary);
+    scrollbar-gutter: stable;
+    overscroll-behavior: contain;
 }
-/* Block common's `.hidden { display: none !important }` so fade plays. */
-#shimmer-overlay.hidden {
+.subjects-page #shimmer-overlay.hidden {
     display: flex !important;
     opacity: 0;
     pointer-events: none;
 }
+.subjects-page #shimmer-overlay::-webkit-scrollbar {
+    width: 10px;
+}
+.subjects-page #shimmer-overlay::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+.subjects-page #shimmer-overlay::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    border-radius: 8px;
+    border: 2px solid var(--bg-secondary);
+    min-height: 40px;
+}
 
-.shimmer-header {
+.subjects-page .shimmer-logo-icon,
+.subjects-page .shimmer-logo-text,
+.subjects-page .shimmer-btn-icon,
+.subjects-page .shimmer-greeting,
+.subjects-page .shimmer-sub-status,
+.subjects-page .shimmer-btn,
+.subjects-page .shimmer-title,
+.subjects-page .shimmer-toggle-item,
+.subjects-page .shimmer-search,
+.subjects-page .shimmer-icon,
+.subjects-page .shimmer-line,
+.subjects-page .shimmer-btn-sm,
+.subjects-page .shimmer-btn-study,
+.subjects-page .shimmer-footer-item {
+    background: linear-gradient(
+        90deg,
+        var(--shimmer-base)      25%,
+        var(--shimmer-highlight) 50%,
+        var(--shimmer-base)      75%
+    );
+    background-size: 200px 100%;
+    animation: subjects-shimmer 1.5s infinite linear;
+    border-radius: 4px;
+}
+
+@keyframes subjects-shimmer {
+    0%   { background-position: -200px 0; }
+    100% { background-position: calc(200px + 100%) 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .subjects-page .shimmer-logo-icon,
+    .subjects-page .shimmer-logo-text,
+    .subjects-page .shimmer-btn-icon,
+    .subjects-page .shimmer-greeting,
+    .subjects-page .shimmer-sub-status,
+    .subjects-page .shimmer-btn,
+    .subjects-page .shimmer-title,
+    .subjects-page .shimmer-toggle-item,
+    .subjects-page .shimmer-search,
+    .subjects-page .shimmer-icon,
+    .subjects-page .shimmer-line,
+    .subjects-page .shimmer-btn-sm,
+    .subjects-page .shimmer-btn-study,
+    .subjects-page .shimmer-footer-item {
+        animation: none;
+        background: var(--shimmer-base);
+    }
+}
+
+.subjects-page .shimmer-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 0.5rem 0;
-    border-bottom: 1px solid #333;
+    border-bottom: 1px solid var(--border);
     margin-bottom: 0.5rem;
 }
-.shimmer-logo {
+.subjects-page .shimmer-logo {
     display: flex;
     align-items: center;
     gap: 0.5rem;
 }
-.shimmer-logo-icon {
+.subjects-page .shimmer-logo-icon {
     width: 40px;
     height: 40px;
     border-radius: 6px;
-    background: linear-gradient(90deg, #2a2a3e 25%, #444 50%, #2a2a3e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
 }
-.shimmer-logo-text {
+.subjects-page .shimmer-logo-text {
     width: 100px;
     height: 20px;
-    background: linear-gradient(90deg, #2a2a3e 25%, #444 50%, #2a2a3e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
-    border-radius: 4px;
 }
-.shimmer-header-actions { display: flex; gap: 0.5rem; }
-.shimmer-btn-icon {
+.subjects-page .shimmer-header-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+.subjects-page .shimmer-btn-icon {
     width: 40px;
     height: 40px;
     border-radius: 50%;
-    background: linear-gradient(90deg, #2a2a3e 25%, #444 50%, #2a2a3e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
 }
 
-.shimmer-second-bar {
+.subjects-page .shimmer-second-bar {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 0.5rem 0;
     margin-bottom: 0.5rem;
 }
-.shimmer-greeting {
+.subjects-page .shimmer-greeting {
     width: 150px;
     height: 24px;
-    background: linear-gradient(90deg, #2a2a3e 25%, #444 50%, #2a2a3e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
-    border-radius: 4px;
 }
-.shimmer-sub-status {
+.subjects-page .shimmer-sub-status {
     width: 120px;
     height: 20px;
-    background: linear-gradient(90deg, #2a2a3e 25%, #444 50%, #2a2a3e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
-    border-radius: 4px;
 }
 
-.shimmer-quick-actions {
+.subjects-page .shimmer-quick-actions {
     display: flex;
     gap: 0.5rem;
     margin-bottom: 1rem;
     flex-wrap: wrap;
 }
-.shimmer-btn {
+.subjects-page .shimmer-btn {
     height: 40px;
     width: 120px;
-    background: linear-gradient(90deg, #2a2a3e 25%, #444 50%, #2a2a3e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
     border-radius: 30px;
 }
-.shimmer-btn.small { width: 90px; }
+.subjects-page .shimmer-btn.small {
+    width: 90px;
+}
 
-.shimmer-subjects-header {
+.subjects-page .shimmer-subjects-header {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -686,44 +801,29 @@ main h1 {
     gap: 0.5rem;
     margin-bottom: 0.5rem;
 }
-.shimmer-title {
+.subjects-page .shimmer-title {
     width: 120px;
     height: 28px;
-    background: linear-gradient(90deg, #2a2a3e 25%, #444 50%, #2a2a3e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
-    border-radius: 4px;
 }
-.shimmer-toggle {
+.subjects-page .shimmer-toggle {
     display: flex;
     gap: 0.25rem;
-    background: #2a2a3e;
+    background: var(--bg-secondary);
     border-radius: 30px;
     padding: 0.25rem;
 }
-.shimmer-toggle-item {
+.subjects-page .shimmer-toggle-item {
     width: 60px;
     height: 30px;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
     border-radius: 30px;
 }
-.shimmer-search {
+.subjects-page .shimmer-search {
     width: 150px;
     height: 36px;
-    background: linear-gradient(90deg, #2a2a3e 25%, #444 50%, #2a2a3e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
     border-radius: 30px;
 }
 
-/* ---------- Shimmer grid ----------
-   Same fluid column policy as .subject-grid. Breakpoint media queries were
-   removed because the same first-install viewport race applies to the
-   skeleton layout — the skeleton must not collapse into the wrong number
-   of columns during the pre-hydration window. */
-.shimmer-grid {
+.subjects-page .shimmer-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
     gap: 1rem;
@@ -735,112 +835,89 @@ main h1 {
     justify-items: stretch;
 }
 
-.shimmer-card {
-    background: #2a2a3e;
-    border: 1px solid #444;
+.subjects-page .shimmer-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
     border-radius: 12px;
     padding: 1.5rem;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
     width: 100%;
     min-width: 0;
-    box-sizing: border-box;
 }
-.shimmer-icon {
+.subjects-page .shimmer-icon {
     width: 64px;
     height: 64px;
     border-radius: 50%;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
     margin-bottom: 0.75rem;
 }
-.shimmer-line {
+.subjects-page .shimmer-line {
     height: 16px;
     width: 80%;
     margin-bottom: 0.25rem;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
-    border-radius: 4px;
 }
-.shimmer-line.short { width: 60%; }
-.shimmer-line.progress {
+.subjects-page .shimmer-line.short {
+    width: 60%;
+}
+.subjects-page .shimmer-line.progress {
     height: 8px;
     width: 100%;
     border-radius: 9999px;
     margin-bottom: 0.75rem;
 }
-.shimmer-actions {
+.subjects-page .shimmer-actions {
     display: flex;
     gap: 0.5rem;
     margin-top: 0.75rem;
 }
-.shimmer-btn-sm {
+.subjects-page .shimmer-btn-sm {
     height: 32px;
     flex: 1;
     border-radius: 8px;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
 }
-.shimmer-btn-study {
+.subjects-page .shimmer-btn-study {
     height: 48px;
     width: 100%;
     border-radius: 8px;
     margin-top: 0.5rem;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
 }
 
-.shimmer-footer {
+.subjects-page .shimmer-footer {
     display: flex;
     justify-content: space-around;
     padding: 0.5rem 0;
-    border-top: 1px solid #333;
+    border-top: 1px solid var(--border);
     margin-top: 0.5rem;
 }
-.shimmer-footer-item {
+.subjects-page .shimmer-footer-item {
     width: 48px;
     height: 48px;
     border-radius: 50%;
-    background: linear-gradient(90deg, #2a2a3e 25%, #444 50%, #2a2a3e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
 }
 
-/* ---------- Responsive: card internals ----------
-   Grid column count is now handled by the fluid rule above. These media
-   queries only adjust *intra-card* density on narrow viewports — they do
-   NOT change the grid template, so no viewport-race risk remains. */
+/* ---------- Real-content gate — scoped ---------- */
+.subjects-page #real-content { display: none; }
+.subjects-page #real-content.visible { display: block; }
+
+/* ---------- Responsive: card internals ---------- */
 @media screen and (min-width: 480px) {
-    .card-actions { gap: 0.3rem; }
-    .action-btn-sm { font-size: 0.7rem; padding: 0.4rem 0.2rem; }
+    .subjects-page .card-actions {
+        gap: 0.3rem;
+    }
+    .subjects-page .action-btn-sm {
+        font-size: 0.7rem;
+        padding: 0.4rem 0.2rem;
+    }
 }
 
-/* ---------- Slide View icon ----------
-   The Slide View card uses a real photograph (public/assets/images/
-   microscope.jpg) instead of a Font Awesome glyph. The base
-   .subject-icon is already a 64×64 flex-centered circle, so we only
-   need to:
-     • strip its padding so the image can reach the edges,
-     • position it relatively so the absolutely-positioned <img>
-       can cover it,
-     • let the <img> fill with object-fit: cover (center-crops the
-       source image — no distortion, no letterboxing),
-     • give the <img> its own border-radius: 50% so it renders as
-       a circle even if the parent ever loses border-radius.
-   The FA fallback sits at z-index 0 behind the image; if the image
-   fails to load, its onerror removes the <img> and the fallback
-   becomes visible. */
-
-.slide-view-card .subject-icon.slide-icon {
+/* ---------- Slide View icon ---------- */
+.subjects-page .slide-view-card .subject-icon.slide-icon {
     position: relative;
     padding: 0;
 }
 
-.slide-view-card .slide-icon-img {
+.subjects-page .slide-view-card .slide-icon-img {
     position: absolute;
     inset: 0;
     width: 100%;
@@ -851,9 +928,118 @@ main h1 {
     z-index: 1;
 }
 
-.slide-view-card .slide-icon-fallback {
+.subjects-page .slide-view-card .slide-icon-fallback {
     position: relative;
     z-index: 0;
     font-size: 1.8rem;
     line-height: 1;
+}
+/* ============================================================
+   USER AVATAR & DROPDOWN MENU
+   ============================================================ */
+.subjects-page .user-menu-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+/* Avatar Button */
+.subjects-page .avatar-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+    overflow: hidden;
+    transition: transform 0.15s ease, box-shadow 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.subjects-page .avatar-btn:hover,
+.subjects-page .avatar-btn:focus-visible {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.2);
+    outline: none;
+}
+
+.subjects-page .avatar-btn img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+/* Dropdown Container */
+.subjects-page .user-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    min-width: 180px;
+    display: flex;
+    flex-direction: column;
+    z-index: 1000;
+    overflow: hidden;
+    
+    /* Animation states */
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-8px);
+    transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s;
+}
+
+.subjects-page .user-dropdown.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+/* Dropdown Items */
+.subjects-page .user-dropdown button {
+    background: transparent;
+    border: none;
+    text-align: left;
+    padding: 12px 16px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: background 0.15s;
+    font-family: inherit;
+}
+
+.subjects-page .user-dropdown button:hover {
+    background: var(--bg-secondary);
+}
+
+.subjects-page .user-dropdown button i {
+    font-size: 0.9rem;
+    width: 16px;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.subjects-page .user-dropdown button.danger-text {
+    color: var(--danger);
+}
+
+.subjects-page .user-dropdown button.danger-text i {
+    color: var(--danger);
+}
+
+.subjects-page .user-dropdown button.danger-text:hover {
+    background: rgba(var(--danger-rgb), 0.1);
 }

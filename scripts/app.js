@@ -464,7 +464,11 @@ function extractDeepLinkPath(rawUrl) {
  * @returns {string} route (e.g. "login?email=x" — no leading slash)
  */
 function resolveInitialRoute() {
-    // 1. Native deep link wins.
+    let targetRoute = '';
+    let targetSuffix = '';
+    let isDeepLink = false;
+
+    // 1. Native deep link wins. (Obey blindly, page handles its own auth)
     if (pendingAppUrl) {
         const link = extractDeepLinkPath(pendingAppUrl);
         if (link) {
@@ -486,50 +490,70 @@ function resolveInitialRoute() {
             if (qIdx >= 0 && qIdx < splitIdx) splitIdx = qIdx;
             if (hIdx >= 0 && hIdx < splitIdx) splitIdx = hIdx;
 
-            const pathPart = link.path.slice(0, splitIdx);
-            const suffix   = link.path.slice(splitIdx);
-
-            const route = pathPart.replace(/^\//, '');
-            if (route) return route + suffix;
-
-            if (suffix) {
-                const def = appAuthenticated ? 'subjects' : 'welcome';
-                return def + suffix;
-            }
+            targetRoute = link.path.slice(0, splitIdx).replace(/^\//, '');
+            targetSuffix = link.path.slice(splitIdx);
+            isDeepLink = true;
         }
     }
 
     // 2. Native file intent.
-    if (fileLaunchPending) {
+    if (!targetRoute && fileLaunchPending) {
         console.log('[App] Initial route: viewer (file intent)');
         return 'viewer';
     }
 
-    // 3. Honor the URL the user actually requested.
-    try {
-        const pathname = window.location.pathname || '/';
-        const route = pathname.replace(/^\//, '');
-        const suffix = (window.location.search || '') +
-                       (window.location.hash   || '');
-
-        if (route) {
-            console.log('[App] Initial route from URL:', route + suffix);
-            return route + suffix;
+    // 3. Read Normal URL
+    if (!targetRoute) {
+        try {
+            const pathname = window.location.pathname || '/';
+            targetRoute = pathname.replace(/^\//, '');
+            targetSuffix = (window.location.search || '') + (window.location.hash || '');
+        } catch (err) {
+            console.warn('[App] Could not read window.location:', err);
         }
-
-        // Root path with a query/hash (e.g. "/?ref=ABC") — preserve the
-        // suffix but use the default route to render the page.
-        if (suffix) {
-            const def = appAuthenticated ? 'subjects' : 'welcome';
-            console.log('[App] Root path with query — default route + suffix');
-            return def + suffix;
-        }
-    } catch (err) {
-        console.warn('[App] Could not read window.location:', err);
     }
 
-    // 4. Truly at root with no query → pick the default.
-    return appAuthenticated ? 'subjects' : 'welcome';
+    // 4. THE ABSOLUTE ROUTING DECISION (Fast + Accurate)
+    if (!isDeepLink) {
+        
+        // Check if the route is empty (root /), or an explicit auth page (welcome, login, signup)
+        if (targetRoute === '' || targetRoute === 'welcome' || targetRoute === 'login' || targetRoute === 'signup') {
+            
+            // Check if they were trying to access a specific page (e.g. ?returnTo=notes)
+            let returnTo = null;
+            if (targetSuffix) {
+                const urlParams = new URLSearchParams(targetSuffix.startsWith('?') ? targetSuffix : '?' + targetSuffix);
+                returnTo = urlParams.get('returnTo');
+            }
+
+            if (returnTo) {
+                console.log('[App] Honoring returnTo destination:', returnTo);
+                return returnTo.replace(/^\//, '');
+            }
+
+            if (appAuthenticated) {
+                // We are 1000% sure there is a token. Bypass welcome entirely.
+                console.log('[App] Auth 100% confirmed. Bypassing Welcome -> Subjects.');
+                return 'subjects';
+            } else {
+                // We are 1000% sure there is NO token.
+                console.log('[App] No token 100% confirmed. Directing -> Welcome.');
+                
+                // If they explicitly typed /login or /signup, let them stay there.
+                if (targetRoute === 'login' || targetRoute === 'signup') {
+                    return targetRoute + targetSuffix;
+                }
+                return 'welcome';
+            }
+        }
+    }
+
+    // 5. Fallbacks for Deep Links or protected normal routes (/notes, /profile)
+    if (!targetRoute) {
+        return appAuthenticated ? 'subjects' : 'welcome';
+    }
+
+    return targetRoute + targetSuffix;
 }
 
 // ============================================================
@@ -1231,7 +1255,16 @@ async function bootstrap() {
 
         // Synchronous auth read — reads a token from localStorage,
         // doesn't depend on initUser() having completed.
-        appAuthenticated = auth.checkAuth();
+                // 10000% ACCURATE & INSTANT: Check the raw storage string directly.
+        // We do not wait for the network or any async memory state.
+        const exactToken = utils.getLocalStorage('accessToken');
+        appAuthenticated = !!exactToken;
+
+        if (appAuthenticated) {
+            console.log('[App] 100% SURE: Token exists in storage.');
+        } else {
+            console.log('[App] 100% SURE: No token in storage.');
+        }
         appInitialized = true;
 
         referralCode = pendingAppUrl

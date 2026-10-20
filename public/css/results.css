@@ -1,34 +1,60 @@
 /* ==========================================================================
    RESULTS — page-specific styles
+   Root wrapper: .results-page (from <section class="page results-page">)
+
    Requires common.css (tokens, header-row base, buttons base, .no-data base,
-   --radius, --shadow-*, --radius-sm, --success, --danger, --warning).
+   --radius, --shadow-sm, --radius-sm, --success, --danger, --warning,
+   --success-rgb, --danger-rgb, --warning-rgb, --accent-rgb).
+
    Adds ONLY: page-container width override, page-sticky header wrapper,
    pill-shaped Subjects button, download/analytics buttons, summary card,
    topic performance, recommendations, review list, error state, responsive.
+
+   7-RULE COMPLIANCE
+   Rule 1: every selector prefixed .results-page (~50 selectors).
+   Rule 2: .review-answers uses minmax(0, 1fr) grid tracks in both
+           layouts; mobile column count uses minmax(0, 1fr).
+   Rule 3: box-sizing: border-box on all layout containers.
+   Rule 4: N/A (no viewport units).
+   Rule 5: .page-container, .header-row .left-group .btn-text,
+           .error-state .btn-primary, .no-data — ALL scoped. Previously
+           each was a global override.
+   Rule 6: .results-header-fixed overflow: visible (defensive).
+   Rule 7: N/A (no loaders).
    ========================================================================== */
 
-/* ---------- Page container (common is 1200px / 1.5rem padding) ---------- */
-.page-container {
+/* ---------- Page container ----------
+   Previously bare `.page-container` — every page's container shrank to
+   1000px after results.css loaded. Now scoped. */
+.results-page .page-container {
     max-width: 1000px;
     margin: 0 auto;
     padding: 0 1rem;
+    box-sizing: border-box;
 }
 
 /* ---------- Page-sticky fixed header wrapper ---------- */
-.results-header-fixed {
+.results-page .results-header-fixed {
     position: sticky;
     top: 0;
     z-index: 100;
+    width: 100%;
+    box-sizing: border-box;
     background: var(--bg-card);
     border-bottom: 1px solid var(--border);
     padding: 0.5rem 1rem;
     margin-bottom: 1rem;
+    /* Rule 6: keep future dropdowns unclipped */
+    overflow: visible;
 }
 
 /* ---------- Pill-shaped header buttons ----------
-   Common's .header-row .btn-text is a flat text button; this page
-   uses a bordered pill instead. Kept as page-specific override. */
-.header-row .left-group .btn-text {
+   Previously bare `.header-row .left-group .btn-text` — this rule
+   affected EVERY page that has a .btn-text inside a .header-row
+   (agent-registration, agent-terms, exam-settings, profile, referral,
+   notifications, etc.). Turned every such button into a bordered pill.
+   Now scoped. */
+.results-page .header-row .left-group .btn-text {
     font-size: 0.9rem;
     padding: 0.4rem 0.8rem;
     background: var(--bg-secondary);
@@ -38,21 +64,21 @@
     cursor: pointer;
     transition: background 0.2s, color 0.2s, border-color 0.2s;
 }
-.header-row .left-group .btn-text:hover {
+.results-page .header-row .left-group .btn-text:hover {
     background: var(--accent);
     color: #fff;
     border-color: var(--accent);
 }
 
 /* ---------- Header-bottom action group ---------- */
-.header-row.bottom .action-group {
+.results-page .header-row.bottom .action-group {
     display: flex;
     gap: 0.5rem;
     align-items: center;
 }
 
-.btn-download,
-.btn-analytics {
+.results-page .btn-download,
+.results-page .btn-analytics {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
@@ -66,21 +92,24 @@
     color: var(--text-primary);
     transition: background 0.2s, color 0.2s, border-color 0.2s;
 }
-.btn-download:hover,
-.btn-analytics:hover {
+.results-page .btn-download:hover,
+.results-page .btn-analytics:hover {
     background: var(--accent);
     color: #fff;
     border-color: var(--accent);
 }
-.btn-download i,
-.btn-analytics i { font-size: 0.9rem; }
+.results-page .btn-download i,
+.results-page .btn-analytics i {
+    font-size: 0.9rem;
+}
 
 /* ---------- Summary card ---------- */
-.summary-card {
+.results-page .summary-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 1.2rem 1.5rem;
+    box-sizing: border-box;
     margin-bottom: 1.5rem;
     display: flex;
     flex-direction: column;
@@ -88,13 +117,13 @@
     box-shadow: var(--shadow-sm);
 }
 
-.score-section {
+.results-page .score-section {
     display: flex;
     align-items: center;
     gap: 1.5rem;
 }
 
-.score-circle {
+.results-page .score-circle {
     width: 80px;
     height: 80px;
     border-radius: 50%;
@@ -109,29 +138,29 @@
     box-shadow: var(--shadow-sm);
 }
 
-.score-stats {
+.results-page .score-stats {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
 }
 
-.stat-row {
+.results-page .stat-row {
     display: flex;
     gap: 0.5rem;
     font-size: 0.9rem;
 }
 
-.stat-label {
+.results-page .stat-label {
     color: var(--text-muted);
     min-width: 60px;
 }
 
-.stat-value {
+.results-page .stat-value {
     color: var(--text-primary);
     font-weight: 500;
 }
 
-.meta-section {
+.results-page .meta-section {
     display: flex;
     flex-wrap: wrap;
     gap: 0.75rem 1.5rem;
@@ -139,34 +168,35 @@
     border-top: 1px solid var(--border);
 }
 
-.meta-item {
+.results-page .meta-item {
     display: flex;
     gap: 0.3rem;
     font-size: 0.85rem;
 }
-.meta-label { color: var(--text-muted); }
-.meta-value {
+.results-page .meta-label { color: var(--text-muted); }
+.results-page .meta-value {
     color: var(--text-primary);
     font-weight: 500;
 }
 
 /* ---------- Topic performance ---------- */
-.topic-section {
+.results-page .topic-section {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 1.2rem 1.5rem;
+    box-sizing: border-box;
     margin-bottom: 1.5rem;
 }
-.topic-section h3 {
+.results-page .topic-section h3 {
     margin-bottom: 0.75rem;
     font-size: 1.1rem;
 }
-.topic-list {
+.results-page .topic-list {
     list-style: none;
     padding: 0;
 }
-.topic-list li {
+.results-page .topic-list li {
     display: flex;
     align-items: center;
     gap: 0.75rem;
@@ -174,22 +204,22 @@
     border-bottom: 1px solid var(--border);
     flex-wrap: wrap;
 }
-.topic-name {
+.results-page .topic-name {
     flex: 0 0 130px;
     font-weight: 500;
     font-size: 0.9rem;
 }
-.topic-score {
+.results-page .topic-score {
     flex: 0 0 50px;
     font-weight: 700;
     font-size: 0.9rem;
 }
-.topic-count {
+.results-page .topic-count {
     flex: 0 0 70px;
     color: var(--text-muted);
     font-size: 0.8rem;
 }
-.topic-bar {
+.results-page .topic-bar {
     flex: 1;
     min-width: 120px;
     height: 6px;
@@ -197,73 +227,101 @@
     border-radius: 9999px;
     overflow: hidden;
 }
-.bar-fill {
+.results-page .bar-fill {
     height: 100%;
     transition: width 0.3s ease;
 }
 
 /* ---------- Recommendations ---------- */
-.recommendations {
+.results-page .recommendations {
     background: var(--bg-secondary);
     border-left: 4px solid var(--warning);
     border-radius: var(--radius);
     padding: 1rem 1.5rem;
+    box-sizing: border-box;
     margin-bottom: 1.5rem;
 }
-.recommendations h3 {
+.results-page .recommendations h3 {
     margin-bottom: 0.3rem;
     font-size: 1.05rem;
     color: var(--warning);
 }
-.recommendations ul {
+.results-page .recommendations ul {
     list-style: none;
     padding: 0;
 }
-.recommendations li {
+.results-page .recommendations li {
     padding: 0.3rem 0;
     border-bottom: 1px dashed var(--border);
     font-size: 0.9rem;
 }
-.recommendations li:last-child { border-bottom: none; }
+.results-page .recommendations li:last-child {
+    border-bottom: none;
+}
 
 /* ---------- Review section ---------- */
-.review-section h2 {
+.results-page .review-section h2 {
     font-size: 1.2rem;
     margin-bottom: 0.75rem;
 }
-.review-list {
+.results-page .review-list {
     max-height: 500px;
     overflow-y: auto;
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 0.75rem;
+    box-sizing: border-box;
     background: var(--bg-card);
+
+    /* Persistent scrollbar — Firefox */
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent) var(--bg-secondary);
+    scrollbar-gutter: stable;
+    overscroll-behavior: contain;
 }
-.review-item {
+.results-page .review-list::-webkit-scrollbar {
+    width: 10px;
+}
+.results-page .review-list::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+.results-page .review-list::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    border-radius: 8px;
+    border: 2px solid var(--bg-secondary);
+    min-height: 40px;
+}
+.results-page .review-list::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-dark);
+}
+
+.results-page .review-item {
     padding: 1rem;
+    box-sizing: border-box;
     border-bottom: 1px solid var(--border);
     margin-bottom: 0.75rem;
 }
-.review-item:last-child {
+.results-page .review-item:last-child {
     border-bottom: none;
     margin-bottom: 0;
 }
-.review-header {
+.results-page .review-header {
     display: flex;
     gap: 0.5rem;
     align-items: center;
     margin-bottom: 0.5rem;
     flex-wrap: wrap;
 }
-.q-num {
+.results-page .q-num {
     font-weight: 700;
     background: var(--bg-secondary);
     padding: 0.15rem 0.4rem;
     border-radius: var(--radius-sm);
     font-size: 0.8rem;
 }
-.status { font-size: 1rem; }
-.topic-tag {
+.results-page .status { font-size: 1rem; }
+.results-page .topic-tag {
     background: var(--bg-secondary);
     padding: 0.15rem 0.6rem;
     border-radius: 9999px;
@@ -271,38 +329,43 @@
     color: var(--text-secondary);
     border: 1px solid var(--border);
 }
-.time-spent {
+.results-page .time-spent {
     color: var(--text-muted);
     font-size: 0.7rem;
     margin-left: auto;
 }
-.review-question {
+.results-page .review-question {
     font-weight: 500;
     margin-bottom: 0.5rem;
     font-size: 0.95rem;
 }
-.review-answers {
+
+/* Rule 2: minmax(0, 1fr) so a long answer string can wrap rather than
+   blow out the column. */
+.results-page .review-answers {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.5rem;
     margin-bottom: 0.5rem;
     background: var(--bg-secondary);
     padding: 0.5rem 0.75rem;
+    box-sizing: border-box;
     border-radius: var(--radius-sm);
     font-size: 0.85rem;
 }
-.review-explanation {
+.results-page .review-explanation {
     background: var(--bg-secondary);
     padding: 0.5rem 0.75rem;
+    box-sizing: border-box;
     border-radius: var(--radius-sm);
     font-size: 0.85rem;
     color: var(--text-secondary);
     border-left: 3px solid var(--accent);
 }
-.review-item.correct   { border-left: 4px solid var(--success); }
-.review-item.incorrect { border-left: 4px solid var(--danger);  }
+.results-page .review-item.correct   { border-left: 4px solid var(--success); }
+.results-page .review-item.incorrect { border-left: 4px solid var(--danger);  }
 
-.flagged-badge {
+.results-page .flagged-badge {
     display: inline-block;
     background: var(--warning);
     color: #fff;
@@ -312,27 +375,37 @@
     margin-top: 0.3rem;
 }
 
-/* ---------- No-data override (common is 2rem 1rem) ---------- */
-.no-data { padding: 1rem 0; }
+/* ---------- No-data override (common is 2rem 1rem) ----------
+   Previously bare `.no-data` — overrode common's padding globally. */
+.results-page .no-data {
+    padding: 1rem 0;
+}
 
 /* ---------- Error state ---------- */
-.error-state {
+.results-page .error-state {
     text-align: center;
     padding: 3rem 1.5rem;
+    box-sizing: border-box;
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
 }
-.error-state h2 {
+.results-page .error-state h2 {
     color: var(--danger);
     margin-bottom: 0.5rem;
 }
-.error-state p {
+.results-page .error-state p {
     margin-bottom: 1.5rem;
     color: var(--text-secondary);
 }
-/* Override common's .btn-primary — pill shape + custom padding */
-.error-state .btn-primary {
+
+/* Scoped override of common's .btn-primary for the retry button only.
+   Previously bare `.error-state .btn-primary` — but wait, `.error-state`
+   is used ONLY on results-page in this app, so technically it wasn't
+   leaking across pages with a differing DOM. HOWEVER: if any future page
+   defines its own `.error-state .btn-primary`, this rule would conflict.
+   Scoping removes the ambiguity. */
+.results-page .error-state .btn-primary {
     background: var(--accent);
     color: #fff;
     border: none;
@@ -341,83 +414,86 @@
     cursor: pointer;
     font-weight: 500;
 }
-.error-state .btn-primary:hover:not(:disabled) {
+.results-page .error-state .btn-primary:hover:not(:disabled) {
     background: var(--accent-dark);
 }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 640px) {
-    .page-container { padding: 0 0.5rem; }
+    .results-page .page-container { padding: 0 0.5rem; }
 
-    .header-row.bottom {
+    .results-page .header-row.bottom {
         flex-wrap: wrap;
         gap: 0.5rem;
     }
-    .header-row.bottom .page-title { font-size: 1.1rem; }
+    .results-page .header-row.bottom .page-title { font-size: 1.1rem; }
 
-    .btn-download,
-    .btn-analytics {
+    .results-page .btn-download,
+    .results-page .btn-analytics {
         font-size: 0.7rem;
         padding: 0.25rem 0.6rem;
     }
 
-    .score-section {
+    .results-page .score-section {
         flex-direction: column;
         align-items: center;
         text-align: center;
     }
-    .score-circle {
+    .results-page .score-circle {
         width: 70px;
         height: 70px;
         font-size: 1.2rem;
     }
-    .stat-row { justify-content: center; }
+    .results-page .stat-row { justify-content: center; }
 
-    .meta-section {
+    .results-page .meta-section {
         justify-content: center;
         gap: 0.5rem 1rem;
     }
-    .meta-item { font-size: 0.8rem; }
+    .results-page .meta-item { font-size: 0.8rem; }
 
-    .topic-list li {
+    .results-page .topic-list li {
         flex-direction: column;
         align-items: flex-start;
         gap: 0.3rem;
     }
-    .topic-name {
+    .results-page .topic-name {
         flex: auto;
         font-size: 0.85rem;
     }
-    .topic-bar {
+    .results-page .topic-bar {
         width: 100%;
         min-width: 0;
     }
 
-    .review-answers { grid-template-columns: 1fr; }
-    .review-question { font-size: 0.9rem; }
+    .results-page .review-answers {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .results-page .review-question { font-size: 0.9rem; }
 }
 
 /* ---------- Question image in review list ---------- */
-.review-image {
-  display: flex;
-  justify-content: center;
-  margin: 0.75rem 0;
+.results-page .review-image {
+    display: flex;
+    justify-content: center;
+    margin: 0.75rem 0;
 }
 
-.review-image img {
-  max-width: 100%;
-  max-height: 400px;
-  width: auto;
-  height: auto;
-  border-radius: var(--radius-sm, 8px);
-  object-fit: contain;
-  background: var(--bg-secondary, #f5f5f5);
-  border: 1px solid var(--border, #e5e5e5);
-  padding: 4px;
+.results-page .review-image img {
+    max-width: 100%;
+    max-height: 400px;
+    width: auto;
+    height: auto;
+    border-radius: var(--radius-sm, 8px);
+    object-fit: contain;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    padding: 4px;
+    box-sizing: border-box;
 }
 
 /* Narrow phones: reduce max-height so a tall image doesn't dominate
    the scroll for the whole review list. */
 @media (max-width: 480px) {
-  .review-image img { max-height: 260px; }
+    .results-page .review-image img { max-height: 260px; }
 }

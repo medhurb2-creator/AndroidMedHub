@@ -1,123 +1,259 @@
 // scripts/pages/welcome.js
+
 import * as ui from '../ui.js';
 import * as router from '../router.js';
 import * as redirect from '../redirect.js';
 import * as auth from '../auth.js';
 
-export async function init(context) {
-  ui.applyTheme();
+let cleanupCurrentPage = null;
 
-  // ── Already authenticated ────────────────────────────────────────
-  // Resolve any pending chain. Welcome is not the target of a
-  // redirect — if a chain exists, it points somewhere the user
-  // actually wanted to go; pop it. Otherwise land on subjects.
-  //
-  // (Replaces `app.checkAuth()` — the `window.app` global works but
-  // is fragile; every other page uses the imported auth module.)
-  if (auth.checkAuth()) {
-    redirect.consumeAndReturn('subjects');
-    return;
+/**
+
+* Initialize the welcome page.
+* 
+* Expected page elements:
+* #loginBtn
+* #signupBtn
+* #guestBtn       (optional)
+* #backHomeBtn
+* #themeToggle
+* 
+* The page may omit optional elements without throwing errors.
+  */
+  export async function init(context) {
+  // Protect against repeated initialization without destruction.
+  cleanupCurrentPage?.();
+  cleanupCurrentPage = null;
+
+const root = context?.root;
+
+if (!root || typeof root.querySelector !== 'function') {
+console.error('[Welcome] Missing or invalid page root.');
+return;
+}
+
+// Apply the application's existing theme.
+ui.applyTheme();
+
+// Already authenticated users should continue to their destination.
+if (auth.checkAuth()) {
+redirect.consumeAndReturn('subjects');
+return;
+}
+
+const $ = (selector) => root.querySelector(selector);
+
+// Track listeners so they can be removed when the SPA leaves this page.
+const removers = [];
+
+function listen(element, eventName, handler) {
+if (!element) return;
+
+element.addEventListener(eventName, handler);
+
+removers.push(() => {
+  element.removeEventListener(eventName, handler);
+});
+
+}
+
+function cleanup() {
+while (removers.length > 0) {
+const remove = removers.pop();
+
+  try {
+    remove();
+  } catch {
+    // Cleanup should not prevent other listeners from being removed.
   }
+}
 
-  const $ = (sel) => context.root.querySelector(sel);
+}
 
-  // ── Pending redirect context ─────────────────────────────────────
-  // Two sources, checked in order:
-  //
-  //   1. The redirect module's readRedirectContext() — reads URL
-  //      first (?returnTo= / legacy ?redirect=), then the top of
-  //      the return stack. This is the canonical source.
-  //
-  //   2. The legacy sessionStorage key 'redirectAfterLogin' — kept
-  //      as a fallback for any older code that still writes to it.
-  //
-  // Welcome itself never pushes onto the stack; it only forwards
-  // whatever context it finds to login/signup so the outer chain
-  // survives.
-  const moduleCtx = redirect.readRedirectContext();
-  let pendingRedirectParam = null;
+cleanupCurrentPage = cleanup;
 
-  if (moduleCtx.hasContext && moduleCtx.returnTo) {
-    pendingRedirectParam = moduleCtx.returnTo;
-  } else {
-    // Legacy fallback — sessionStorage key written by older flows.
-    try {
-      const legacy = sessionStorage.getItem('redirectAfterLogin');
-      if (legacy && legacy.startsWith('/')) pendingRedirectParam = legacy;
-    } catch { /* ignore */ }
+// ---------------------------------------------------------------
+// PENDING REDIRECT CONTEXT
+// ---------------------------------------------------------------
+// Priority:
+//   1. Canonical redirect module context.
+//   2. Legacy sessionStorage fallback.
+//
+// The welcome page forwards existing context; it does not create
+// a new redirect-chain entry.
+// ---------------------------------------------------------------
+
+let moduleCtx = {
+hasContext: false,
+returnTo: null,
+reason: null
+};
+
+try {
+const result = redirect.readRedirectContext();
+
+if (result && typeof result === 'object') {
+  moduleCtx = result;
+}
+
+} catch (error) {
+console.warn('[Welcome] Could not read redirect context.', error);
+}
+
+let pendingRedirectParam = null;
+
+if (
+moduleCtx.hasContext &&
+typeof moduleCtx.returnTo === 'string' &&
+moduleCtx.returnTo.startsWith('/')
+) {
+pendingRedirectParam = moduleCtx.returnTo;
+} else {
+// Legacy fallback for older code paths.
+try {
+const legacy = sessionStorage.getItem('redirectAfterLogin');
+
+  if (typeof legacy === 'string' && legacy.startsWith('/')) {
+    pendingRedirectParam = legacy;
   }
+} catch {
+  // Storage can be unavailable in restricted browser contexts.
+}
 
-  // Helper: build a login/signup URL that carries the redirect
-  // context forward. If there is no context, it is just the plain
-  // route.
+}
+
+/**
+
+* Build an auth route while preserving the user's destination.
+* 
+* Example:
+* login?returnTo=%2Fresource-browser&redirect_reason=auth
+* 
+* If no pending destination exists, use the plain route.
+  */
   function buildAuthUrl(base) {
-    if (!pendingRedirectParam) return base;
-    let url = `${base}?returnTo=${encodeURIComponent(pendingRedirectParam)}`;
-    if (moduleCtx.reason) {
-      url += `&redirect_reason=${encodeURIComponent(moduleCtx.reason)}`;
-    }
-    return url;
+  if (!pendingRedirectParam) {
+  return base;
   }
 
-  const loginBtn = $('#loginBtn');
-  const signupBtn = $('#signupBtn');
-  const guestBtn = $('#guestBtn');
-  const backHomeBtn = $('#backHomeBtn');
-  const themeToggle = $('#themeToggle');
+const params = new URLSearchParams();
 
-  // ── Login ────────────────────────────────────────────────────────
-  // Plain navigation, NOT navigateWithReturn. Welcome is where the
-  // user came FROM to log in; after login they should land on their
-  // destination (or subjects), not back on welcome. Any pending
-  // chain is preserved by passing it through as a URL param — the
-  // login page reads it via readRedirectContext() and pops the
-  // chain on success.
-  if (loginBtn) {
-    loginBtn.addEventListener('click', () => {
-      router.navigateTo(buildAuthUrl('login'));
-    });
-  }
+params.set('returnTo', pendingRedirectParam);
 
-  // ── Signup ───────────────────────────────────────────────────────
-  // Same reasoning as login.
-  if (signupBtn) {
-    signupBtn.addEventListener('click', () => {
-      router.navigateTo(buildAuthUrl('signup'));
-    });
-  }
-
-  // ── Guest ────────────────────────────────────────────────────────
-  // Plain navigation. The subjects page has its own auth gate that
-  // will round-trip through login — so a guest tapping this button
-  // lands on login, and after auth returns to subjects. Whether
-  // that's the intended "guest" experience is a product decision;
-  // if guests should browse without auth, the subjects page would
-  // need a guest mode. Today, this button just forwards to the
-  // normal flow.
-  if (guestBtn) {
-    guestBtn.addEventListener('click', () => {
-      router.navigateTo('subjects');
-    });
-  }
-
-  // ── Back to Home ─────────────────────────────────────────────────
-  // Plain navigation. Home is the root; the user is explicitly
-  // stepping back from the auth flow.
-  if (backHomeBtn) {
-    backHomeBtn.addEventListener('click', () => {
-      router.navigateTo('index');
-    });
-  }
-
-  // ── Theme toggle ─────────────────────────────────────────────────
-  if (themeToggle) {
-    themeToggle.addEventListener('click', () => {
-      ui.toggleTheme();
-    });
-  }
+if (
+  typeof moduleCtx.reason === 'string' &&
+  moduleCtx.reason.length > 0
+) {
+  params.set('redirect_reason', moduleCtx.reason);
 }
 
-export function destroy() {
-  // Welcome registers no state adapter and holds no listeners
-  // outside the page DOM. Nothing to tear down.
+return `${base}?${params.toString()}`;
+
 }
+
+// ---------------------------------------------------------------
+// ELEMENT REFERENCES
+// ---------------------------------------------------------------
+
+const loginBtn = $('#loginBtn');
+const signupBtn = $('#signupBtn');
+const guestBtn = $('#guestBtn');
+const backHomeBtn = $('#backHomeBtn');
+const themeToggle = $('#themeToggle');
+
+// ---------------------------------------------------------------
+// LOGIN
+// ---------------------------------------------------------------
+// Do not use navigateWithReturn here. Welcome is the entry point
+// to authentication, not the destination to return to afterward.
+// ---------------------------------------------------------------
+
+listen(loginBtn, 'click', () => {
+router.navigateTo(buildAuthUrl('login'));
+});
+
+// ---------------------------------------------------------------
+// SIGNUP
+// ---------------------------------------------------------------
+
+listen(signupBtn, 'click', () => {
+router.navigateTo(buildAuthUrl('signup'));
+});
+
+// ---------------------------------------------------------------
+// GUEST / CONTINUE
+// ---------------------------------------------------------------
+// This retains the existing behavior: navigate to subjects.
+// Actual guest access depends on the subjects page's auth gate.
+// ---------------------------------------------------------------
+
+listen(guestBtn, 'click', () => {
+router.navigateTo('subjects');
+});
+
+// ---------------------------------------------------------------
+// BACK TO HOME
+// ---------------------------------------------------------------
+
+listen(backHomeBtn, 'click', () => {
+router.navigateTo('index');
+});
+
+// ---------------------------------------------------------------
+// THEME TOGGLE
+// ---------------------------------------------------------------
+// Let the existing UI module remain the source of truth for theme
+// state. The CSS supports the theme selectors used by the app.
+// ---------------------------------------------------------------
+
+if (themeToggle) {
+listen(themeToggle, 'click', () => {
+ui.toggleTheme();
+
+  // Update the button's accessible state if the UI module applies
+  // a recognizable theme class or data-theme attribute.
+  const isDark = getCurrentTheme(root);
+
+  themeToggle.setAttribute(
+    'aria-pressed',
+    isDark ? 'true' : 'false'
+  );
+});
+
+// Synchronize accessibility state on initial render.
+themeToggle.setAttribute(
+  'aria-pressed',
+  getCurrentTheme(root) ? 'true' : 'false'
+);
+
+}
+}
+
+/**
+
+* Detect common theme conventions without changing application state.
+* 
+* Adjust this helper if ui.js uses a different theme convention.
+  */
+  function getCurrentTheme(root) {
+  const html = document.documentElement;
+  const body = document.body;
+
+return (
+html.classList.contains('dark') ||
+body.classList.contains('dark') ||
+root.classList.contains('dark') ||
+html.dataset.theme === 'dark' ||
+body.dataset.theme === 'dark' ||
+root.dataset.theme === 'dark'
+);
+}
+
+/**
+
+* Called by the SPA when navigating away from the welcome page.
+  */
+  export function destroy() {
+  cleanupCurrentPage?.();
+  cleanupCurrentPage = null;
+  }

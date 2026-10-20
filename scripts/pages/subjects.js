@@ -206,7 +206,7 @@ export async function init(context) {
   // 5. Setup handlers
   setupToggleAndSearch(context);
   setupFooterButtons(context);
-  setupThemeAndLogout(context);
+  setupUserMenu(); // <--- Replaced setupThemeAndLogout here
 
   // 6. Hide shimmer
   shimmer.classList.add('hidden');
@@ -559,24 +559,118 @@ function setupFooterButtons(context) {
   });
 }
 
-// ==================== THEME / LOGOUT ====================
-function setupThemeAndLogout(context) {
+// ==================== AVATAR OFFLINE CACHE ====================
+// Downloads the Google Profile image and saves it as a Base64 string in LocalStorage.
+async function cacheAvatarImage(url, userId) {
+  if (!url || !userId) return;
+  const cacheKey = `medvix_avatar_${userId}`;
+  
+  // Skip if already cached
+  if (localStorage.getItem(cacheKey)) return;
+
+  try {
+    // Fetch the image from Google's servers
+    const response = await fetch(url, { mode: 'cors' });
+    if (!response.ok) throw new Error('Network response was not ok');
+    
+    const blob = await response.blob();
+    
+    // Convert image blob to Base64 string
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      try {
+        localStorage.setItem(cacheKey, reader.result);
+        console.log('[Avatar] Cached successfully for offline use');
+      } catch (e) {
+        console.warn('[Avatar] LocalStorage quota exceeded', e);
+      }
+    };
+    reader.readAsDataURL(blob);
+  } catch (err) {
+    console.warn('[Avatar] Failed to cache image:', err);
+  }
+}
+
+// ==================== THEME / USER MENU ====================
+function setupUserMenu() {
   const themeToggle = $('#themeToggle');
   if (themeToggle) themeToggle.addEventListener('click', ui.toggleTheme);
 
+  const userMenuBtn = $('#userMenuBtn');
+  const userDropdown = $('#userDropdown');
   const logoutBtn = $('#logoutBtn');
+  const switchAccountBtn = $('#switchAccountBtn');
+  
+  if (!userMenuBtn || !userDropdown) return;
+
+  // --- 1. Populate Avatar (Image or Initial) ---
+  const user = auth.getUser();
+  const avatarText = $('#userAvatarText');
+  const avatarImg = $('#userAvatarImg');
+
+  if (user) {
+    const userId = user._id || user.id;
+    const cacheKey = `medvix_avatar_${userId}`;
+    const cachedImage = localStorage.getItem(cacheKey);
+    const imgUrl = user.picture || user.photoURL || user.avatar || user.avatarUrl;
+    
+    if (cachedImage) {
+      // Use offline-cached base64 image
+      avatarImg.src = cachedImage;
+      avatarImg.style.display = 'block';
+      avatarText.style.display = 'none';
+    } else if (imgUrl) {
+      // Use online image, then trigger background download for next time
+      avatarImg.src = imgUrl;
+      avatarImg.style.display = 'block';
+      avatarText.style.display = 'none';
+      
+      // Background download & save for offline use
+      cacheAvatarImage(imgUrl, userId);
+    } else {
+      // Fallback to Initial
+      const nameStr = user.name || user.email || 'User';
+      avatarText.textContent = nameStr.charAt(0).toUpperCase();
+      avatarText.style.display = 'flex';
+      avatarImg.style.display = 'none';
+    }
+  }
+
+  // --- 2. Toggle Dropdown ---
+  userMenuBtn.addEventListener('click', (e) => {
+    e.stopPropagation(); // Prevent closing immediately
+    const isVisible = userDropdown.classList.contains('show');
+    userDropdown.classList.toggle('show', !isVisible);
+  });
+
+  // Close when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!userMenuBtn.contains(e.target) && !userDropdown.contains(e.target)) {
+      userDropdown.classList.remove('show');
+    }
+  });
+
+  // --- 3. Dropdown Actions ---
+  const performLogout = (redirectUrl) => {
+    userDropdown.classList.remove('show');
+    auth.logout();
+    try { redirect.clearReturns(); }   catch { /* ignore */ }
+    try { redirect.clearSnapshots(); } catch { /* ignore */ }
+    router.navigateTo(redirectUrl);
+  };
+
   if (logoutBtn) {
-    logoutBtn.addEventListener('click', () => {
-      auth.logout();
-      // Clear the redirect chain — a stale returnTo pointing at a
-      // page meant for the previous session would land the next
-      // logged-in user somewhere unexpected.
-      try { redirect.clearReturns(); }   catch { /* ignore */ }
-      try { redirect.clearSnapshots(); } catch { /* ignore */ }
-      router.navigateTo('welcome');
+    logoutBtn.addEventListener('click', () => performLogout('welcome'));
+  }
+
+  if (switchAccountBtn) {
+    switchAccountBtn.addEventListener('click', () => {
+      // Force redirect to login, prompting the user to use a different account
+      performLogout('login?switch_account=true');
     });
   }
 
+  // Notifications button
   const notifBtn = $('#notifBtn');
   if (notifBtn) {
     notifBtn.addEventListener('click', () => router.navigateTo('notifications'));

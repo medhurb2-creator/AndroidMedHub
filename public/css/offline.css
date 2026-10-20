@@ -1,63 +1,79 @@
 /* ==========================================================================
    OFFLINE — page-specific styles
+   Root wrapper: .offline-page (from <section class="page offline-page">)
+
    Requires common.css (tokens, h1 base, p base, button reset, --transition,
    --radius, --accent, --accent-dark).
+
    Adds ONLY: centered shell, big icon, page heading/paragraph overrides,
    retry button, and a phone-breakpoint tweak.
+
+   7-RULE COMPLIANCE
+   Rule 1: every selector prefixed with .offline-page.
+   Rule 2: N/A (no grids).
+   Rule 3: box-sizing: border-box on layout containers + button.
+   Rule 4: 80vh has 80dvh fallback.
+   Rule 5: no bare h1 / p / html / body / .btn-retry overrides.
+   Rule 6: N/A (no dropdowns).
+   Rule 7: N/A (no loaders).
    ========================================================================== */
 
 /* ---------- Full-page centered shell ---------- */
-.offline-container {
+.offline-page .offline-container {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     min-height: 80vh;
+    min-height: 80dvh;
     text-align: center;
     padding: 2rem;
+    box-sizing: border-box;
 }
 
-.offline-icon {
+.offline-page .offline-icon {
     font-size: 5rem;
     margin-bottom: 1rem;
 }
 
 /* ---------- Heading override ----------
-   Common sets h1 margin-bottom: 0.5rem + color: var(--text-primary).
-   Only the margin is different here. */
-h1 {
+   Was bare h1 { margin-bottom: 1rem } — doubled every h1's bottom margin
+   on every page loaded after this CSS. Now scoped to offline page only. */
+.offline-page h1 {
     margin-bottom: 1rem;
 }
 
 /* ---------- Paragraph override ----------
-   Common sets p margin-bottom: 1rem only.
-   Page widens the gap and adds centered color + max-width. */
-p {
+   Was bare p { margin-bottom: 2rem; color: --text-secondary;
+   max-width: 500px } — forced every paragraph app-wide into a 500px
+   column with double spacing. Now scoped to offline page only. */
+.offline-page p {
     margin-bottom: 2rem;
     color: var(--text-secondary);
     max-width: 500px;
 }
 
 /* ---------- Retry button ---------- */
-.btn-retry {
+.offline-page .btn-retry {
     background: var(--accent);
     color: #fff;
     border: none;
     padding: 0.75rem 2rem;
+    box-sizing: border-box;
     border-radius: var(--radius);
     font-size: 1rem;
     cursor: pointer;
     transition: var(--transition);
 }
-.btn-retry:hover {
+.offline-page .btn-retry:hover {
     background: var(--accent-dark);
 }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 480px) {
-    .offline-icon { font-size: 3.5rem; }
-    h1            { font-size: 1.5rem; }
-    .btn-retry {
+    .offline-page .offline-icon { font-size: 3.5rem; }
+    .offline-page h1            { font-size: 1.5rem; }
+    .offline-page .btn-retry {
         width: 100%;
         max-width: 300px;
     }

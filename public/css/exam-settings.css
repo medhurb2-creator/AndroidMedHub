@@ -1,18 +1,25 @@
 /* ==========================================================================
    EXAM SETTINGS — page-specific styles
-   Requires common.css (tokens, header-row base, buttons, hidden, keyframes spin).
-   Adds: shimmer overlay, inline loader, page-sticky fixed header, floating
-   bottom card with multi-step wizard, stepper, challenge/revision groups.
+   Root wrapper: .exam-settings-page (from <section class="page exam-settings-page">)
+   Requires common.css (tokens, header-row base, buttons, hidden, spin keyframe).
+   Adds: page-sticky fixed header, floating bottom card with multi-step wizard,
+   stepper, challenge/revision groups, inline loader, shimmer overlay fallback.
+
+   7-RULE COMPLIANCE
+   Rule 1: every selector prefixed with .exam-settings-page.
+   Rule 2: N/A (no grids).
+   Rule 3: layout containers box-sizing: border-box.
+   Rule 4: no 100vw/100vh.
+   Rule 5: no body/html targeting; theme overrides via .dark-theme ancestor.
+   Rule 6: sticky header overflow: visible.
+   Rule 7: shimmer tokens only; no raw colors in loader rules.
    ========================================================================== */
 
-/* ---------- Shimmer overlay (fullscreen dark fallback) ---------- */
-.shimmer-overlay {
+/* ---------- Shimmer overlay — Rule 7 compliant ---------- */
+.exam-settings-page .shimmer-overlay {
     position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: #1a1a2e;
+    inset: 0;
+    background: var(--bg-primary);
     z-index: 9999;
     display: flex;
     flex-direction: column;
@@ -20,34 +27,34 @@
     justify-content: center;
     transition: opacity 0.5s ease;
 }
-.shimmer-overlay .spinner {
+.exam-settings-page .shimmer-overlay .spinner {
     width: 48px;
     height: 48px;
-    border: 4px solid #3a3a4e;
-    border-top-color: #10a37f;
+    border: 4px solid var(--shimmer-base);
+    border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 1s linear infinite;
 }
-.shimmer-overlay .shimmer-text {
+.exam-settings-page .shimmer-overlay .shimmer-text {
     margin-top: 1rem;
-    color: #aaa;
+    color: var(--text-muted);
     font-size: 0.9rem;
     font-family: system-ui, sans-serif;
 }
-.shimmer-overlay.hidden {
+.exam-settings-page .shimmer-overlay.hidden {
     opacity: 0;
     pointer-events: none;
 }
 
 /* ---------- Inline loader ---------- */
-.inline-loader {
+.exam-settings-page .inline-loader {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
     font-size: 0.85rem;
     color: var(--text-muted);
 }
-.inline-loader .spinner-sm {
+.exam-settings-page .inline-loader .spinner-sm {
     width: 20px;
     height: 20px;
     border: 2px solid var(--border);
@@ -55,46 +62,50 @@
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
 }
-.inline-loader.hidden {
+.exam-settings-page .inline-loader.hidden {
     display: none;
 }
 
 /* ---------- Fixed header (page-sticky wrapper; .header-row* is in common) ---------- */
-.fixed-header {
+.exam-settings-page .fixed-header {
     position: sticky;
     top: 0;
     z-index: 100;
+    width: 100%;
+    box-sizing: border-box;
     background: var(--bg-card);
     border-bottom: 1px solid var(--border);
     padding: 0.5rem 1rem;
+    overflow: visible; /* Rule 6: allows future dropdowns in header to escape */
 }
 
-/* Subject summary row (page-specific, replaces common's .page-title slot) */
-.header-row.bottom .subject-area {
+/* Subject summary row */
+.exam-settings-page .header-row.bottom .subject-area {
     display: flex;
     align-items: center;
     gap: 0.75rem;
     flex-wrap: wrap;
+    min-width: 0;
 }
-.header-row.bottom .subject-area .icon {
+.exam-settings-page .header-row.bottom .subject-area .icon {
     font-size: 1.8rem;
 }
-.header-row.bottom .subject-area .name {
+.exam-settings-page .header-row.bottom .subject-area .name {
     font-size: 1.2rem;
     font-weight: 600;
     margin: 0;
 }
-.header-row.bottom .subject-area .topics {
+.exam-settings-page .header-row.bottom .subject-area .topics {
     font-size: 0.85rem;
     color: var(--text-muted);
 }
-.header-row.bottom .stats {
+.exam-settings-page .header-row.bottom .stats {
     display: flex;
     gap: 1rem;
     font-size: 0.85rem;
     color: var(--text-muted);
 }
-.header-row.bottom .stats span {
+.exam-settings-page .header-row.bottom .stats span {
     background: var(--bg-secondary);
     padding: 0.2rem 0.6rem;
     border-radius: 9999px;
@@ -102,12 +113,13 @@
 }
 
 /* ---------- Floating bottom card ---------- */
-.bottom-card {
+.exam-settings-page .bottom-card {
     position: fixed;
     top: auto;                    /* JS overrides to match header bottom */
     bottom: 0;
     left: 0;
     right: 0;
+    box-sizing: border-box;
     background: var(--bg-card);
     border-top: 2px solid var(--accent);
     border-radius: 24px 24px 0 0;
@@ -120,49 +132,53 @@
     transition: transform 0.3s ease, top 0.3s ease;
     transform: translateY(0);
 }
-.bottom-card.closed {
+.exam-settings-page .bottom-card.closed {
     transform: translateY(100%);
 }
 
-.card-step { display: none; }
-.card-step.active {
+.exam-settings-page .card-step { display: none; }
+.exam-settings-page .card-step.active {
     display: block;
-    animation: fadeUp 0.3s ease;
+    animation: exam-settings-fade-up 0.3s ease;
 }
 
-@keyframes fadeUp {
+@keyframes exam-settings-fade-up {
     from { opacity: 0; transform: translateY(10px); }
     to   { opacity: 1; transform: translateY(0);    }
 }
 
 /* ---------- Step 1: exam type chooser ---------- */
-.mode-option {
+.exam-settings-page .mode-option {
     display: flex;
     align-items: center;
     gap: 1rem;
     padding: 0.75rem 1rem;
+    box-sizing: border-box;
     border: 2px solid var(--border);
     border-radius: var(--radius);
     margin-bottom: 0.75rem;
     cursor: pointer;
     transition: border-color 0.2s, background 0.2s;
 }
-.mode-option:hover {
+.exam-settings-page .mode-option:hover {
     border-color: var(--accent);
     background: var(--bg-secondary);
 }
-.mode-option.selected {
+.exam-settings-page .mode-option.selected {
     border-color: var(--accent);
-    background: rgba(37, 99, 235, 0.05);
+    background: rgba(var(--accent-rgb), 0.05);
 }
-.mode-option .icon { font-size: 1.8rem; }
-.mode-option .info { flex: 1; }
-.mode-option .info .title { font-weight: 600; }
-.mode-option .info .desc  { font-size: 0.85rem; color: var(--text-muted); }
+.exam-settings-page .mode-option .icon { font-size: 1.8rem; }
+.exam-settings-page .mode-option .info { flex: 1; min-width: 0; }
+.exam-settings-page .mode-option .info .title { font-weight: 600; }
+.exam-settings-page .mode-option .info .desc  {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
 
 /* ---------- Step 2: configuration ---------- */
-.config-group { margin-bottom: 1.2rem; }
-.config-group label {
+.exam-settings-page .config-group { margin-bottom: 1.2rem; }
+.exam-settings-page .config-group label {
     display: block;
     font-weight: 500;
     margin-bottom: 0.4rem;
@@ -170,13 +186,14 @@
 }
 
 /* Question stepper */
-.question-stepper {
+.exam-settings-page .question-stepper {
     display: flex;
     align-items: center;
     gap: 0.75rem;
     width: 100%;
+    box-sizing: border-box;
 }
-.question-stepper button {
+.exam-settings-page .question-stepper button {
     width: 44px;
     height: 44px;
     border-radius: 50%;
@@ -187,17 +204,18 @@
     transition: background 0.2s, color 0.2s, border-color 0.2s;
     flex-shrink: 0;
 }
-.question-stepper button:hover {
+.exam-settings-page .question-stepper button:hover {
     background: var(--accent);
     color: #fff;
     border-color: var(--accent);
 }
-.question-stepper input {
+.exam-settings-page .question-stepper input {
     flex: 1;
     width: 70%;
     text-align: center;
     font-size: 1.2rem;
     padding: 0.5rem;
+    box-sizing: border-box;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     background: var(--bg-card);
@@ -205,31 +223,31 @@
     min-width: 60px;
     transition: border-color 0.2s;
 }
-.question-stepper input.invalid {
+.exam-settings-page .question-stepper input.invalid {
     border-color: var(--danger);
 }
-.question-stepper .max-hint {
+.exam-settings-page .question-stepper .max-hint {
     font-size: 0.75rem;
     color: var(--text-muted);
     margin-left: 0.5rem;
     white-space: nowrap;
 }
 
-.validation-warning {
+.exam-settings-page .validation-warning {
     color: var(--danger);
     font-size: 0.8rem;
     margin-top: 0.25rem;
     display: none;
 }
-.validation-warning.show { display: block; }
+.exam-settings-page .validation-warning.show { display: block; }
 
 /* Difficulty + challenge type button groups */
-.difficulty-group {
+.exam-settings-page .difficulty-group {
     display: flex;
     gap: 0.5rem;
     flex-wrap: wrap;
 }
-.difficulty-group button {
+.exam-settings-page .difficulty-group button {
     flex: 1;
     min-width: 80px;
     padding: 0.5rem;
@@ -240,18 +258,18 @@
     transition: all 0.2s;
     font-weight: 500;
 }
-.difficulty-group button.active {
+.exam-settings-page .difficulty-group button.active {
     background: var(--accent);
     color: #fff;
     border-color: var(--accent);
 }
 
-.challenge-type-group {
+.exam-settings-page .challenge-type-group {
     display: flex;
     gap: 0.5rem;
     flex-wrap: wrap;
 }
-.challenge-type-group button {
+.exam-settings-page .challenge-type-group button {
     flex: 1;
     padding: 0.5rem;
     border-radius: 30px;
@@ -260,37 +278,39 @@
     cursor: pointer;
     transition: all 0.2s;
 }
-.challenge-type-group button.active {
+.exam-settings-page .challenge-type-group button.active {
     background: var(--accent);
     color: #fff;
     border-color: var(--accent);
 }
 
 /* ---------- Challenge extra panels ---------- */
-.challenge-extra {
+.exam-settings-page .challenge-extra {
     margin-top: 1rem;
     padding: 0.75rem;
+    box-sizing: border-box;
     background: var(--bg-secondary);
     border-radius: var(--radius);
     display: none;
 }
-.challenge-extra.show { display: block; }
+.exam-settings-page .challenge-extra.show { display: block; }
 
-.challenge-extra input[type="email"] {
+.exam-settings-page .challenge-extra input[type="email"] {
     width: 100%;
     padding: 0.5rem;
+    box-sizing: border-box;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border);
     background: var(--bg-card);
     color: var(--text-primary);
 }
 
-.challenge-extra .user-list {
+.exam-settings-page .challenge-extra .user-list {
     max-height: 120px;
     overflow-y: auto;
     margin: 0.5rem 0;
 }
-.challenge-extra .user-list button {
+.exam-settings-page .challenge-extra .user-list button {
     display: block;
     width: 100%;
     text-align: left;
@@ -300,34 +320,35 @@
     cursor: pointer;
     border-bottom: 1px solid var(--border);
 }
-.challenge-extra .user-list button:hover {
+.exam-settings-page .challenge-extra .user-list button:hover {
     background: var(--bg-card);
 }
 
-#invite-status {
+.exam-settings-page #invite-status {
     margin-top: 0.5rem;
     font-size: 0.85rem;
 }
 
 /* ---------- Verification area ---------- */
-.verification-area {
+.exam-settings-page .verification-area {
     margin-top: 0.75rem;
     padding: 0.75rem;
+    box-sizing: border-box;
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     display: none;
 }
-.verification-area.show { display: block; }
+.exam-settings-page .verification-area.show { display: block; }
 
-.verification-area .code-row {
+.exam-settings-page .verification-area .code-row {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     margin: 0.5rem 0;
     flex-wrap: wrap;
 }
-.verification-area .code-row code {
+.exam-settings-page .verification-area .code-row code {
     background: var(--bg-secondary);
     padding: 0.3rem 0.8rem;
     border-radius: var(--radius-sm);
@@ -336,7 +357,7 @@
     letter-spacing: 2px;
     font-family: monospace;
 }
-.verification-area .code-row .btn-sm {
+.exam-settings-page .verification-area .code-row .btn-sm {
     padding: 0.2rem 0.6rem;
     font-size: 0.8rem;
     border-radius: 30px;
@@ -345,29 +366,29 @@
     cursor: pointer;
     transition: background 0.2s;
 }
-.verification-area .code-row .btn-sm:hover {
+.exam-settings-page .verification-area .code-row .btn-sm:hover {
     background: var(--border);
 }
-.verification-area .checkbox-row {
+.exam-settings-page .verification-area .checkbox-row {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     margin-top: 0.5rem;
 }
-.verification-area .checkbox-row input[type="checkbox"] {
+.exam-settings-page .verification-area .checkbox-row input[type="checkbox"] {
     width: 18px;
     height: 18px;
     accent-color: var(--accent);
 }
 
 /* ---------- Action row (back / primary) ---------- */
-.action-row {
+.exam-settings-page .action-row {
     display: flex;
     gap: 0.75rem;
     margin-top: 1.5rem;
     flex-wrap: wrap;
 }
-.action-row .btn {
+.exam-settings-page .action-row .btn {
     flex: 1;
     min-width: 120px;
     padding: 0.6rem 1rem;
@@ -376,85 +397,87 @@
     cursor: pointer;
     transition: background 0.2s, border-color 0.2s, color 0.2s;
 }
-.action-row .btn-primary {
+.exam-settings-page .action-row .btn-primary {
     background: var(--accent);
     color: #fff;
     border: 1px solid var(--accent);
 }
-.action-row .btn-primary:hover:not(:disabled) {
+.exam-settings-page .action-row .btn-primary:hover:not(:disabled) {
     background: var(--accent-dark);
     border-color: var(--accent-dark);
 }
-.action-row .btn-primary:disabled {
+.exam-settings-page .action-row .btn-primary:disabled {
     opacity: 0.5;
     cursor: not-allowed;
 }
-.action-row .btn-secondary {
+.exam-settings-page .action-row .btn-secondary {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     color: var(--text-primary);
 }
-.action-row .btn-secondary:hover {
+.exam-settings-page .action-row .btn-secondary:hover {
     background: var(--border);
 }
 
 /* ---------- Feature list (revision mode) ---------- */
-.feature-list {
+.exam-settings-page .feature-list {
     list-style: none;
     padding: 0;
     margin: 0.5rem 0;
 }
-.feature-list li {
+.exam-settings-page .feature-list li {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     padding: 0.3rem 0;
     font-size: 0.9rem;
 }
-.feature-list li::before {
+.exam-settings-page .feature-list li::before {
     content: "✓";
     color: var(--success);
     font-weight: bold;
 }
 
 /* ---------- Join-by-code row ---------- */
-.join-code-row {
+.exam-settings-page .join-code-row {
     margin-top: 1.5rem;
     padding-top: 1rem;
     border-top: 1px solid var(--border);
 }
-.join-code-row p {
+.exam-settings-page .join-code-row p {
     font-size: 0.9rem;
     color: var(--text-muted);
     margin-bottom: 0.5rem;
 }
-.join-code-row input {
+.exam-settings-page .join-code-row input {
     transition: border-color 0.2s;
+    box-sizing: border-box;
 }
-.join-code-row input:focus {
+.exam-settings-page .join-code-row input:focus {
     border-color: var(--accent);
 }
 
 /* ---------- Share-link area ---------- */
-.share-link-area {
+.exam-settings-page .share-link-area {
     margin-top: 0.75rem;
     display: none;
 }
-.share-link-area label {
+.exam-settings-page .share-link-area label {
     font-size: 0.9rem;
     color: var(--text-secondary);
 }
-.share-link-area input {
+.exam-settings-page .share-link-area input {
     font-family: monospace;
     font-size: 0.9rem;
     width: 100%;
     padding: 0.5rem;
+    box-sizing: border-box;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border);
     background: var(--bg-card);
     color: var(--text-primary);
 }
-.share-link-area .btn-sm {
+.exam-settings-page .share-link-area .btn-sm {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     padding: 0.3rem 0.8rem;
@@ -462,16 +485,16 @@
     cursor: pointer;
     transition: background 0.2s;
 }
-.share-link-area .btn-sm:hover {
+.exam-settings-page .share-link-area .btn-sm:hover {
     background: var(--border);
 }
 
 /* ---------- Challenge status + code display ---------- */
-#challenge-status {
+.exam-settings-page #challenge-status {
     margin: 0.5rem 0;
     font-weight: 500;
 }
-.challenge-code-display {
+.exam-settings-page .challenge-code-display {
     background: var(--bg-card);
     padding: 0.5rem 1rem;
     border-radius: var(--radius);
@@ -481,67 +504,60 @@
     text-align: center;
     margin: 0.5rem 0;
 }
-.waiting-message {
+.exam-settings-page .waiting-message {
     color: var(--text-secondary);
     font-size: 0.9rem;
 }
-.challenge-actions {
+.exam-settings-page .challenge-actions {
     margin-top: 0.5rem;
 }
-.challenge-actions .btn-sm {
+.exam-settings-page .challenge-actions .btn-sm {
     margin-right: 0.5rem;
 }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 640px) {
-    .bottom-card {
+    .exam-settings-page .bottom-card {
         padding: 1rem;
     }
-    .header-row.bottom .subject-area {
+    .exam-settings-page .header-row.bottom .subject-area {
         flex-direction: column;
         align-items: flex-start;
         gap: 0.3rem;
     }
-    .header-row.bottom .stats {
+    .exam-settings-page .header-row.bottom .stats {
         gap: 0.5rem;
         flex-wrap: wrap;
     }
-    .question-stepper input {
+    .exam-settings-page .question-stepper input {
         font-size: 1rem;
         padding: 0.4rem;
     }
-    .difficulty-group button {
+    .exam-settings-page .difficulty-group button {
         min-width: 60px;
         font-size: 0.85rem;
     }
-    .action-row .btn {
+    .exam-settings-page .action-row .btn {
         min-width: 100px;
         font-size: 0.9rem;
     }
-    .mode-option {
+    .exam-settings-page .mode-option {
         padding: 0.5rem 0.75rem;
     }
-    .mode-option .icon {
+    .exam-settings-page .mode-option .icon {
         font-size: 1.4rem;
     }
-    .verification-area .code-row {
+    .exam-settings-page .verification-area .code-row {
         gap: 0.3rem;
     }
 }
 
-/* ---------- Dark theme tweaks ---------- */
-body.dark-theme .bottom-card {
-    background: var(--bg-card);
-}
-body.dark-theme .mode-option.selected {
-    background: rgba(37, 99, 235, 0.15);
-}
-body.dark-theme .difficulty-group button,
-body.dark-theme .challenge-type-group button {
-    background: var(--bg-secondary);
-}
-body.dark-theme .difficulty-group button.active,
-body.dark-theme .challenge-type-group button.active {
-    background: var(--accent);
-    color: #fff;
+/* ---------- Dark theme tweaks ----------
+   Rule 5: no `body.dark-theme` refs. Common.css applies .dark-theme to <html>,
+   so `.dark-theme .exam-settings-page` matches when dark theme is active.
+   The .bottom-card / .difficulty-group overrides in the original were redundant
+   (already use tokens that auto-flip) — removed. Only the .mode-option.selected
+   tint differs between themes (0.05 → 0.15 for contrast), so it stays. */
+.dark-theme .exam-settings-page .mode-option.selected {
+    background: rgba(var(--accent-rgb), 0.15);
 }

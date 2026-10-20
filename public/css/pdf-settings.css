@@ -1,28 +1,50 @@
 /* ==========================================================================
    PDF SETTINGS — page-specific styles
-   Requires common.css (tokens, form primitives, buttons base, keyframes
-   shimmer, --transition).
+   Root wrapper: .pdf-settings-page (from <section class="page pdf-settings-page">)
+
+   Requires common.css (tokens, form primitives, buttons base, --transition,
+   --overlay, --shimmer-base, --shimmer-highlight, --bg-primary,
+   --bg-secondary, --bg-card).
+
    Adds ONLY: settings container + cards, option groups/rows, checkbox +
    number input overrides, action row + generate button, limit warning,
    full-page shimmer skeleton, real-content gate, responsive breakpoint.
+
+   7-RULE COMPLIANCE
+   Rule 1: every selector prefixed with .pdf-settings-page — including
+           #shimmer-content / #real-content, which are ALSO used by
+           payment.css (previously a real collision).
+   Rule 2: N/A (no grids).
+   Rule 3: box-sizing: border-box on all layout containers + shimmer blocks.
+   Rule 4: N/A (no viewport units).
+   Rule 5: no bare #shimmer-content / #real-content; no global button
+           overrides. No html/body rules.
+   Rule 6: N/A (no dropdowns).
+   Rule 7: shimmer uses var(--shimmer-base) / var(--shimmer-highlight);
+           keyframe namespaced as pdf-settings-shimmer; reduced-motion guard.
+           NOTE: the original used `@keyframes shimmer` which no longer
+           exists in common.css — the shimmer was DEAD. This file fixes it.
    ========================================================================== */
 
 /* ---------- Page shell ---------- */
-.settings-container {
+.pdf-settings-page .settings-container {
     max-width: 720px;
+    width: 100%;
     margin: 1.5rem auto;
     padding: 0 1rem;
+    box-sizing: border-box;
 }
 
 /* ---------- Settings card ---------- */
-.settings-card {
+.pdf-settings-page .settings-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 1.5rem;
+    box-sizing: border-box;
     margin-bottom: 1.5rem;
 }
-.settings-card .card-title {
+.pdf-settings-page .settings-card .card-title {
     font-weight: 600;
     margin-bottom: 1rem;
     display: flex;
@@ -31,187 +53,215 @@
 }
 
 /* ---------- Option groups / rows ---------- */
-.option-group {
+.pdf-settings-page .option-group {
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
     margin: 1rem 0;
 }
-.option-row {
+.pdf-settings-page .option-row {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 0.75rem;
 }
-.option-row label {
+.pdf-settings-page .option-row label {
     min-width: 120px;
     font-weight: 500;
 }
 
-/* Number input — overrides common's width + padding only.
+/* Number input — narrows common's width + padding only.
    Border, radius, bg, color all match common's `input` rule. */
-.option-row input[type="number"] {
+.pdf-settings-page .option-row input[type="number"] {
     width: 80px;
     padding: 0.4rem 0.8rem;
+    box-sizing: border-box;
 }
 
-/* Checkbox — overrides common's width: auto. accent-color matches common. */
-.option-row input[type="checkbox"] {
+/* Checkbox — overrides common's width: auto. */
+.pdf-settings-page .option-row input[type="checkbox"] {
     width: 18px;
     height: 18px;
     cursor: pointer;
+    accent-color: var(--accent);
 }
 
 /* ---------- Action row ---------- */
-.action-row {
+.pdf-settings-page .action-row {
     display: flex;
     gap: 1rem;
     flex-wrap: wrap;
     margin-top: 1.5rem;
 }
-.action-row button {
+.pdf-settings-page .action-row button {
     flex: 1;
     min-height: 44px;
     padding: 0.5rem 1.5rem;
+    box-sizing: border-box;
     border-radius: 30px;
     font-weight: 500;
 }
 
-.btn-generate {
+.pdf-settings-page .btn-generate {
     background: var(--accent);
     color: #fff;
     border: none;
     cursor: pointer;
     transition: background 0.2s;
 }
-.btn-generate:hover:not(:disabled) {
-    background: var(--accent-dark, #0056b3);
+.pdf-settings-page .btn-generate:hover:not(:disabled) {
+    background: var(--accent-dark);
 }
-.btn-generate:disabled {
+.pdf-settings-page .btn-generate:disabled {
     opacity: 0.5;
     cursor: not-allowed;
 }
 
-.limit-warning {
+.pdf-settings-page .limit-warning {
     color: var(--text-muted);
     font-size: 0.85rem;
     margin-top: 0.5rem;
 }
 
-/* ---------- Shimmer skeleton ---------- */
-#shimmer-content { display: block; }
-#real-content    { display: none; }
+/* ==========================================================================
+   SHIMMER SKELETON — Rule 7 compliant (was DEAD before)
+   The original file used `animation: shimmer` which references a keyframe
+   that no longer exists in common.css (removed in an earlier session).
+   Nothing was animating. Now uses --shimmer-base / --shimmer-highlight
+   tokens and a namespaced keyframe.
 
-.shimmer-wrapper { padding: 1rem; }
+   NOTE: `.shimmer-logo-icon`, `.shimmer-logo-text`, `.shimmer-btn-sm`,
+   `.shimmer-title` are ALSO used by payment.css. Previously they were
+   bare and could collide. Now both pages scope them, so no conflict.
+   ========================================================================== */
+.pdf-settings-page #shimmer-content { display: block; }
+.pdf-settings-page #real-content    { display: none; }
 
-.shimmer-header {
+.pdf-settings-page .shimmer-wrapper { padding: 1rem; box-sizing: border-box; }
+
+.pdf-settings-page .shimmer-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 0.5rem 1rem;
-    background: #1e1e2f;
-    border-bottom: 1px solid #333;
+    box-sizing: border-box;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
     margin-bottom: 1rem;
 }
-.shimmer-logo {
+.pdf-settings-page .shimmer-logo {
     display: flex;
     align-items: center;
     gap: 0.5rem;
 }
-.shimmer-logo-icon {
+
+/* Shared shimmer background — applied to every skeleton block */
+.pdf-settings-page .shimmer-logo-icon,
+.pdf-settings-page .shimmer-logo-text,
+.pdf-settings-page .shimmer-btn-sm,
+.pdf-settings-page .shimmer-icon,
+.pdf-settings-page .shimmer-title,
+.pdf-settings-page .shimmer-stat,
+.pdf-settings-page .shimmer-btn,
+.pdf-settings-page .shimmer-topic {
+    background: linear-gradient(
+        90deg,
+        var(--shimmer-base)      25%,
+        var(--shimmer-highlight) 50%,
+        var(--shimmer-base)      75%
+    );
+    background-size: 200px 100%;
+    animation: pdf-settings-shimmer 1.5s infinite linear;
+    border-radius: 4px;
+}
+
+.pdf-settings-page .shimmer-logo-icon {
     width: 32px;
     height: 32px;
     border-radius: 6px;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
 }
-.shimmer-logo-text {
+.pdf-settings-page .shimmer-logo-text {
     width: 80px;
     height: 20px;
-    border-radius: 4px;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
 }
-.shimmer-btn-sm {
+.pdf-settings-page .shimmer-btn-sm {
     width: 40px;
     height: 40px;
     border-radius: 50%;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
     display: inline-block;
 }
-.shimmer-subject {
+.pdf-settings-page .shimmer-subject {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     margin: 1rem 0;
 }
-.shimmer-icon {
+.pdf-settings-page .shimmer-icon {
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
 }
-.shimmer-title {
+.pdf-settings-page .shimmer-title {
     width: 150px;
     height: 24px;
-    border-radius: 4px;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
 }
-.shimmer-stats {
+.pdf-settings-page .shimmer-stats {
     display: flex;
     gap: 0.5rem;
     flex-wrap: wrap;
     margin: 1rem 0;
 }
-.shimmer-stat {
+.pdf-settings-page .shimmer-stat {
     width: 100px;
     height: 28px;
     border-radius: 9999px;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
 }
-.shimmer-actions {
+.pdf-settings-page .shimmer-actions {
     display: flex;
     gap: 0.5rem;
     margin: 1rem 0;
 }
-.shimmer-btn {
+.pdf-settings-page .shimmer-btn {
     flex: 1;
     height: 44px;
     border-radius: var(--radius-sm);
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
 }
-.shimmer-topics {
+.pdf-settings-page .shimmer-topics {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
 }
-.shimmer-topic {
+.pdf-settings-page .shimmer-topic {
     height: 36px;
     border-radius: var(--radius-sm);
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
+}
+
+@keyframes pdf-settings-shimmer {
+    0%   { background-position: -200px 0; }
+    100% { background-position: calc(200px + 100%) 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .pdf-settings-page .shimmer-logo-icon,
+    .pdf-settings-page .shimmer-logo-text,
+    .pdf-settings-page .shimmer-btn-sm,
+    .pdf-settings-page .shimmer-icon,
+    .pdf-settings-page .shimmer-title,
+    .pdf-settings-page .shimmer-stat,
+    .pdf-settings-page .shimmer-btn,
+    .pdf-settings-page .shimmer-topic {
+        animation: none;
+        background: var(--shimmer-base);
+    }
 }
 
 /* ---------- Responsive ---------- */
 @media screen and (max-width: 480px) {
-    .option-row {
+    .pdf-settings-page .option-row {
         flex-direction: column;
         align-items: stretch;
     }
-    .option-row label { min-width: auto; }
-    .option-row input[type="number"] { width: 100%; }
-    .action-row { flex-direction: column; }
+    .pdf-settings-page .option-row label { min-width: auto; }
+    .pdf-settings-page .option-row input[type="number"] { width: 100%; }
+    .pdf-settings-page .action-row { flex-direction: column; }
 }

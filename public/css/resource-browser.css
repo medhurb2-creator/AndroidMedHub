@@ -1,67 +1,126 @@
 /* ==========================================================================
    RESOURCE BROWSER — page-specific styles
+   Shared between TWO page roots:
+     • .resource-browser-page  (catalogue + embedded viewer overlay)
+     • .viewer-page           (dedicated viewer for external files)
+
    Requires common.css (reset, body, tokens, buttons, .modal-*, .no-data,
-   keyframes spin/shimmer, utilities).
+   keyframes spin, utilities, --shimmer-base, --shimmer-highlight).
+
    Adds: page-specific palette, 3-row fixed header, resource grid + card,
    card menu + download progress, shimmer skeleton, load-more, viewer shell,
    and viewer sub-components (#viewer scoped).
+
+   7-RULE COMPLIANCE
+   Rule 1: page-shell selectors prefixed .resource-browser-page; viewer
+           chrome prefixed #viewer (see note below).
+   Rule 2: all resource-grid templates use minmax(0, 1fr).
+   Rule 3: box-sizing: border-box on all layout containers.
+   Rule 4: .viewer-container uses 100% (not 100vw) + 100dvh fallback.
+   Rule 5: --bg-* / --accent / --radius / etc. scoped to the two page
+           wrappers — NOT :root. body transition scoped via :has().
+   Rule 6: header overflow: visible; viewer-main controls scroll.
+   Rule 7: shimmer uses --shimmer-base / --shimmer-highlight; keyframe
+           namespaced resource-browser-shimmer; reduced-motion guard.
+           NOTE: previous shimmer referenced @keyframes shimmer which no
+           longer exists in common.css — shimmer was DEAD. Fixed.
    ========================================================================== */
 
-/* ---------- Page theme tokens ---------- */
-:root {
-    --bg-primary:   #f5f7fa;
-    --bg-secondary: #e9ecf0;
-    --bg-card:      #ffffff;
-    --text-primary: #1e1e2f;
-    --text-secondary: #444;
-    --text-muted:   #777;
-    --border:       #d0d4dc;
-    --border-light: #e0e4ea;
-    --accent:       #2563eb;
-    --accent-dark:  #1d4ed8;
-    --accent-light: #3b82f6;
-    --success:      #16a34a;
-    --success-dark: #15803d;
-    --danger:       #dc2626;
-    --danger-dark:  #b91c1c;
-    --warning:      #f59e0b;
-    --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-    --radius: 12px;
-    --header-height: 130px;
+/* ---------- Page theme tokens — SCOPED ----------
+   Previously on :root — reset ~20 theme tokens for every page app-wide.
+   Now scoped to the two page wrappers only. */
+.resource-browser-page,
+.viewer-page {
+    /* Surfaces */
+    --bg-primary:     #f5f7fa;
+    --bg-secondary:   #e9ecf0;
+    --bg-card:        #ffffff;
 
-    --safe-top:    env(safe-area-inset-top, 0px);
-    --safe-bottom: env(safe-area-inset-bottom, 0px);
-    --safe-left:   env(safe-area-inset-left, 0px);
-    --safe-right:  env(safe-area-inset-right, 0px);
+    /* Text */
+    --text-primary:   #1e1e2f;
+    --text-secondary: #444444;
+    --text-muted:     #777777;
 
-    /* Viewer-specific: the 3px breathing room around the page. */
-    --page-gutter: 3px;
+    /* Borders */
+    --border:         #d0d4dc;
+    --border-light:   #e0e4ea;
+
+    /* Brand */
+    --accent:         #2563eb;
+    --accent-dark:    #1d4ed8;
+    --accent-light:   #3b82f6;
+
+    /* Semantic */
+    --success:        #16a34a;
+    --success-dark:   #15803d;
+    --danger:         #dc2626;
+    --danger-dark:    #b91c1c;
+    --warning:        #f59e0b;
+
+    /* Elevation */
+    --shadow:         0 4px 12px rgba(0, 0, 0, 0.08);
+    --radius:         12px;
+    --header-height:  130px;
+
+    /* Safe-area insets — same for both pages */
+    --safe-top:       env(safe-area-inset-top, 0px);
+    --safe-bottom:    env(safe-area-inset-bottom, 0px);
+    --safe-left:      env(safe-area-inset-left, 0px);
+    --safe-right:     env(safe-area-inset-right, 0px);
+
+    /* Viewer: the 3px breathing room around the page. */
+    --page-gutter:    3px;
 }
 
-.dark-theme {
-    --bg-primary:   #1a1a2e;
-    --bg-secondary: #2a2a3e;
-    --bg-card:      #25253a;
-    --text-primary: #eee;
-    --text-secondary: #ccc;
-    --text-muted:   #999;
-    --border:       #444;
-    --border-light: #3a3a4e;
-    --shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+/* Dark theme — scoped to the two page wrappers.
+   common.css applies .dark-theme to <html>, so this selector matches only
+   while the resource-browser / viewer page is mounted. */
+.dark-theme .resource-browser-page,
+.dark-theme .viewer-page {
+    --bg-primary:     #1a1a2e;
+    --bg-secondary:   #2a2a3e;
+    --bg-card:        #25253a;
+
+    --text-primary:   #eeeeee;
+    --text-secondary: #cccccc;
+    --text-muted:     #999999;
+
+    --border:         #444444;
+    --border-light:   #3a3a4e;
+
+    --shadow:         0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
-body {
+/* ---------- Body transition — scoped ----------
+   Previously bare `body { transition }` — mutated body on every page.
+   Now only applies while either of these pages is mounted. */
+body:has(.resource-browser-page),
+body:has(.viewer-page) {
     transition: background 0.2s, color 0.2s;
 }
 
 /* ============================================================
-   FIXED HEADER (3 rows) — resource browser
+   VIEWER CHROME — scoped via #viewer ID
+   ============================================================
+   Rule 1 allows equivalent scoping via a unique ID. #viewer exists
+   ONLY inside these two pages (viewer-page + resource-browser-page).
+   No other page in the app has #viewer in its DOM tree. `#viewer .foo`
+   provides the same strict page-isolation `.page-name .foo` would give.
+
+   If a future page ever adds a #viewer element, these rules must be
+   refactored to :where(.resource-browser-page, .viewer-page) #viewer
+   prefixing. Until then the ID scoping is safe and concise.
    ============================================================ */
-.fixed-header {
+
+/* ============================================================
+   FIXED HEADER (3 rows) — resource-browser-page only
+   ============================================================ */
+.resource-browser-page .fixed-header {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
+    box-sizing: border-box;
     z-index: 1000;
     background: var(--bg-card);
     border-bottom: 1px solid var(--border);
@@ -71,12 +130,19 @@ body {
     transition: background 0.2s;
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
+    /* Rule 6: keep filter dropdown unclipped */
+    overflow: visible;
 }
 
-.header-row { padding: 0.2rem 0; min-height: 36px; }
-.header-row:last-child { padding-bottom: 0.3rem; }
+.resource-browser-page .header-row {
+    padding: 0.2rem 0;
+    min-height: 36px;
+}
+.resource-browser-page .header-row:last-child {
+    padding-bottom: 0.3rem;
+}
 
-.logo-area {
+.resource-browser-page .logo-area {
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -84,14 +150,16 @@ body {
     font-size: 1.2rem;
     color: var(--text-primary);
 }
-.logo-area img { border-radius: 8px; }
+.resource-browser-page .logo-area img {
+    border-radius: 8px;
+}
 
-.nav-buttons {
+.resource-browser-page .nav-buttons {
     display: flex;
     align-items: center;
     gap: 0.4rem;
 }
-.nav-buttons button {
+.resource-browser-page .nav-buttons button {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     border-radius: 30px;
@@ -106,14 +174,17 @@ body {
     gap: 0.2rem;
     min-height: 36px;
 }
-.nav-buttons button:hover {
+.resource-browser-page .nav-buttons button:hover {
     background: var(--accent);
     color: #fff;
     border-color: var(--accent);
 }
 
-.title-area { flex: 1; text-align: center; }
-.title-area h1 {
+.resource-browser-page .title-area {
+    flex: 1;
+    text-align: center;
+}
+.resource-browser-page .title-area h1 {
     margin: 0;
     font-size: 1.2rem;
     font-weight: 600;
@@ -121,11 +192,16 @@ body {
     letter-spacing: -0.3px;
 }
 
-.search-filter-row { display: flex; gap: 0.5rem; flex-wrap: nowrap; }
-.search-filter-row input[type="text"] {
+.resource-browser-page .search-filter-row {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: nowrap;
+}
+.resource-browser-page .search-filter-row input[type="text"] {
     flex: 1;
     min-width: 0;
     padding: 0.4rem 0.8rem;
+    box-sizing: border-box;
     border-radius: 30px;
     border: 1px solid var(--border);
     background: var(--bg-secondary);
@@ -135,13 +211,16 @@ body {
     outline: none;
     transition: border-color 0.2s;
 }
-.search-filter-row input[type="text"]:focus {
+.resource-browser-page .search-filter-row input[type="text"]:focus {
     border-color: var(--accent);
     box-shadow: none;
 }
 
-.filter-wrapper { position: relative; flex-shrink: 0; }
-.filter-btn {
+.resource-browser-page .filter-wrapper {
+    position: relative;
+    flex-shrink: 0;
+}
+.resource-browser-page .filter-btn {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     border-radius: 30px;
@@ -154,9 +233,12 @@ body {
     align-items: center;
     gap: 0.3rem;
 }
-.filter-btn:hover { background: var(--accent); color: #fff; }
+.resource-browser-page .filter-btn:hover {
+    background: var(--accent);
+    color: #fff;
+}
 
-.filter-dropdown {
+.resource-browser-page .filter-dropdown {
     position: absolute;
     top: calc(100% + 4px);
     right: 0;
@@ -169,8 +251,10 @@ body {
     overflow: hidden;
     z-index: 100;
 }
-.filter-dropdown.open { display: block; }
-.filter-dropdown button {
+.resource-browser-page .filter-dropdown.open {
+    display: block;
+}
+.resource-browser-page .filter-dropdown button {
     display: block;
     width: 100%;
     padding: 0.6rem 1rem;
@@ -182,8 +266,10 @@ body {
     cursor: pointer;
     transition: background 0.15s;
 }
-.filter-dropdown button:hover { background: var(--bg-secondary); }
-.filter-dropdown button.active-filter {
+.resource-browser-page .filter-dropdown button:hover {
+    background: var(--bg-secondary);
+}
+.resource-browser-page .filter-dropdown button.active-filter {
     background: var(--accent);
     color: #fff;
 }
@@ -191,40 +277,37 @@ body {
 /* ============================================================
    MAIN CONTENT (offset for fixed header)
    ============================================================ */
-.main-with-header {
+.resource-browser-page .main-with-header {
     padding-top: calc(var(--header-height) + 0.5rem + var(--safe-top));
     padding-left: calc(0.5rem + var(--safe-left));
     padding-right: calc(0.5rem + var(--safe-right));
     padding-bottom: calc(0.5rem + var(--safe-bottom));
+    box-sizing: border-box;
     max-width: 1400px;
     margin: 0 auto;
 }
 
 /* ============================================================
    RESOURCE GRID
+   Rule 2: minmax(0, 1fr) prevents long titles from blowing out tracks.
    ============================================================ */
-.resource-grid {
+.resource-browser-page .resource-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.8rem;
     margin-top: 0.5rem;
 }
 
 /* ============================================================
    TOPIC SELECTION GRID
-   ============================================================
-   Shown when topics.json declares topics for the current
-   subject+category. Replaces the resource grid until the user
-   picks a topic. Cards are folder-style tiles: a centred icon
-   plus a formatted topic name.
    ============================================================ */
-
-.topic-card {
+.resource-browser-page .topic-card {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: flex-start;
     padding: 0.9rem 0.6rem 0.75rem;
+    box-sizing: border-box;
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -235,25 +318,22 @@ body {
     transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
 }
-
-.topic-card:hover,
-.topic-card:focus-visible {
+.resource-browser-page .topic-card:hover,
+.resource-browser-page .topic-card:focus-visible {
     transform: translateY(-3px);
     box-shadow: var(--shadow);
     border-color: var(--accent);
     outline: none;
 }
-
-.topic-card:active {
+.resource-browser-page .topic-card:active {
     transform: translateY(-1px);
 }
-
-.topic-card:focus-visible {
+.resource-browser-page .topic-card:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
 }
 
-.topic-thumbnail {
+.resource-browser-page .topic-thumbnail {
     width: 64px;
     height: 64px;
     display: flex;
@@ -262,34 +342,28 @@ body {
     margin-bottom: 0.6rem;
     flex-shrink: 0;
 }
-
-.topic-thumbnail img {
+.resource-browser-page .topic-thumbnail img {
     width: 100%;
     height: 100%;
     object-fit: contain;
-    /* Subtle drop so the icon reads on both light and dark cards. */
     filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.08));
     pointer-events: none;
     -webkit-user-drag: none;
 }
-
-/* Fallback rendered when topic.png fails to load. Matches the
-   visual weight of the icon it replaces. */
-.topic-thumbnail-placeholder {
+.resource-browser-page .topic-thumbnail-placeholder {
     font-size: 2.4rem;
     line-height: 1;
     color: var(--text-muted);
 }
 
-.topic-info {
+.resource-browser-page .topic-info {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 0.15rem;
     width: 100%;
 }
-
-.topic-name {
+.resource-browser-page .topic-name {
     font-size: 0.85rem;
     font-weight: 600;
     line-height: 1.25;
@@ -303,22 +377,20 @@ body {
     overflow: hidden;
 }
 
-/* ---------- Topic grid responsive breakpoints ---------- */
 @media (max-width: 639px) {
-    .topic-card { padding: 0.75rem 0.5rem 0.6rem; }
-    .topic-thumbnail { width: 56px; height: 56px; margin-bottom: 0.5rem; }
-    .topic-name { font-size: 0.8rem; }
+    .resource-browser-page .topic-card { padding: 0.75rem 0.5rem 0.6rem; }
+    .resource-browser-page .topic-thumbnail { width: 56px; height: 56px; margin-bottom: 0.5rem; }
+    .resource-browser-page .topic-name { font-size: 0.8rem; }
 }
-
 @media (min-width: 1024px) {
-    .topic-thumbnail { width: 72px; height: 72px; }
-    .topic-name { font-size: 0.9rem; }
+    .resource-browser-page .topic-thumbnail { width: 72px; height: 72px; }
+    .resource-browser-page .topic-name { font-size: 0.9rem; }
 }
 
 /* ============================================================
    RESOURCE CARD
    ============================================================ */
-.resource-card {
+.resource-browser-page .resource-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -328,13 +400,14 @@ body {
     flex-direction: column;
     position: relative;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+    box-sizing: border-box;
 }
-.resource-card:hover {
+.resource-browser-page .resource-card:hover {
     transform: translateY(-3px);
     box-shadow: var(--shadow);
 }
 
-.card-thumbnail {
+.resource-browser-page .card-thumbnail {
     background: var(--bg-secondary);
     aspect-ratio: 16 / 10;
     display: flex;
@@ -343,17 +416,25 @@ body {
     border-bottom: 1px solid var(--border-light);
     overflow: hidden;
 }
-.card-thumbnail img { width: 100%; height: 100%; object-fit: cover; }
-.thumbnail-placeholder { font-size: 2.8rem; color: var(--text-muted); }
+.resource-browser-page .card-thumbnail img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.resource-browser-page .thumbnail-placeholder {
+    font-size: 2.8rem;
+    color: var(--text-muted);
+}
 
-.card-info {
+.resource-browser-page .card-info {
     padding: 0.5rem 0.6rem 0.4rem;
     flex: 1;
     display: flex;
     flex-direction: column;
     gap: 0.2rem;
+    min-width: 0;
 }
-.card-info h3 {
+.resource-browser-page .card-info h3 {
     font-size: 0.9rem;
     margin: 0;
     line-height: 1.3;
@@ -363,7 +444,7 @@ body {
     overflow: hidden;
     font-weight: 600;
 }
-.card-info .meta {
+.resource-browser-page .card-info .meta {
     font-size: 0.7rem;
     color: var(--text-muted);
     margin: 0;
@@ -371,7 +452,8 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
 }
-.type-badge {
+
+.resource-browser-page .type-badge {
     display: inline-block;
     background: var(--accent-light);
     color: #fff;
@@ -382,7 +464,7 @@ body {
     margin-top: 0.1rem;
 }
 
-.card-stats {
+.resource-browser-page .card-stats {
     display: flex;
     flex-wrap: wrap;
     gap: 0.4rem;
@@ -393,10 +475,16 @@ body {
     padding-top: 0.3rem;
     border-top: 1px solid var(--border-light);
 }
-.downloaded-badge { color: var(--success); font-weight: 500; }
-.premium-badge    { color: var(--warning); font-weight: 500; }
+.resource-browser-page .downloaded-badge {
+    color: var(--success);
+    font-weight: 500;
+}
+.resource-browser-page .premium-badge {
+    color: var(--warning);
+    font-weight: 500;
+}
 
-.favorite-badge {
+.resource-browser-page .favorite-badge {
     position: absolute;
     top: 4px;
     right: 4px;
@@ -415,7 +503,7 @@ body {
     z-index: 2;
 }
 
-.card-actions {
+.resource-browser-page .card-actions {
     display: flex;
     gap: 0.4rem;
     align-items: center;
@@ -423,7 +511,7 @@ body {
     padding-top: 0.3rem;
     border-top: 1px solid var(--border-light);
 }
-.card-actions .main-btn {
+.resource-browser-page .card-actions .main-btn {
     flex: 1;
     padding: 0.3rem 0.4rem;
     border-radius: 30px;
@@ -440,13 +528,18 @@ body {
     background: var(--accent);
     color: #fff;
 }
-.card-actions .main-btn:hover { filter: brightness(1.1); }
-.card-actions .main-btn.btn-open     { background: var(--success); }
-.card-actions .main-btn.btn-download { background: var(--accent); }
-.card-actions .main-btn.btn-cancel   { background: var(--danger); }
+.resource-browser-page .card-actions .main-btn:hover {
+    filter: brightness(1.1);
+}
+.resource-browser-page .card-actions .main-btn.btn-open     { background: var(--success); }
+.resource-browser-page .card-actions .main-btn.btn-download { background: var(--accent); }
+.resource-browser-page .card-actions .main-btn.btn-cancel   { background: var(--danger); }
 
-.menu-wrapper { position: relative; flex-shrink: 0; }
-.menu-btn {
+.resource-browser-page .menu-wrapper {
+    position: relative;
+    flex-shrink: 0;
+}
+.resource-browser-page .menu-btn {
     background: none;
     border: none;
     font-size: 1.2rem;
@@ -458,9 +551,11 @@ body {
     display: flex;
     align-items: center;
 }
-.menu-btn:hover { color: var(--text-primary); }
+.resource-browser-page .menu-btn:hover {
+    color: var(--text-primary);
+}
 
-.menu-dropdown {
+.resource-browser-page .menu-dropdown {
     position: absolute;
     bottom: calc(100% + 4px);
     right: 0;
@@ -473,8 +568,10 @@ body {
     overflow: hidden;
     z-index: 50;
 }
-.menu-dropdown.open { display: block; }
-.menu-dropdown button {
+.resource-browser-page .menu-dropdown.open {
+    display: block;
+}
+.resource-browser-page .menu-dropdown button {
     display: block;
     width: 100%;
     padding: 0.5rem 0.8rem;
@@ -487,15 +584,23 @@ body {
     transition: background 0.15s;
     white-space: nowrap;
 }
-.menu-dropdown button:hover { background: var(--bg-secondary); }
-.menu-dropdown .delete-btn { color: var(--danger); }
-.menu-dropdown .favorite-btn.active {
+.resource-browser-page .menu-dropdown button:hover {
+    background: var(--bg-secondary);
+}
+.resource-browser-page .menu-dropdown .delete-btn {
+    color: var(--danger);
+}
+.resource-browser-page .menu-dropdown .favorite-btn.active {
     font-weight: 600;
     color: var(--warning);
 }
 
-.download-progress { display: flex; align-items: center; gap: 0.4rem; }
-.download-progress .spinner-small {
+.resource-browser-page .download-progress {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+.resource-browser-page .download-progress .spinner-small {
     width: 14px;
     height: 14px;
     border: 2px solid rgba(255, 255, 255, 0.3);
@@ -503,20 +608,18 @@ body {
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
 }
-.download-progress .percent { font-weight: 600; font-size: 0.75rem; }
+.resource-browser-page .download-progress .percent {
+    font-weight: 600;
+    font-size: 0.75rem;
+}
 
-/* Inline "Opening…" state for the Open button.
-   Mirrors .download-progress so the two states feel consistent — same
-   14px spinner, same flex layout, same colour scheme. The difference is
-   only the label text and the container class. */
-.card-actions .main-btn .open-progress {
+.resource-browser-page .card-actions .main-btn .open-progress {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 0.4rem;
 }
-
-.card-actions .main-btn .open-progress .spinner-small {
+.resource-browser-page .card-actions .main-btn .open-progress .spinner-small {
     width: 14px;
     height: 14px;
     border: 2px solid rgba(255, 255, 255, 0.3);
@@ -525,84 +628,112 @@ body {
     animation: spin 0.8s linear infinite;
     flex-shrink: 0;
 }
-
-.card-actions .main-btn .open-progress .open-label {
+.resource-browser-page .card-actions .main-btn .open-progress .open-label {
     font-weight: 600;
     font-size: 0.75rem;
 }
-
-/* Disabled + loading state on the button itself.
-   cursor: wait is the standard browser hint; opacity keeps the button
-   visually distinct from an enabled one without hiding the spinner. */
-.card-actions .main-btn.btn-loading {
+.resource-browser-page .card-actions .main-btn.btn-loading {
     cursor: wait;
     opacity: 0.85;
 }
-
-.card-actions .main-btn.btn-loading:hover {
-    filter: none;   /* cancel the parent's brightness-on-hover */
+.resource-browser-page .card-actions .main-btn.btn-loading:hover {
+    filter: none;
 }
+
 /* ============================================================
-   SHIMMER (SKELETON) CARDS
+   SHIMMER (SKELETON) CARDS — Rule 7 compliant (was DEAD)
+   Original used `animation: shimmer 1.5s` — that keyframe no longer
+   exists in common.css, so shimmer was silently broken. Now uses
+   --shimmer-base / --shimmer-highlight + namespaced keyframe.
    ============================================================ */
-.shimmer-card {
+.resource-browser-page .shimmer-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    box-sizing: border-box;
 }
-.shimmer-thumbnail {
-    aspect-ratio: 16 / 10;
-    background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--border) 50%, var(--bg-secondary) 75%);
+
+.resource-browser-page .shimmer-thumbnail,
+.resource-browser-page .shimmer-line,
+.resource-browser-page .shimmer-btn,
+.resource-browser-page .shimmer-menu {
+    background: linear-gradient(
+        90deg,
+        var(--shimmer-base)      25%,
+        var(--shimmer-highlight) 50%,
+        var(--shimmer-base)      75%
+    );
     background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
+    animation: resource-browser-shimmer 1.5s infinite linear;
 }
-.shimmer-info {
+
+.resource-browser-page .shimmer-thumbnail {
+    aspect-ratio: 16 / 10;
+}
+.resource-browser-page .shimmer-info {
     padding: 0.5rem 0.6rem;
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
 }
-.shimmer-line {
+.resource-browser-page .shimmer-line {
     height: 10px;
-    background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--border) 50%, var(--bg-secondary) 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
     border-radius: 4px;
 }
-.shimmer-title { height: 14px; width: 80%; }
-.shimmer-meta  { height: 10px; width: 60%; }
-.shimmer-badge { height: 16px; width: 40%; border-radius: 9999px; }
-.shimmer-stats { height: 10px; width: 50%; }
-.shimmer-actions { display: flex; gap: 0.4rem; margin-top: 0.2rem; }
-.shimmer-btn {
+.resource-browser-page .shimmer-title { height: 14px; width: 80%; }
+.resource-browser-page .shimmer-meta  { height: 10px; width: 60%; }
+.resource-browser-page .shimmer-badge { height: 16px; width: 40%; border-radius: 9999px; }
+.resource-browser-page .shimmer-stats { height: 10px; width: 50%; }
+.resource-browser-page .shimmer-actions {
+    display: flex;
+    gap: 0.4rem;
+    margin-top: 0.2rem;
+}
+.resource-browser-page .shimmer-btn {
     height: 32px;
     flex: 1;
-    background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--border) 50%, var(--bg-secondary) 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
     border-radius: 30px;
 }
-.shimmer-menu {
+.resource-browser-page .shimmer-menu {
     width: 28px;
     height: 28px;
     flex-shrink: 0;
-    background: linear-gradient(90deg, var(--bg-secondary) 25%, var(--border) 50%, var(--bg-secondary) 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
     border-radius: 50%;
 }
 
-/* ============================================================
-   NO DATA / LOAD MORE
-   ============================================================ */
-.no-data { padding: 2rem; grid-column: 1 / -1; }
+@keyframes resource-browser-shimmer {
+    0%   { background-position: -200px 0; }
+    100% { background-position: calc(200px + 100%) 0; }
+}
 
-#load-more-container { text-align: center; margin: 1.5rem 0 2rem; }
-#load-more-btn {
+@media (prefers-reduced-motion: reduce) {
+    .resource-browser-page .shimmer-thumbnail,
+    .resource-browser-page .shimmer-line,
+    .resource-browser-page .shimmer-btn,
+    .resource-browser-page .shimmer-menu {
+        animation: none;
+        background: var(--shimmer-base);
+    }
+}
+
+/* ============================================================
+   NO DATA / LOAD MORE — scoped (was overriding common's .no-data)
+   ============================================================ */
+.resource-browser-page .no-data {
+    padding: 2rem;
+    grid-column: 1 / -1;
+}
+
+.resource-browser-page #load-more-container {
+    text-align: center;
+    margin: 1.5rem 0 2rem;
+}
+.resource-browser-page #load-more-btn {
     padding: 0.6rem 2rem;
+    box-sizing: border-box;
     border-radius: 30px;
     background: var(--bg-secondary);
     border: 1px solid var(--border);
@@ -611,79 +742,64 @@ body {
     cursor: pointer;
     transition: all 0.2s;
 }
-#load-more-btn:hover { background: var(--accent); color: #fff; }
-.loading-spinner-small {
+.resource-browser-page #load-more-btn:hover {
+    background: var(--accent);
+    color: #fff;
+}
+.resource-browser-page .loading-spinner-small {
     display: inline-block;
     padding: 0.6rem 1.5rem;
     color: var(--text-muted);
 }
 
 /* ============================================================
-   RESPONSIVE BREAKPOINTS
+   RESPONSIVE BREAKPOINTS — scoped
    ============================================================ */
 @media (max-width: 639px) {
-    :root { --header-height: 130px; }
-    .resource-grid { grid-template-columns: repeat(2, 1fr); gap: 0.6rem; }
+    .resource-browser-page { --header-height: 130px; }
+    .resource-browser-page .resource-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.6rem;
+    }
 }
 @media (min-width: 640px) and (max-width: 1023px) {
-    :root { --header-height: 130px; }
-    .resource-grid { grid-template-columns: repeat(3, 1fr); gap: 0.8rem; }
+    .resource-browser-page { --header-height: 130px; }
+    .resource-browser-page .resource-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.8rem;
+    }
 }
 @media (min-width: 1024px) {
-    :root { --header-height: 135px; }
-    .resource-grid { grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+    .resource-browser-page { --header-height: 135px; }
+    .resource-browser-page .resource-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 1rem;
+    }
 }
 @media (min-width: 1440px) {
-    .resource-grid { grid-template-columns: repeat(5, 1fr); gap: 1.2rem; }
+    .resource-browser-page .resource-grid {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 1.2rem;
+    }
 }
 
 /* ==========================================================================
    EMBEDDED VIEWER — scoped to #viewer
    ==========================================================================
-   INVARIANTS THIS SECTION OBEYS (do not violate — see project spec):
-
-   1. Background is a colour on #viewer-main. Nothing else. It receives no
-      gestures, is never a transform target, and is never measured for
-      anything except "what size viewport must the page fit into".
-
-   2. The page is a <canvas class="page">. No wrapper. Sharp corners. White
-      background. data-page="<n>" lives on it.
-
-   3. Every slot — cover, thumbnail canvas, or full canvas — is sized to
-      naturalWidth × displayScale by naturalHeight × displayScale. Always.
-      Resolution changes the bitmap inside a canvas, never the slot's size.
-
-   4. Swapping a cover for a canvas, or a coarse canvas for a sharp one, is
-      a paint event, not a layout event. Scroll position cannot jump.
-
-   5. Zoom/pan target .page-container only. Never #viewer-main.
-
-   6. Native scroll on #viewer-main owns X and Y. No JS translate.
-
-   7. Default: page is fit-to-width, X locked at centre (margin: 0 auto +
-      overflow-x: hidden). When the page becomes wider than the viewport,
-      JS flips #viewer-main to .x-scroll to enable native horizontal scroll.
-
-   8. Resolution pyramid (pages from current):
-        ±0–5   → 100% (full canvas)
-        ±6–9   → 80%
-        ±10–12 → 60%
-        ±13–14 → 40%
-        ±15    → 20%
-        ±16+   → plain .cover
-      Only the ring bitmap changes. Slot size is natural × displayScale
-      in every ring.
+   INVARIANTS (do not violate):
+   1. #viewer-main is the window. Background colour + native scroll only.
+   2. .page-container is the ONLY interactive element (zoom/pan target).
+   3. Every page slot is sized natural × displayScale by JS (inline style).
+      A cover-to-canvas swap is a paint event, not a layout event.
+   4. Zoom/pan target .page-container only. Never #viewer-main.
+   5. Default: fit-to-width, X locked. JS adds .x-scroll when page > viewport.
    ========================================================================== */
 
 #viewer { position: relative; }
 
 #viewer .viewer-container {
     display: grid;
-    /* Explicit single column pinned to the container width. Without this
-       the implicit `auto` column grows to fit the widest item — a long
-       title in the header blows the whole grid past 100vw. minmax(0, 1fr)
-       forces the column to be exactly the container width and lets
-       children shrink. */
+    /* Rule 2: minmax(0, 1fr) forces the column to exact container width */
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto auto 1fr auto;
     grid-template-areas:
@@ -691,13 +807,20 @@ body {
         "searchbar"
         "main"
         "footer";
+
+    /* Rule 4: 100% (not 100vw) + 100dvh fallback.
+       Previously width: 100vw caused horizontal overflow on some mobile
+       builds (100vw > 100% when scrollbar is present in WebView).
+       100% resolves to parent (page wrapper) width = viewport = correct. */
     height: 100vh;
-    width: 100vw;
-    max-width: 100vw;
+    height: 100dvh;
+    width: 100%;
+    max-width: 100%;
     overflow: visible;
     background: var(--bg-primary);
     position: relative;
 }
+
 /* ---------- Header ---------- */
 #viewer .viewer-header {
     grid-area: header;
@@ -706,17 +829,14 @@ body {
     display: block;
     padding: calc(0.5rem + var(--safe-top)) calc(0.8rem + var(--safe-right))
              0.5rem calc(0.8rem + var(--safe-left));
+    box-sizing: border-box;
     background: var(--bg-card);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
     z-index: 30;
-    /* overflow: visible — the hamburger dropdown is absolutely positioned
-       at top: calc(100% + 4px), which places it BELOW the header. With
-       overflow: hidden on the header, the dropdown was clipped and
-       invisible. The title's own ellipsis is unaffected (it has its own
-       overflow: hidden; text-overflow: ellipsis). The header width is
-       already pinned by the grid column's minmax(0, 1fr), so nothing
-       blows out past 100vw. */
+    /* overflow: visible — hamburger dropdown is absolutely positioned
+       below the header; with hidden it was clipped. Header width is
+       already pinned by grid's minmax(0, 1fr), so nothing blows out. */
     overflow: visible;
 }
 
@@ -753,10 +873,13 @@ body {
     border-radius: 6px;
     transition: background 0.15s;
 }
-#viewer .btn-icon:hover { background: var(--bg-secondary); }
+#viewer .btn-icon:hover  { background: var(--bg-secondary); }
 #viewer .btn-icon:active { background: var(--border); }
 
-#viewer .btn-menu { font-size: 1.4rem; flex-shrink: 0; }
+#viewer .btn-menu {
+    font-size: 1.4rem;
+    flex-shrink: 0;
+}
 
 #viewer .btn-back {
     display: inline-flex;
@@ -794,6 +917,7 @@ body {
     display: flex;
     flex-direction: column;
     gap: 2px;
+    box-sizing: border-box;
 }
 #viewer .viewer-menu[hidden] { display: none; }
 
@@ -813,9 +937,12 @@ body {
     border-radius: 6px;
     transition: background 0.15s;
 }
-#viewer .viewer-menu-item:hover { background: var(--bg-secondary); }
+#viewer .viewer-menu-item:hover  { background: var(--bg-secondary); }
 #viewer .viewer-menu-item:active { background: var(--border); }
-#viewer .viewer-menu-item:disabled { opacity: 0.4; cursor: not-allowed; }
+#viewer .viewer-menu-item:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
 
 #viewer .viewer-menu-icon {
     flex-shrink: 0;
@@ -832,7 +959,7 @@ body {
     margin: 0.25rem 0.35rem;
 }
 
-/* ---------- Search bar (below header row) ---------- */
+/* ---------- Search bar ---------- */
 #viewer .search-bar {
     grid-area: searchbar;
     display: none;
@@ -842,6 +969,7 @@ body {
     border-bottom: 1px solid var(--border);
     padding: 0.35rem calc(0.8rem + var(--safe-right))
              0.35rem calc(0.8rem + var(--safe-left));
+    box-sizing: border-box;
 }
 #viewer .search-bar.active { display: flex; }
 #viewer .search-bar input {
@@ -854,6 +982,7 @@ body {
     border-radius: 6px;
     outline: none;
     font-size: 0.9rem;
+    box-sizing: border-box;
 }
 #viewer .search-bar input:focus { border-color: var(--accent); }
 #viewer .search-bar .search-results {
@@ -875,23 +1004,12 @@ body {
     cursor: pointer;
 }
 
-/* ---------- Main viewing area ----------
-   THE WINDOW. Background colour. Owns the scroll box. Never transformed.
-   Native scroll on both axes. The page fits or overflows within it.
-
-   Default state: page is fit-to-width, X locked at centre.
-   JS adds .x-scroll when the page becomes wider than the viewport so
-   the browser gives us a native X scrollbar.
-
-   pointer-events: none — the window is deaf. Only .page-container
-   (below) re-enables interaction.
-   ------------------------------------------------------------------ */
+/* ---------- Main viewing area ---------- */
 #viewer .viewer-main {
     grid-area: main;
     position: relative;
     box-sizing: border-box;
 
-    /* Both axes scroll when needed; X is off until JS flips .x-scroll. */
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
@@ -903,23 +1021,19 @@ body {
              calc(var(--page-gutter) + var(--safe-bottom))
              calc(var(--page-gutter) + var(--safe-left));
 
-    background: var(--bg-primary);   /* the ONLY job of this element */
+    background: var(--bg-primary);
 
-    /* Native browser gestures, not JS. Both axes. */
     touch-action: pan-x pan-y;
 
-    /* The window is not a gesture target. */
     pointer-events: none;
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
 }
-/* When the page overflows the viewport horizontally, enable native X. */
 #viewer .viewer-main.x-scroll {
     overflow-x: auto;
 }
 
-/* Text layer re-enables selection. */
 #viewer .viewer-main .textLayer,
 #viewer .viewer-main .textLayer * {
     -webkit-user-select: text;
@@ -927,71 +1041,44 @@ body {
     pointer-events: auto;
 }
 
-/* ---------- Page container ----------
-   The ONLY interactive element. Zoom/pan transform target during pinch.
-   Its width wraps the widest page; margin: 0 auto centres the whole
-   thing when the page fits, left-aligns when it overflows.
-
-   No transform here at rest. JS applies a temporary CSS transform during
-   the pinch gesture and clears it on settle (after resizing slots and
-   restoring scroll).
-   ------------------------------------------------------------------ */
+/* ---------- Page container ---------- */
 #viewer .page-container {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 0.75rem;
     margin: 0 auto;
-    width: fit-content; 
-    min-width: min-content;        /* wraps the widest page */
+    width: fit-content;
+    min-width: min-content;
     max-width: none;
     padding: 0;
     transform-origin: 0 0;
     will-change: transform;
-
-    /* Re-enable interaction: this is the page area. */
     pointer-events: auto;
 }
 
-/* ---------- The page and its cover ----------
-   Both are sized to natural × displayScale by JS (inline style). Both
-   occupy identical space. Swapping one for the other is a paint event,
-   not a layout event.
-
-   Sharp corners. White background. No wrapper.
-   ------------------------------------------------------------------ */
 #viewer .page-container .page,
 #viewer .page-container .cover {
     display: block;
     background: #ffffff;
-    /* No border-radius. No box-shadow. No wrapper.
-       Width/height set inline by JS: naturalWidth × displayScale. */
+    /* Sharp corners. No wrapper. Sized inline by JS. */
 }
 
-/* Rendered pages are canvases. */
 #viewer .page-container canvas.page {
-    /* Sharp corners, white page, block-level. Nothing else. */
     max-width: none;
     height: auto;
     -webkit-touch-callout: none;
 }
 
-/* Covers are divs that reserve the slot until the canvas arrives. */
-#viewer .page-container .cover {
-    /* Same sizing as the eventual canvas, provided inline by JS. */
-}
-
-/* Image pages follow the same invariant as canvas pages:
-   natural × displayScale, sharp corners, no decoration. */
 #viewer .page-container img.page {
-  display: block;
-  background: #ffffff;
-  max-width: none;
-  max-height: none;
-  object-fit: none;
-  -webkit-touch-callout: none;
-  -webkit-user-drag: none;
-  user-select: none;
+    display: block;
+    background: #ffffff;
+    max-width: none;
+    max-height: none;
+    object-fit: none;
+    -webkit-touch-callout: none;
+    -webkit-user-drag: none;
+    user-select: none;
 }
 
 /* ---------- Text layer & search highlight ---------- */
@@ -1030,6 +1117,7 @@ body {
     padding: 0.4rem calc(1rem + var(--safe-right))
              calc(0.4rem + var(--safe-bottom))
              calc(1rem + var(--safe-left));
+    box-sizing: border-box;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -1068,240 +1156,223 @@ body {
     text-align: center;
 }
 
-/* ── Search panel (inside the drawer) ─────────────────────────────── */
+/* ---------- Search panel ---------- */
 #viewer .outline-drawer[data-panel="search"] {
-  display: flex;
-  flex-direction: column;
-  padding: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
 }
 #viewer .search-panel-header {
-  padding: 0.75rem;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-card);
-  position: sticky;
-  top: 0;
-  z-index: 1;
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-card);
+    position: sticky;
+    top: 0;
+    z-index: 1;
 }
 #viewer .search-panel-input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  font-size: 0.9rem;
-  outline: none;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    outline: none;
 }
 #viewer .search-panel-input:focus { border-color: var(--accent); }
 #viewer .search-panel-options {
-  display: flex;
-  gap: 1rem;
-  margin-top: 0.5rem;
-  font-size: 0.8rem;
-  color: var(--text-secondary);
+    display: flex;
+    gap: 1rem;
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
 }
 #viewer .search-panel-toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    cursor: pointer;
 }
 #viewer .search-panel-count {
-  margin-top: 0.5rem;
-  font-size: 0.8rem;
-  color: var(--text-muted);
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
 }
-#viewer .search-panel-results { flex: 1; overflow-y: auto; padding: 0.5rem 0; }
+#viewer .search-panel-results {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.5rem 0;
+}
 #viewer .search-panel-empty {
-  padding: 1.5rem 1rem;
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  text-align: center;
+    padding: 1.5rem 1rem;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    text-align: center;
 }
 #viewer .search-panel-group { margin-bottom: 0.5rem; }
 #viewer .search-panel-group-header {
-  padding: 0.25rem 0.75rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
 #viewer .search-panel-result {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 0.5rem 0.75rem;
-  background: none;
-  border: none;
-  color: var(--text-primary);
-  font-size: 0.85rem;
-  cursor: pointer;
-  border-radius: 6px;
-  transition: background 0.15s;
-  line-height: 1.35;
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    cursor: pointer;
+    border-radius: 6px;
+    transition: background 0.15s;
+    line-height: 1.35;
 }
-#viewer .search-panel-result:hover { background: var(--bg-secondary); }
-#viewer .search-panel-result.active { background: var(--accent); color: #fff; }
+#viewer .search-panel-result:hover  { background: var(--bg-secondary); }
+#viewer .search-panel-result.active {
+    background: var(--accent);
+    color: #fff;
+}
 #viewer .search-panel-snippet {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-/* ── More panel (inside the drawer) ───────────────────────────────── */
+/* ---------- More panel ---------- */
 #viewer .outline-drawer[data-panel="more"] { padding: 1rem; }
 #viewer .more-section { margin-bottom: 1.5rem; }
 #viewer .more-section h4 {
-  margin: 0 0 0.75rem;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+    margin: 0 0 0.75rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
-#viewer .more-info-list { margin: 0; font-size: 0.85rem; }
+#viewer .more-info-list {
+    margin: 0;
+    font-size: 0.85rem;
+}
 #viewer .more-info-list dt {
-  color: var(--text-muted);
-  margin-top: 0.5rem;
-  font-weight: 500;
+    color: var(--text-muted);
+    margin-top: 0.5rem;
+    font-weight: 500;
 }
 #viewer .more-info-list dt:first-child { margin-top: 0; }
 #viewer .more-info-list dd {
-  margin: 0.15rem 0 0;
-  color: var(--text-primary);
-  word-break: break-word;
+    margin: 0.15rem 0 0;
+    color: var(--text-primary);
+    word-break: break-word;
 }
 #viewer .more-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
 }
 #viewer .more-action-btn {
-  padding: 0.6rem 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  font-size: 0.85rem;
-  cursor: pointer;
-  text-align: left;
-  transition: background 0.15s, border-color 0.15s;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s, border-color 0.15s;
 }
 #viewer .more-action-btn:hover {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
 }
 #viewer .more-hint {
-  padding: 0.6rem 0.75rem;
-  background: var(--bg-secondary);
-  border-radius: 8px;
-  font-size: 0.8rem;
-  color: var(--text-secondary);
+    padding: 0.6rem 0.75rem;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
 }
 
-/* ── Outline links ────────────────────────────────────────────────── */
+/* ---------- Outline tree ---------- */
 #viewer .outline-root { padding: 0.5rem 0; }
-#viewer .outline-list { list-style: none; margin: 0; padding: 0; }
-#viewer .outline-list .outline-list { padding-left: 1rem; }
-#viewer .outline-item { margin: 0; }
-/* ── Outline tree ──────────────────────────────────────────────────── */
-
-#viewer .outline-root {
-  padding: 0.5rem 0;
-}
-
 #viewer .outline-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+    list-style: none;
+    margin: 0;
+    padding: 0;
 }
+#viewer .outline-nested { padding-left: 1.25rem; }
+#viewer .outline-item   { margin: 0; }
 
-#viewer .outline-nested {
-  padding-left: 1.25rem;
-}
-
-#viewer .outline-item {
-  margin: 0;
-}
-
-/* Row = toggle + label. */
 #viewer .outline-row {
-  display: flex;
-  align-items: center;
-  gap: 0.15rem;
-  min-height: 36px;
-  border-radius: 6px;
-  transition: background 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+    min-height: 36px;
+    border-radius: 6px;
+    transition: background 0.15s;
 }
+#viewer .outline-row:hover { background: var(--bg-secondary); }
 
-#viewer .outline-row:hover {
-  background: var(--bg-secondary);
-}
-
-/* Disclosure triangle. */
 #viewer .outline-toggle {
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: none;
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  cursor: pointer;
-  padding: 0;
-  border-radius: 4px;
-  line-height: 1;
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    cursor: pointer;
+    padding: 0;
+    border-radius: 4px;
+    line-height: 1;
 }
-
 #viewer .outline-toggle:hover {
-  color: var(--text-primary);
-  background: var(--border);
+    color: var(--text-primary);
+    background: var(--border);
 }
 
-/* Spacer so leaves align with parents that have a triangle. */
 #viewer .outline-toggle-spacer {
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
 }
 
-/* Label = the navigation target. A <button>, styled to look like a link. */
 #viewer .outline-link {
-  flex: 1;
-  min-width: 0;
-  text-align: left;
-  padding: 0.4rem 0.5rem 0.4rem 0;
-  border: none;
-  background: none;
-  color: var(--text-primary);
-  font-family: inherit;
-  font-size: 0.85rem;
-  line-height: 1.35;
-  cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  border-radius: 4px;
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+    padding: 0.4rem 0.5rem 0.4rem 0;
+    border: none;
+    background: none;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.85rem;
+    line-height: 1.35;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border-radius: 4px;
 }
-
 #viewer .outline-link:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
 }
-
 #viewer .outline-link:active {
-  color: var(--accent);
+    color: var(--accent);
 }
 
-/* Indentation is now handled by .outline-nested padding-left, so the old
-   .level-N padding rules are gone. */
 /* ---------- Outline / Search / More DRAWER ---------- */
 #viewer .outline-drawer {
     grid-area: main;
@@ -1309,6 +1380,7 @@ body {
     width: 80vw;
     max-width: 320px;
     min-width: 240px;
+    box-sizing: border-box;
     background: var(--bg-card);
     border-right: 1px solid var(--border);
     box-shadow: 2px 0 12px rgba(0, 0, 0, 0.12);
@@ -1317,7 +1389,6 @@ body {
     overflow-y: auto;
     overflow-x: hidden;
     pointer-events: none;
-    box-sizing: border-box;
     padding: 0.5rem 0;
     will-change: transform;
 }
@@ -1325,16 +1396,15 @@ body {
     transform: translateX(0);
     pointer-events: auto;
 }
-
-
-#viewer .outline-drawer .outline-list .outline-list { padding-left: 1rem; }
+#viewer .outline-drawer .outline-list .outline-list {
+    padding-left: 1rem;
+}
 #viewer .outline-drawer .outline-empty {
     padding: 1.5rem 1rem;
     color: var(--text-muted);
     font-size: 0.9rem;
     text-align: center;
 }
-
 #viewer .outline-drawer[data-panel="search"] input {
     width: 100%;
     box-sizing: border-box;
@@ -1396,9 +1466,10 @@ body {
 #viewer .viewer-loading-dots span:nth-child(1) { animation-delay: 0s; }
 #viewer .viewer-loading-dots span:nth-child(2) { animation-delay: 0.2s; }
 #viewer .viewer-loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
 @keyframes viewer-dot-bounce {
     0%, 80%, 100% { transform: translateY(0); }
-    40% { transform: translateY(-0.5em); }
+    40%           { transform: translateY(-0.5em); }
 }
 
 /* ---------- Error / unsupported ---------- */
@@ -1435,6 +1506,7 @@ body {
     padding: 0.2rem 0;
     font-size: 0.85rem;
     min-height: 32px;
+    box-sizing: border-box;
     -moz-appearance: textfield;
 }
 #viewer .page-counter input[type="number"]::-webkit-inner-spin-button,
@@ -1463,6 +1535,7 @@ body {
     width: 100%;
     text-align: center;
     padding: 2rem 1.75rem;
+    box-sizing: border-box;
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: 12px;
@@ -1497,8 +1570,8 @@ body {
     cursor: pointer;
     transition: filter 0.15s ease, transform 0.05s ease;
 }
-#viewer .viewer-preview-cta-btn:hover { filter: brightness(1.08); }
-#viewer .viewer-preview-cta-btn:active { transform: translateY(1px); }
+#viewer .viewer-preview-cta-btn:hover         { filter: brightness(1.08); }
+#viewer .viewer-preview-cta-btn:active        { transform: translateY(1px); }
 #viewer .viewer-preview-cta-btn:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
@@ -1524,7 +1597,6 @@ body {
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    /* Sharp corners — it's a page. */
 }
 #viewer .viewer-preview-blocked {
     position: absolute;
@@ -1533,9 +1605,11 @@ body {
     align-items: center;
     justify-content: center;
     padding: 1.5rem;
-    background: linear-gradient(180deg,
+    background: linear-gradient(
+        180deg,
         rgba(255, 255, 255, 0.94) 0%,
-        rgba(245, 247, 250, 0.97) 100%);
+        rgba(245, 247, 250, 0.97) 100%
+    );
     box-sizing: border-box;
 }
 #viewer .viewer-preview-blocked-inner {
@@ -1543,6 +1617,7 @@ body {
     width: 100%;
     text-align: center;
     padding: 1.75rem 1.5rem;
+    box-sizing: border-box;
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: 12px;
@@ -1577,8 +1652,8 @@ body {
     cursor: pointer;
     transition: filter 0.15s ease, transform 0.05s ease;
 }
-#viewer .viewer-preview-blocked-btn:hover { filter: brightness(1.08); }
-#viewer .viewer-preview-blocked-btn:active { transform: translateY(1px); }
+#viewer .viewer-preview-blocked-btn:hover         { filter: brightness(1.08); }
+#viewer .viewer-preview-blocked-btn:active        { transform: translateY(1px); }
 #viewer .viewer-preview-blocked-btn:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
@@ -1593,9 +1668,16 @@ body {
         padding-right: calc(0.4rem + var(--safe-right));
     }
     #viewer .viewer-title { font-size: 0.9rem; }
-    #viewer .btn-icon { min-height: 44px; min-width: 44px; font-size: 1.3rem; }
+    #viewer .btn-icon {
+        min-height: 44px;
+        min-width: 44px;
+        font-size: 1.3rem;
+    }
     #viewer .btn-menu { font-size: 1.5rem; }
-    #viewer .btn-back { min-height: 40px; font-size: 0.85rem; }
+    #viewer .btn-back {
+        min-height: 40px;
+        font-size: 0.85rem;
+    }
 
     #viewer .viewer-menu {
         left: calc(0.4rem + var(--safe-left));
@@ -1621,12 +1703,18 @@ body {
         min-height: 40px;
         min-width: 40px;
     }
-    #viewer #viewer-zoom-level { min-width: 44px; font-size: 0.85rem; }
+    #viewer #viewer-zoom-level {
+        min-width: 44px;
+        font-size: 0.85rem;
+    }
     #viewer .search-bar input { font-size: 0.85rem; }
 }
 
 @media (min-width: 640px) and (max-width: 1023px) {
-    #viewer .outline-drawer { width: 340px; max-width: 40vw; }
+    #viewer .outline-drawer {
+        width: 340px;
+        max-width: 40vw;
+    }
 }
 
 /* ==========================================================================
@@ -1642,13 +1730,19 @@ body {
 }
 
 /* ==========================================================================
-   ORIENTATION — portrait vs landscape
+   ORIENTATION — landscape short screens
    ========================================================================== */
 @media (orientation: landscape) and (max-height: 500px) {
     #viewer .viewer-header {
         padding-top: calc(0.3rem + var(--safe-top));
         padding-bottom: 0.3rem;
     }
-    #viewer .btn-icon { min-height: 36px; min-width: 36px; }
-    #viewer .viewer-footer { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+    #viewer .btn-icon {
+        min-height: 36px;
+        min-width: 36px;
+    }
+    #viewer .viewer-footer {
+        padding-top: 0.25rem;
+        padding-bottom: 0.25rem;
+    }
 }

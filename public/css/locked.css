@@ -1,101 +1,136 @@
 /* ==========================================================================
    ACCOUNT LOCKED — page-specific styles
+   Root wrapper: .locked-page (from <section class="page locked-page">)
+
    Requires common.css (tokens, h1 base, .small, code/kbd base, buttons,
    .dark-theme token overrides).
+
    Adds ONLY: gradient shell, lock card, reason box, prevention list,
    support block, danger zone, page button/text overrides, responsive.
+
+   7-RULE COMPLIANCE
+   Rule 1: every selector prefixed with .locked-page.
+   Rule 2: N/A (no grids).
+   Rule 3: box-sizing: border-box on all layout containers.
+   Rule 4: min-height: 100vh + 100dvh fallback.
+   Rule 5: removed bare h1 / .small / code / .btn-text global overrides;
+           all scoped to .locked-page. .dark-theme .lock-card hack removed
+           (var(--bg-card) auto-flips).
+   Rule 6: N/A (no dropdowns).
+   Rule 7: N/A (no shimmer loaders on this page).
    ========================================================================== */
 
-/* ---------- Full-page shell ---------- */
-.locked-container {
+/* ---------- Full-page shell ----------
+   Deliberate design choice: the locked-page shell is ALWAYS dark, in both
+   themes, so the page reads as a serious severity state. Hardcoded gradient
+   is intentional here (not a Rule 7 violation — no shimmer involved). */
+.locked-page .locked-container {
     min-height: 100vh;
+    min-height: 100dvh;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 1.5rem;
+    box-sizing: border-box;
     background: linear-gradient(135deg, #1e293b, #0f172a);
 }
 
 /* ---------- Lock card ---------- */
-.lock-card {
+.locked-page .lock-card {
     max-width: 600px;
     width: 100%;
-    background: white;
+    box-sizing: border-box;
+    /* var(--bg-card) resolves to #ffffff in light, #1e293b in dark —
+       replaces the previous `background: white` + `.dark-theme .lock-card
+       { background: #1e293b }` pair with a single token. */
+    background: var(--bg-card);
     border-radius: var(--radius-lg);
     padding: 2.5rem;
     box-shadow: var(--shadow-lg);
 }
-.dark-theme .lock-card {
-    background: #1e293b;
-}
 
-.lock-icon {
+.locked-page .lock-icon {
     font-size: 4rem;
     text-align: center;
     margin-bottom: 1rem;
 }
 
 /* ---------- Reason box ---------- */
-.reason-box {
-    background: rgba(239, 68, 68, 0.1);
+.locked-page .reason-box {
+    background: rgba(var(--danger-rgb), 0.1);
     border-left: 4px solid var(--danger);
     padding: 1rem;
+    box-sizing: border-box;
     border-radius: 0 var(--radius) var(--radius) 0;
     margin: 1.5rem 0;
 }
 
 /* ---------- Lock details ---------- */
-.lock-details {
+.locked-page .lock-details {
     background: var(--bg-secondary);
     padding: 1rem;
+    box-sizing: border-box;
     border-radius: var(--radius);
     font-size: 0.875rem;
     margin-bottom: 1.5rem;
 }
 
 /* ---------- Prevention tips ---------- */
-.prevention-tips {
+.locked-page .prevention-tips {
     margin-bottom: 2rem;
 }
-.prevention-tips ul {
+.locked-page .prevention-tips ul {
     margin-left: 1.5rem;
     margin-top: 0.5rem;
 }
 
 /* ---------- Support block ---------- */
-.support-section {
+.locked-page .support-section {
     background: var(--bg-secondary);
     padding: 1.5rem;
+    box-sizing: border-box;
     border-radius: var(--radius);
     margin-bottom: 1.5rem;
 }
-.support-buttons {
+.locked-page .support-buttons {
     display: flex;
     gap: 1rem;
     margin-top: 1rem;
 }
 
 /* ---------- Danger zone ---------- */
-.danger-zone {
+.locked-page .danger-zone {
     border: 1px dashed var(--danger);
     padding: 1.5rem;
+    box-sizing: border-box;
     border-radius: var(--radius);
     margin-bottom: 1.5rem;
 }
 
-/* ---------- Page-level overrides ---------- */
+/* ================================================================
+   PAGE-LEVEL OVERRIDES — previously bare globals, now scoped.
+   Each of these was breaking every page loaded after this stylesheet.
+   ================================================================ */
 
-/* Common h1 is left-aligned; this page centers it */
-h1 { text-align: center; }
+/* Common h1 is left-aligned; this page centers it.
+   Previously bare `h1 { text-align: center }` — centered EVERY h1 on
+   every page loaded after locked.css. Now scoped. */
+.locked-page h1 {
+    text-align: center;
+}
 
-/* Common .small is 0.75rem; this page uses 0.85rem */
-.small {
+/* Common .small is 0.75rem; this page uses 0.85rem.
+   Previously bare `.small { font-size: 0.85rem }` — grew every .small
+   element on every page by 13%. Now scoped. */
+.locked-page .small {
     font-size: 0.85rem;
     color: var(--text-muted);
 }
 
-/* Inline code — page adds a chip background to `code#device-fp` */
-code {
+/* Inline code — page adds a chip background to `code#device-fp`.
+   Previously bare `code { ... }` — restyled every inline <code> site-wide
+   (AI chat code spans, exam explanations, docs). Now scoped to this page. */
+.locked-page code {
     font-family: monospace;
     font-size: 0.85rem;
     background: var(--bg-secondary);
@@ -103,8 +138,10 @@ code {
     border-radius: 4px;
 }
 
-/* Full-width text button (only #homeBtn in HTML) */
-.btn-text {
+/* Full-width text button (only #homeBtn in HTML).
+   Previously bare `.btn-text { display: block; width: 100%; ... }` —
+   made every .btn-text on every page full-width block-level. Now scoped. */
+.locked-page .btn-text {
     background: transparent;
     border: none;
     color: var(--accent);
@@ -117,20 +154,20 @@ code {
     text-align: center;
     margin-top: 0.5rem;
 }
-.btn-text:hover {
+.locked-page .btn-text:hover {
     color: var(--accent-dark);
     text-decoration: underline;
 }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 480px) {
-    .lock-card {
+    .locked-page .lock-card {
         padding: 1.5rem;
     }
-    .support-buttons {
+    .locked-page .support-buttons {
         flex-direction: column;
     }
-    .support-buttons button {
+    .locked-page .support-buttons button {
         width: 100%;
     }
 }

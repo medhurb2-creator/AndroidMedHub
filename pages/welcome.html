@@ -9,31 +9,161 @@
   data-transition="fade"
 >
   <!-- ===== HEADER ===== -->
-  <header>
+  <header class="welcome-header">
     <div class="logo">
-      <img src="/assets/images/logo.png" alt="MedVix Logo" width="40" height="40" />
+      <img
+        src="/assets/images/logo.png"
+        alt="MedVix Logo"
+        width="40"
+        height="40"
+        decoding="async"
+      />
       <span>MedVix</span>
     </div>
-    <button id="themeToggle" class="btn-outline" aria-label="Toggle theme">🌓</button>
+
+    <button
+      id="themeToggle"
+      class="btn-outline theme-toggle"
+      type="button"
+      aria-label="Toggle theme"
+      aria-pressed="false"
+    >
+      <span aria-hidden="true">🌓</span>
+    </button>
   </header>
 
-  <!-- ===== MAIN ===== -->
-  <main>
+  <!-- ===== MAIN CONTENT ===== -->
+  <main class="welcome-main">
     <div class="welcome-card">
-      <h2>Welcome back, future doctor 👋</h2>
-      <p>Access your 5,000+ question bank, track progress, and simulate exams.</p>
 
-      <div class="action-buttons">
-        <button id="loginBtn" class="btn-primary">Login</button>
-        <button id="signupBtn" class="btn-secondary">Create Account</button>
-      
+      <!-- Brain illustration -->
+      <div class="brain-container" aria-hidden="true">
+        <img
+          class="brain-image"
+          src="/assets/images/medvix-brain.png"
+          alt=""
+          width="190"
+          height="160"
+          fetchpriority="high"
+          decoding="async"
+        />
       </div>
 
+      <!-- Welcome message -->
+      <div class="welcome-intro">
+        <h1>
+          Welcome back,<br />
+          <span>future doctor</span>
+          <span class="welcome-wave" aria-hidden="true">👋</span>
+        </h1>
+
+        <p class="welcome-description">
+          Your next breakthrough starts here.
+          <br />
+          Practice. Learn. Prepare for your exams.
+        </p>
+      </div>
+
+      <!-- Primary actions -->
+      <div class="action-buttons">
+        <button
+          id="loginBtn"
+          class="btn-primary"
+          type="button"
+        >
+          <span>Login</span>
+          <span class="button-arrow" aria-hidden="true">→</span>
+        </button>
+
+        <button
+          id="signupBtn"
+          class="btn-secondary"
+          type="button"
+        >
+          Create Account
+        </button>
+      </div>
+    </div>
+
+    <!-- ===== FEATURE HIGHLIGHTS ===== -->
+    <div
+      class="welcome-features"
+      aria-label="MedVix features"
+    >
+      <div class="welcome-feature">
+        <div class="feature-icon" aria-hidden="true">
+          <svg
+            viewBox="0 0 24 24"
+            width="24"
+            height="24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" />
+          </svg>
+        </div>
+        <span>Study Resources</span>
+      </div>
+
+      <div class="welcome-feature">
+        <div class="feature-icon" aria-hidden="true">
+          <svg
+            viewBox="0 0 24 24"
+            width="24"
+            height="24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M12 3a3 3 0 0 0-5.7-1.3A3 3 0 0 0 3 6.5a3 3 0 0 0 .5 5.3A3 3 0 0 0 7 16.5" />
+            <path d="M12 3a3 3 0 0 1 5.7-1.3A3 3 0 0 1 21 6.5a3 3 0 0 1-.5 5.3A3 3 0 0 1 17 16.5" />
+            <path d="M12 3v18" />
+            <path d="M7 7h2M15 7h2M6 12h3M15 12h3M8 17h2M14 17h2" />
+          </svg>
+        </div>
+        <span>AI Tutor</span>
+      </div>
+
+      <div class="welcome-feature">
+        <div class="feature-icon" aria-hidden="true">
+          <svg
+            viewBox="0 0 24 24"
+            width="24"
+            height="24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M22 10v6M2 10l10-5 10 5-10 5-10-5Z" />
+            <path d="M6 12v5c3.5 3 8.5 3 12 0v-5" />
+          </svg>
+        </div>
+        <span>Exam Practice</span>
+      </div>
     </div>
   </main>
 
   <!-- ===== FOOTER ===== -->
-  <footer>
-    <button id="backHomeBtn" class="btn-text">← Back to Home</button>
+  <footer class="welcome-footer">
+    <button
+      id="backHomeBtn"
+      class="btn-text"
+      type="button"
+    >
+      <span aria-hidden="true">←</span>
+      Back to Home
+    </button>
+
+    <p class="welcome-tagline">
+      Learn. Practice. Grow. Connect.
+    </p>
   </footer>
 </section>

@@ -1,13 +1,22 @@
 /* ==========================================================================
    AGENT REGISTRATION — page-specific styles
-   Requires common.css (tokens, buttons, alerts, header-row base, modal-overlay,
-   utilities, keyframes). This file adds ONLY what's unique to this page.
-   Adds: Google Sign-In button + click-guard + terms wrapper, "or" divider,
-   account-linking modal.
+   Requires common.css (tokens, buttons, alerts, header-row base,
+   modal-overlay, utilities, keyframes). This file adds ONLY what's unique
+   to this page.
+
+   ARCHITECTURE — 7-RULE COMPLIANT
+   Rule 1 (Scoping):        Every selector prefixed with .agent-registration-page
+   Rule 2 (Grid Safety):    N/A — page uses flex, not grid
+   Rule 3 (Box-Sizing):     Layout containers explicitly box-sizing: border-box
+   Rule 4 (Viewport Trap):  No 100vw; 100dvh used with 100vh fallback
+   Rule 5 (Global Pollution): No bare element resets; no html/body rules
+   Rule 6 (Overflow):       Sticky header overflow-safe; text truncation isolated
+   Rule 7 (Theme-Aware Shimmer): Loaders use var(--shimmer-*); keyframes
+                            namespaced; no raw colors inside any loader rule
    ========================================================================== */
 
 /* ---------- Agent badge ---------- */
-.agent-badge {
+.agent-registration-page .agent-badge {
     display: inline-block;
     background: var(--accent);
     color: #fff;
@@ -19,54 +28,65 @@
 }
 
 /* ---------- Benefits list ---------- */
-.benefits-list {
+.agent-registration-page .benefits-list {
     margin: 1rem 0;
     padding-left: 1.5rem;
 }
-.benefits-list li {
+.agent-registration-page .benefits-list li {
     margin-bottom: 0.5rem;
 }
 
 /* ---------- Upgrade / status section ---------- */
-.upgrade-section {
+.agent-registration-page .upgrade-section {
     text-align: center;
     padding: 2rem;
     background: var(--bg-card);
     border-radius: var(--radius);
     border: 1px solid var(--border);
 }
-.upgrade-section .btn-primary {
+.agent-registration-page .upgrade-section .btn-primary {
     font-size: 1.2rem;
     padding: 0.8rem 2.5rem;
 }
-#status-message { margin-top: 1rem; }
+.agent-registration-page #status-message { margin-top: 1rem; }
 
 /* ---------- Fixed header (page-specific sticky) ----------
    NOTE: .header-row, .header-row.top, .header-row .btn-outline and
    .header-row .btn-outline:hover are all provided by common.css. */
-.fixed-header {
+.agent-registration-page .fixed-header {
     position: sticky;
     top: 0;
     z-index: 100;
+    width: 100%;
+    box-sizing: border-box;
     background: var(--bg-card);
     border-bottom: 1px solid var(--border);
     padding: 0.5rem 1rem;
+    /* Rule 6: keep overflow visible in case a future dropdown (theme
+       menu / account menu) is added inside the header. Text truncation
+       is handled per-child below. */
+    overflow: visible;
 }
-.header-row .logo-area {
+.agent-registration-page .header-row .logo-area {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    min-width: 0;
 }
-.header-row .logo-area img {
+.agent-registration-page .header-row .logo-area img {
     width: 32px;
     height: 32px;
     border-radius: 6px;
+    flex-shrink: 0;
 }
-.header-row .logo-area span {
+.agent-registration-page .header-row .logo-area span {
     font-weight: 600;
     font-size: 1.2rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
-.header-row .nav-link {
+.agent-registration-page .header-row .nav-link {
     color: var(--text-secondary);
     text-decoration: none;
     font-size: 0.9rem;
@@ -75,32 +95,38 @@
     border: none;
     padding: 0.3rem 0.6rem;
 }
-.header-row .nav-link:hover {
+.agent-registration-page .header-row .nav-link:hover {
     color: var(--text-primary);
     text-decoration: underline;
 }
-.header-row .agent-program-badge {
+.agent-registration-page .header-row .agent-program-badge {
     font-weight: 600;
     font-size: 0.95rem;
     color: var(--accent);
-    background: rgba(99, 102, 241, 0.12);
+    /* Token-driven tint — previously hardcoded indigo (99,102,241) which
+       did NOT match the blue --accent. Now follows the brand token. */
+    background: rgba(var(--accent-rgb), 0.12);
     padding: 0.3rem 1rem;
     border-radius: 30px;
-    border: 1px solid rgba(99, 102, 241, 0.25);
+    border: 1px solid rgba(var(--accent-rgb), 0.25);
     white-space: nowrap;
 }
 
 /* ---------- Page container override (common = 1200px) ---------- */
-.page-container {
+.agent-registration-page .page-container {
     max-width: 720px;
+    width: 100%;
+    box-sizing: border-box;
     margin: 0 auto;
     padding: 1rem 1.5rem 2rem;
+    /* Rule 4: dynamic viewport units with fallback. */
     min-height: calc(100vh - 120px);
+    min-height: calc(100dvh - 120px);
     overflow-y: auto;
 }
 
 /* ---------- Neon upgrade button ---------- */
-.btn-neon {
+.agent-registration-page .btn-neon {
     position: relative;
     font-size: 1.2rem;
     padding: 0.9rem 2.8rem;
@@ -111,37 +137,38 @@
     font-weight: 700;
     cursor: pointer;
     transition: all 0.3s ease;
-    box-shadow: 0 0 8px rgba(99, 102, 241, 0.2),
-                0 0 20px rgba(99, 102, 241, 0.08);
-    animation: neonPulse 2.2s ease-in-out infinite;
+    /* Token-driven glow — previously hardcoded indigo. */
+    box-shadow: 0 0 8px  rgba(var(--accent-rgb), 0.2),
+                0 0 20px rgba(var(--accent-rgb), 0.08);
+    animation: agent-registration-neon-pulse 2.2s ease-in-out infinite;
     letter-spacing: 0.5px;
 }
-.btn-neon:hover {
+.agent-registration-page .btn-neon:hover {
     background: var(--accent);
     color: #fff;
-    box-shadow: 0 0 16px rgba(99, 102, 241, 0.5),
-                0 0 40px rgba(99, 102, 241, 0.25);
+    box-shadow: 0 0 16px rgba(var(--accent-rgb), 0.5),
+                0 0 40px rgba(var(--accent-rgb), 0.25);
     transform: scale(1.02);
 }
-.btn-neon:disabled {
+.agent-registration-page .btn-neon:disabled {
     opacity: 0.5;
     cursor: not-allowed;
     animation: none;
     box-shadow: none;
 }
-@keyframes neonPulse {
+@keyframes agent-registration-neon-pulse {
     0%, 100% {
-        box-shadow: 0 0 6px  rgba(99, 102, 241, 0.2),
-                    0 0 16px rgba(99, 102, 241, 0.08);
+        box-shadow: 0 0 6px  rgba(var(--accent-rgb), 0.2),
+                    0 0 16px rgba(var(--accent-rgb), 0.08);
     }
     50% {
-        box-shadow: 0 0 14px rgba(99, 102, 241, 0.5),
-                    0 0 36px rgba(99, 102, 241, 0.2);
+        box-shadow: 0 0 14px rgba(var(--accent-rgb), 0.5),
+                    0 0 36px rgba(var(--accent-rgb), 0.2);
     }
 }
 
 /* ---------- Agent terms checkbox ---------- */
-.agent-terms-wrap {
+.agent-registration-page .agent-terms-wrap {
     display: flex;
     align-items: flex-start;
     gap: 0.6rem;
@@ -149,7 +176,7 @@
     text-align: left;
     font-size: 0.92rem;
 }
-.agent-terms-wrap input[type="checkbox"] {
+.agent-registration-page .agent-terms-wrap input[type="checkbox"] {
     width: 18px;
     height: 18px;
     accent-color: var(--accent);
@@ -157,21 +184,25 @@
     flex-shrink: 0;
     cursor: pointer;
 }
-.agent-terms-wrap label {
+.agent-registration-page .agent-terms-wrap label {
     cursor: pointer;
     line-height: 1.5;
 }
-.agent-terms-wrap a {
+.agent-registration-page .agent-terms-wrap a {
     color: var(--accent);
     text-decoration: underline;
 }
 
-/* ---------- Shimmer overlay ---------- */
-#shimmer-overlay {
+/* ---------- Shimmer overlay (splash during initial load) ----------
+   Rule 7: NO hardcoded colors. Background uses --bg-primary so the splash
+   matches the active theme. Shimmer pieces use --shimmer-base /
+   --shimmer-highlight so they are correct in light AND dark. Keyframe
+   namespaced per page so it can never collide with another page's shimmer. */
+.agent-registration-page #shimmer-overlay {
     position: fixed;
     inset: 0;
     z-index: 99999;
-    background: #0d0f14;
+    background: var(--bg-primary);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -179,41 +210,55 @@
     transition: opacity 0.6s ease;
     pointer-events: none;
 }
-#shimmer-overlay.hidden {
+.agent-registration-page #shimmer-overlay.hidden {
     opacity: 0;
 }
-#shimmer-overlay .shimmer-logo {
+.agent-registration-page #shimmer-overlay .shimmer-logo,
+.agent-registration-page #shimmer-overlay .shimmer-text {
+    background: linear-gradient(
+        135deg,
+        var(--shimmer-base)      30%,
+        var(--shimmer-highlight) 60%,
+        var(--shimmer-base)      90%
+    );
+    background-size: 300% 300%;
+    animation: agent-registration-shimmer-pulse 1.8s ease-in-out infinite;
+}
+.agent-registration-page #shimmer-overlay .shimmer-logo {
     width: 72px;
     height: 72px;
     border-radius: 16px;
-    background: linear-gradient(135deg, #1a1f2a 30%, #2a3140 60%, #1a1f2a 90%);
-    background-size: 300% 300%;
-    animation: shimmerPulse 1.8s ease-in-out infinite;
     margin-bottom: 1.5rem;
 }
-#shimmer-overlay .shimmer-text {
+.agent-registration-page #shimmer-overlay .shimmer-text {
     width: 200px;
     height: 18px;
     border-radius: 12px;
-    background: linear-gradient(135deg, #1a1f2a 30%, #2a3140 60%, #1a1f2a 90%);
-    background-size: 300% 300%;
-    animation: shimmerPulse 1.8s ease-in-out infinite;
     margin-bottom: 0.6rem;
 }
-#shimmer-overlay .shimmer-text.short { width: 140px; }
-#shimmer-overlay .shimmer-text.long  { width: 260px; }
+.agent-registration-page #shimmer-overlay .shimmer-text.short { width: 140px; }
+.agent-registration-page #shimmer-overlay .shimmer-text.long  { width: 260px; }
 
-@keyframes shimmerPulse {
+@keyframes agent-registration-shimmer-pulse {
     0%   { background-position:   0% 50%; }
     50%  { background-position: 100% 50%; }
     100% { background-position:   0% 50%; }
 }
 
+@media (prefers-reduced-motion: reduce) {
+    .agent-registration-page #shimmer-overlay .shimmer-logo,
+    .agent-registration-page #shimmer-overlay .shimmer-text {
+        animation: none;
+        background: var(--shimmer-base);
+    }
+}
+
 /* ---------- Auth modal (page-specific ids, not common .modal) ---------- */
-#auth-modal-overlay {
+.agent-registration-page #auth-modal-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.55);
+    /* Rule 7: use theme-aware --overlay so dark mode gets a darker scrim. */
+    background: var(--overlay);
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
     z-index: 9999;
@@ -222,27 +267,29 @@
     justify-content: center;
     padding: 1rem;
 }
-#auth-modal-overlay.active { display: flex; }
+.agent-registration-page #auth-modal-overlay.active { display: flex; }
 
-.auth-modal-card {
+.agent-registration-page .auth-modal-card {
     background: var(--bg-card);
     border-radius: var(--radius);
     border: 1px solid var(--border);
     max-width: 500px;
     width: 100%;
+    box-sizing: border-box;
     padding: 2rem 1.8rem 1.8rem;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-    animation: modalFadeIn 0.3s ease;
+    box-shadow: var(--shadow-lg);
+    animation: agent-registration-modal-fade-in 0.3s ease;
     position: relative;
     max-height: 90vh;
+    max-height: 90dvh;
     overflow-y: auto;
 }
-@keyframes modalFadeIn {
+@keyframes agent-registration-modal-fade-in {
     0%   { opacity: 0; transform: scale(0.94) translateY(12px); }
     100% { opacity: 1; transform: scale(1)    translateY(0);    }
 }
 
-.auth-modal-card .close-modal {
+.agent-registration-page .auth-modal-card .close-modal {
     position: absolute;
     top: 0.6rem;
     right: 1rem;
@@ -255,24 +302,26 @@
     padding: 0.2rem 0.5rem;
     transition: color 0.2s;
 }
-.auth-modal-card .close-modal:hover { color: var(--text-primary); }
+.agent-registration-page .auth-modal-card .close-modal:hover {
+    color: var(--text-primary);
+}
 
-.auth-modal-card h2 {
+.agent-registration-page .auth-modal-card h2 {
     margin-bottom: 0.5rem;
     font-size: 1.4rem;
 }
-.auth-modal-card .modal-sub {
+.agent-registration-page .auth-modal-card .modal-sub {
     color: var(--text-muted);
     margin-bottom: 1.5rem;
     font-size: 0.95rem;
 }
 
-.auth-modal-card .choice-buttons {
+.agent-registration-page .auth-modal-card .choice-buttons {
     display: flex;
     flex-direction: column;
     gap: 0.8rem;
 }
-.auth-modal-card .choice-buttons button {
+.agent-registration-page .auth-modal-card .choice-buttons button {
     width: 100%;
     padding: 0.8rem;
     border-radius: var(--radius-sm);
@@ -284,36 +333,37 @@
     cursor: pointer;
     transition: all 0.2s;
 }
-.auth-modal-card .choice-buttons button:hover {
+.agent-registration-page .auth-modal-card .choice-buttons button:hover {
     border-color: var(--accent);
-    background: rgba(99, 102, 241, 0.08);
+    background: rgba(var(--accent-rgb), 0.08);
 }
-.auth-modal-card .choice-buttons .btn-primary-choice {
+.agent-registration-page .auth-modal-card .choice-buttons .btn-primary-choice {
     background: var(--accent);
     color: #fff;
     border-color: var(--accent);
 }
-.auth-modal-card .choice-buttons .btn-primary-choice:hover {
+.agent-registration-page .auth-modal-card .choice-buttons .btn-primary-choice:hover {
     background: var(--accent-dark);
     border-color: var(--accent-dark);
 }
 
 /* ---------- Login sheet ---------- */
-#login-sheet {
+.agent-registration-page #login-sheet {
     display: none;
     margin-top: 0.5rem;
 }
-#login-sheet.active { display: block; }
+.agent-registration-page #login-sheet.active { display: block; }
 
-#login-sheet .form-group { margin-bottom: 1rem; }
-#login-sheet .form-group label {
+.agent-registration-page #login-sheet .form-group { margin-bottom: 1rem; }
+.agent-registration-page #login-sheet .form-group label {
     display: block;
     font-weight: 500;
     margin-bottom: 0.3rem;
     font-size: 0.9rem;
 }
-#login-sheet .form-group input {
+.agent-registration-page #login-sheet .form-group input {
     width: 100%;
+    box-sizing: border-box;
     padding: 0.7rem 0.9rem;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
@@ -321,12 +371,12 @@
     color: var(--text-primary);
     font-size: 0.95rem;
 }
-#login-sheet .form-group input:focus {
+.agent-registration-page #login-sheet .form-group input:focus {
     outline: 2px solid var(--accent);
     border-color: transparent;
 }
 
-#login-sheet .form-row {
+.agent-registration-page #login-sheet .form-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -335,13 +385,13 @@
     margin: 0.2rem 0 1.2rem;
     font-size: 0.88rem;
 }
-#login-sheet .form-row label {
+.agent-registration-page #login-sheet .form-row label {
     display: flex;
     align-items: center;
     gap: 0.4rem;
     cursor: pointer;
 }
-#login-sheet .form-row .btn-link {
+.agent-registration-page #login-sheet .form-row .btn-link {
     background: none;
     border: none;
     color: var(--accent);
@@ -350,12 +400,13 @@
     font-size: 0.88rem;
     padding: 0;
 }
-#login-sheet .form-row .btn-link:hover {
+.agent-registration-page #login-sheet .form-row .btn-link:hover {
     color: var(--accent-dark);
 }
 
-#login-sheet .btn-primary {
+.agent-registration-page #login-sheet .btn-primary {
     width: 100%;
+    box-sizing: border-box;
     padding: 0.8rem;
     border-radius: var(--radius-sm);
     font-size: 1rem;
@@ -366,16 +417,18 @@
     cursor: pointer;
     transition: background 0.2s;
 }
-#login-sheet .btn-primary:hover { background: var(--accent-dark); }
+.agent-registration-page #login-sheet .btn-primary:hover {
+    background: var(--accent-dark);
+}
 
-#login-sheet .alt-actions {
+.agent-registration-page #login-sheet .alt-actions {
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
     margin-top: 1rem;
     text-align: center;
 }
-#login-sheet .alt-actions .btn-text {
+.agent-registration-page #login-sheet .alt-actions .btn-text {
     background: none;
     border: none;
     color: var(--text-muted);
@@ -384,35 +437,36 @@
     font-size: 0.88rem;
     padding: 0.2rem;
 }
-#login-sheet .alt-actions .btn-text:hover {
+.agent-registration-page #login-sheet .alt-actions .btn-text:hover {
     color: var(--text-primary);
 }
 
 /* ---------- Registration flow ---------- */
-#registration-flow {
+.agent-registration-page #registration-flow {
     display: none;
     margin-top: 0.5rem;
 }
-#registration-flow.active { display: block; }
+.agent-registration-page #registration-flow.active { display: block; }
 
-#registration-flow .step-indicator {
+.agent-registration-page #registration-flow .step-indicator {
     font-size: 0.88rem;
     color: var(--text-muted);
     margin-bottom: 1rem;
 }
-#registration-flow .step        { display: none; }
-#registration-flow .step.active { display: block; }
+.agent-registration-page #registration-flow .step        { display: none; }
+.agent-registration-page #registration-flow .step.active { display: block; }
 
-#registration-flow .form-group { margin-bottom: 1rem; }
-#registration-flow .form-group label {
+.agent-registration-page #registration-flow .form-group { margin-bottom: 1rem; }
+.agent-registration-page #registration-flow .form-group label {
     display: block;
     font-weight: 500;
     margin-bottom: 0.3rem;
     font-size: 0.9rem;
 }
-#registration-flow .form-group input,
-#registration-flow .form-group select {
+.agent-registration-page #registration-flow .form-group input,
+.agent-registration-page #registration-flow .form-group select {
     width: 100%;
+    box-sizing: border-box;
     padding: 0.7rem 0.9rem;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
@@ -420,28 +474,29 @@
     color: var(--text-primary);
     font-size: 0.95rem;
 }
-#registration-flow .form-group input:focus,
-#registration-flow .form-group select:focus {
+.agent-registration-page #registration-flow .form-group input:focus,
+.agent-registration-page #registration-flow .form-group select:focus {
     outline: 2px solid var(--accent);
     border-color: transparent;
 }
 
-#registration-flow .form-row {
+.agent-registration-page #registration-flow .form-row {
     display: flex;
     gap: 1rem;
     flex-wrap: wrap;
 }
-#registration-flow .form-row .half {
+.agent-registration-page #registration-flow .form-row .half {
     flex: 1 1 180px;
+    min-width: 0;
 }
 
-#registration-flow .button-group {
+.agent-registration-page #registration-flow .button-group {
     display: flex;
     gap: 0.8rem;
     margin-top: 1rem;
     flex-wrap: wrap;
 }
-#registration-flow .button-group .btn-primary {
+.agent-registration-page #registration-flow .button-group .btn-primary {
     flex: 1;
     padding: 0.7rem;
     border-radius: var(--radius-sm);
@@ -452,10 +507,10 @@
     cursor: pointer;
     transition: background 0.2s;
 }
-#registration-flow .button-group .btn-primary:hover {
+.agent-registration-page #registration-flow .button-group .btn-primary:hover {
     background: var(--accent-dark);
 }
-#registration-flow .button-group .btn-secondary {
+.agent-registration-page #registration-flow .button-group .btn-secondary {
     flex: 0 0 auto;
     padding: 0.7rem 1.4rem;
     border-radius: var(--radius-sm);
@@ -466,46 +521,46 @@
     cursor: pointer;
     transition: background 0.2s;
 }
-#registration-flow .button-group .btn-secondary:hover {
+.agent-registration-page #registration-flow .button-group .btn-secondary:hover {
     background: var(--border);
 }
 
-#registration-flow .checkbox-group {
+.agent-registration-page #registration-flow .checkbox-group {
     display: flex;
     align-items: flex-start;
     gap: 0.5rem;
     font-size: 0.88rem;
     margin: 0.5rem 0;
 }
-#registration-flow .checkbox-group input[type="checkbox"] {
+.agent-registration-page #registration-flow .checkbox-group input[type="checkbox"] {
     width: 18px;
     height: 18px;
     accent-color: var(--accent);
     margin-top: 2px;
     flex-shrink: 0;
 }
-#registration-flow .checkbox-group label {
+.agent-registration-page #registration-flow .checkbox-group label {
     cursor: pointer;
     line-height: 1.5;
 }
-#registration-flow .checkbox-group a {
+.agent-registration-page #registration-flow .checkbox-group a {
     color: var(--accent);
     text-decoration: underline;
 }
 
-#registration-flow .success-step {
+.agent-registration-page #registration-flow .success-step {
     text-align: center;
     padding: 1rem 0;
 }
-#registration-flow .success-step .success-icon {
+.agent-registration-page #registration-flow .success-step .success-icon {
     font-size: 3.2rem;
     margin-bottom: 0.5rem;
 }
-#registration-flow .success-step h3 {
+.agent-registration-page #registration-flow .success-step h3 {
     font-size: 1.3rem;
     margin-bottom: 0.3rem;
 }
-#registration-flow .success-step p {
+.agent-registration-page #registration-flow .success-step p {
     color: var(--text-muted);
     margin-bottom: 1.2rem;
 }
@@ -515,22 +570,25 @@
    ========================================================================== */
 
 /* Google button container — holds the GIS iframe */
-.google-signin-container {
+.agent-registration-page .google-signin-container {
     position: relative;
     display: flex;
     justify-content: center;
     align-items: center;
     min-height: 44px;
+    width: 100%;
+    box-sizing: border-box;
     margin: 0.75rem 0 0.5rem;
     transition: opacity 0.15s ease;
 }
-.google-signin-container iframe {
+.agent-registration-page .google-signin-container iframe {
     margin: 0 auto;
+    max-width: 100%;
 }
 
 /* Transparent overlay that blocks clicks on the Google button
    until the user accepts the terms above it. */
-.google-click-guard {
+.agent-registration-page .google-click-guard {
     position: absolute;
     inset: 0;
     z-index: 2;
@@ -539,7 +597,7 @@
 }
 
 /* Terms checkbox right under the Google button on the choice screen */
-.agent-terms-google-wrap {
+.agent-registration-page .agent-terms-google-wrap {
     display: flex;
     align-items: flex-start;
     gap: 0.5rem;
@@ -552,8 +610,9 @@
     color: var(--text-secondary);
     text-align: left;
     line-height: 1.5;
+    box-sizing: border-box;
 }
-.agent-terms-google-wrap input[type="checkbox"] {
+.agent-registration-page .agent-terms-google-wrap input[type="checkbox"] {
     width: 18px;
     height: 18px;
     accent-color: var(--accent);
@@ -561,17 +620,18 @@
     flex-shrink: 0;
     cursor: pointer;
 }
-.agent-terms-google-wrap label {
+.agent-registration-page .agent-terms-google-wrap label {
     cursor: pointer;
     flex: 1;
+    min-width: 0;
 }
-.agent-terms-google-wrap a {
+.agent-registration-page .agent-terms-google-wrap a {
     color: var(--accent);
     text-decoration: underline;
 }
 
 /* "or" divider between Google and the choice buttons */
-.auth-divider {
+.agent-registration-page .auth-divider {
     display: flex;
     align-items: center;
     gap: 0.75rem;
@@ -580,8 +640,8 @@
     font-size: 0.85rem;
     text-transform: lowercase;
 }
-.auth-divider::before,
-.auth-divider::after {
+.agent-registration-page .auth-divider::before,
+.agent-registration-page .auth-divider::after {
     content: '';
     flex: 1;
     height: 1px;
@@ -592,10 +652,10 @@
    GOOGLE ACCOUNT-LINKING MODAL
    ========================================================================== */
 
-#google-link-modal {
+.agent-registration-page #google-link-modal {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
+    background: var(--overlay);
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
     z-index: 10000;    /* above the auth modal */
@@ -604,34 +664,36 @@
     justify-content: center;
     padding: 1rem;
 }
-#google-link-modal[style*="flex"] {
+/* Preserves the original JS contract: set inline style="display:flex" to open. */
+.agent-registration-page #google-link-modal[style*="flex"] {
     display: flex !important;
 }
 
-#google-link-modal .modal {
+.agent-registration-page #google-link-modal .modal {
     background: var(--bg-card);
     border-radius: var(--radius);
     border: 1px solid var(--border);
     max-width: 440px;
     width: 100%;
+    box-sizing: border-box;
     padding: 1.8rem 1.6rem 1.5rem;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-    animation: modalFadeIn 0.3s ease;
+    box-shadow: var(--shadow-lg);
+    animation: agent-registration-modal-fade-in 0.3s ease;
     position: relative;
 }
 
-#google-link-modal .modal-header {
+.agent-registration-page #google-link-modal .modal-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 0.75rem;
 }
-#google-link-modal .modal-header h3 {
+.agent-registration-page #google-link-modal .modal-header h3 {
     margin: 0;
     font-size: 1.2rem;
     font-weight: 700;
 }
-#google-link-modal .modal-close {
+.agent-registration-page #google-link-modal .modal-close {
     background: none;
     border: none;
     font-size: 1.5rem;
@@ -641,32 +703,33 @@
     line-height: 1;
     transition: color 0.2s;
 }
-#google-link-modal .modal-close:hover {
+.agent-registration-page #google-link-modal .modal-close:hover {
     color: var(--text-primary);
 }
 
-#google-link-modal .modal-body p {
+.agent-registration-page #google-link-modal .modal-body p {
     margin-bottom: 0.75rem;
     color: var(--text-secondary);
     font-size: 0.92rem;
     line-height: 1.5;
 }
-#google-link-modal .modal-body strong {
+.agent-registration-page #google-link-modal .modal-body strong {
     color: var(--text-primary);
 }
 
-#google-link-modal .modal-body .form-group {
+.agent-registration-page #google-link-modal .modal-body .form-group {
     margin-top: 1rem;
 }
-#google-link-modal .modal-body .form-group label {
+.agent-registration-page #google-link-modal .modal-body .form-group label {
     display: block;
     margin-bottom: 0.4rem;
     font-weight: 500;
     font-size: 0.9rem;
     color: var(--text-primary);
 }
-#google-link-modal .modal-body .form-group input {
+.agent-registration-page #google-link-modal .modal-body .form-group input {
     width: 100%;
+    box-sizing: border-box;
     padding: 0.7rem 0.9rem;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border);
@@ -674,24 +737,24 @@
     color: var(--text-primary);
     font-size: 0.95rem;
 }
-#google-link-modal .modal-body .form-group input:focus {
+.agent-registration-page #google-link-modal .modal-body .form-group input:focus {
     outline: 2px solid var(--accent);
     border-color: transparent;
 }
-#google-link-modal .error-message {
+.agent-registration-page #google-link-modal .error-message {
     font-size: 0.78rem;
     margin-top: 0.25rem;
     color: var(--danger);
 }
 
-#google-link-modal .modal-footer {
+.agent-registration-page #google-link-modal .modal-footer {
     display: flex;
     justify-content: flex-end;
     gap: 0.6rem;
     margin-top: 1.2rem;
 }
-#google-link-modal .modal-footer .btn-primary,
-#google-link-modal .modal-footer .btn-secondary {
+.agent-registration-page #google-link-modal .modal-footer .btn-primary,
+.agent-registration-page #google-link-modal .modal-footer .btn-secondary {
     padding: 0.6rem 1.2rem;
     border-radius: var(--radius-sm);
     font-weight: 600;
@@ -699,63 +762,64 @@
     cursor: pointer;
     transition: background 0.2s;
 }
-#google-link-modal .modal-footer .btn-primary {
+.agent-registration-page #google-link-modal .modal-footer .btn-primary {
     background: var(--accent);
     color: #fff;
     border: none;
 }
-#google-link-modal .modal-footer .btn-primary:hover:not(:disabled) {
+.agent-registration-page #google-link-modal .modal-footer .btn-primary:hover:not(:disabled) {
     background: var(--accent-dark);
 }
-#google-link-modal .modal-footer .btn-primary:disabled {
+.agent-registration-page #google-link-modal .modal-footer .btn-primary:disabled {
     opacity: 0.6;
     cursor: not-allowed;
 }
-#google-link-modal .modal-footer .btn-secondary {
+.agent-registration-page #google-link-modal .modal-footer .btn-secondary {
     background: var(--bg-secondary);
     color: var(--text-primary);
     border: 1px solid var(--border);
 }
-#google-link-modal .modal-footer .btn-secondary:hover {
+.agent-registration-page #google-link-modal .modal-footer .btn-secondary:hover {
     background: var(--border);
 }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 500px) {
-    .fixed-header { padding: 0.4rem 0.8rem; }
-    .header-row .logo-area span { font-size: 1rem; }
-    .header-row .agent-program-badge {
+    .agent-registration-page .fixed-header { padding: 0.4rem 0.8rem; }
+    .agent-registration-page .header-row .logo-area span { font-size: 1rem; }
+    .agent-registration-page .header-row .agent-program-badge {
         font-size: 0.78rem;
         padding: 0.2rem 0.7rem;
     }
-    .page-container { padding: 0.8rem 1rem 1.5rem; }
-    .auth-modal-card {
+    .agent-registration-page .page-container { padding: 0.8rem 1rem 1.5rem; }
+    .agent-registration-page .auth-modal-card {
         padding: 1.5rem 1.2rem;
         max-height: 85vh;
+        max-height: 85dvh;
     }
-    .upgrade-section { padding: 1.5rem 1rem; }
-    .btn-neon {
+    .agent-registration-page .upgrade-section { padding: 1.5rem 1rem; }
+    .agent-registration-page .btn-neon {
         font-size: 1rem;
         padding: 0.7rem 2rem;
     }
-    #registration-flow .form-row {
+    .agent-registration-page #registration-flow .form-row {
         flex-direction: column;
         gap: 0;
     }
-    #registration-flow .form-row .half { flex: 1 1 auto; }
-    .agent-terms-google-wrap {
+    .agent-registration-page #registration-flow .form-row .half { flex: 1 1 auto; }
+    .agent-registration-page .agent-terms-google-wrap {
         font-size: 0.8rem;
         padding: 0.5rem 0.6rem;
     }
-    #google-link-modal .modal {
+    .agent-registration-page #google-link-modal .modal {
         padding: 1.4rem 1.2rem 1.2rem;
     }
 }
 
 /* ---------- Modal scrollbar tweak ---------- */
-.auth-modal-card::-webkit-scrollbar       { width: 6px; }
-.auth-modal-card::-webkit-scrollbar-track { background: var(--bg-secondary); }
-.auth-modal-card::-webkit-scrollbar-thumb {
+.agent-registration-page .auth-modal-card::-webkit-scrollbar       { width: 6px; }
+.agent-registration-page .auth-modal-card::-webkit-scrollbar-track { background: var(--bg-secondary); }
+.agent-registration-page .auth-modal-card::-webkit-scrollbar-thumb {
     background: var(--border);
     border-radius: 4px;
 }

@@ -1,86 +1,119 @@
 /* ==========================================================================
    REFERRAL — page-specific styles
+   Root wrapper: .referral-page (from <section class="page referral-page">)
+
    Requires common.css (tokens, header-row base, buttons, .modal-overlay,
    .modal, .modal-header, .modal-close, .modal-footer, .no-data base,
-   keyframes shimmer, utilities).
+   utilities, --shimmer-base, --shimmer-highlight).
+
    Adds ONLY: page-sticky fixed-header, referral content, wallet card,
    referral list, agent badge, withdraw status, error state, modal body
    internals, shimmer skeleton, responsive.
+
+   7-RULE COMPLIANCE
+   Rule 1: every selector prefixed with .referral-page (or
+           body:has(.referral-page) for JS-appended modals).
+   Rule 2: .wallet-stats uses minmax(min(100px, 100%), 1fr);
+           mobile column count uses minmax(0, 1fr).
+   Rule 3: box-sizing: border-box on all layout containers.
+   Rule 4: N/A (no viewport units).
+   Rule 5: CRITICAL — the original `.modal-overlay { display: flex }` at
+           top level forced EVERY modal on EVERY page to be visible. Now
+           scoped via body:has(.referral-page). See migration notes.
+   Rule 6: .fixed-header has overflow: visible (defensive).
+   Rule 7: shimmer uses --shimmer-base / --shimmer-highlight tokens;
+           keyframe namespaced referral-shimmer; reduced-motion guard.
    ========================================================================== */
 
-/* ---------- Page-sticky fixed header ---------- */
-.fixed-header {
+/* ---------- Page-sticky fixed header ----------
+   Previously bare .fixed-header — made every page's header sticky. */
+.referral-page .fixed-header {
     position: sticky;
     top: 0;
     z-index: 100;
+    width: 100%;
+    box-sizing: border-box;
     background: var(--bg-card);
     border-bottom: 1px solid var(--border);
     padding: 0.5rem 1rem;
+    /* Rule 6: keep future dropdowns from being clipped */
+    overflow: visible;
 }
 
 /* Page uses .title-area h1 instead of common's .page-title */
-.header-row.bottom .title-area {
+.referral-page .header-row.bottom .title-area {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    min-width: 0;
 }
-.header-row.bottom .title-area h1 {
+.referral-page .header-row.bottom .title-area h1 {
     font-size: 1.2rem;
     margin: 0;
 }
-#header-status {
+.referral-page #header-status {
     font-size: 0.85rem;
     color: var(--text-muted);
 }
 
-/* ---------- Main ---------- */
-main {
+/* ---------- Main ----------
+   Previously bare `main` — set max-width/padding on every page. */
+.referral-page main {
     max-width: 800px;
     margin: 0 auto;
     padding: 1rem;
+    box-sizing: border-box;
 }
 
 /* ---------- Referral header ---------- */
-.referral-header { margin-bottom: 2rem; }
-.referral-header h2 {
+.referral-page .referral-header {
+    margin-bottom: 2rem;
+}
+.referral-page .referral-header h2 {
     font-size: 1.3rem;
     margin-bottom: 0.5rem;
 }
 
-.code-display {
+.referral-page .code-display {
     display: flex;
     align-items: center;
     gap: 0.75rem;
     flex-wrap: wrap;
     margin: 0.5rem 0;
 }
-.code-display .code {
+.referral-page .code-display .code {
     font-size: 1.5rem;
     font-weight: 700;
     background: var(--bg-secondary);
     padding: 0.5rem 1rem;
+    box-sizing: border-box;
     border-radius: var(--radius);
     border: 2px dashed var(--accent);
     letter-spacing: 2px;
     font-family: monospace;
 }
-.earn-info {
+.referral-page .earn-info {
     font-size: 1rem;
     color: var(--text-secondary);
     margin-top: 0.5rem;
 }
-.earn-info strong { color: var(--success); }
+.referral-page .earn-info strong {
+    color: var(--success);
+}
 
 /* ---------- Wallet section ---------- */
-.wallet-section { margin-bottom: 2rem; }
-.wallet-card {
+.referral-page .wallet-section {
+    margin-bottom: 2rem;
+}
+.referral-page .wallet-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 1.5rem;
+    box-sizing: border-box;
     box-shadow: var(--shadow-sm);
 }
-.wallet-balance {
+.referral-page .wallet-balance {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -88,34 +121,38 @@ main {
     border-bottom: 1px solid var(--border);
     margin-bottom: 1rem;
 }
-.wallet-balance .label {
+.referral-page .wallet-balance .label {
     font-size: 1rem;
     color: var(--text-secondary);
 }
-.wallet-balance .amount {
+.referral-page .wallet-balance .amount {
     font-size: 2rem;
     font-weight: 700;
     color: var(--accent);
 }
-.wallet-stats {
+
+/* Rule 2: min(Npx, 100%) guard on grid track */
+.referral-page .wallet-stats {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100px, 100%), 1fr));
     gap: 1rem;
     margin-bottom: 1rem;
 }
-.stat { text-align: center; }
-.stat .stat-label {
+.referral-page .stat {
+    text-align: center;
+}
+.referral-page .stat .stat-label {
     display: block;
     font-size: 0.75rem;
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
-.stat .stat-value {
+.referral-page .stat .stat-value {
     font-size: 1.25rem;
     font-weight: 600;
 }
-.withdraw-hint {
+.referral-page .withdraw-hint {
     font-size: 0.85rem;
     color: var(--text-muted);
     text-align: center;
@@ -123,22 +160,47 @@ main {
 }
 
 /* ---------- Referrals section ---------- */
-.referrals-section {
+.referral-page .referrals-section {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 1.5rem;
+    box-sizing: border-box;
     box-shadow: var(--shadow-sm);
 }
-.referrals-section h3 {
+.referral-page .referrals-section h3 {
     margin-bottom: 1rem;
     font-size: 1.1rem;
 }
-.referral-list {
+
+.referral-page .referral-list {
     max-height: 400px;
     overflow-y: auto;
+
+    /* Persistent scrollbar — Firefox */
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent) var(--bg-secondary);
+    scrollbar-gutter: stable;
+    overscroll-behavior: contain;
 }
-.referral-item {
+.referral-page .referral-list::-webkit-scrollbar {
+    width: 10px;
+}
+.referral-page .referral-list::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+.referral-page .referral-list::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    border-radius: 8px;
+    border: 2px solid var(--bg-secondary);
+    min-height: 40px;
+}
+.referral-page .referral-list::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-dark);
+}
+
+.referral-page .referral-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -147,71 +209,103 @@ main {
     flex-wrap: wrap;
     gap: 0.5rem;
 }
-.referral-item:last-child { border-bottom: none; }
-.referral-item.active {
+.referral-page .referral-item:last-child {
+    border-bottom: none;
+}
+.referral-page .referral-item.active {
     border-left: 3px solid var(--success);
     padding-left: 0.75rem;
 }
-.ref-info  { display: flex; flex-direction: column; }
-.ref-name  { font-weight: 500; }
-.ref-email { font-size: 0.8rem; color: var(--text-muted); }
-.ref-status { font-size: 0.8rem; color: var(--text-secondary); }
-.ref-date   { font-size: 0.7rem; color: var(--text-muted); }
+.referral-page .ref-info  {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.referral-page .ref-name  { font-weight: 500; }
+.referral-page .ref-email {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+.referral-page .ref-status {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+.referral-page .ref-date   {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+}
 
 /* ---------- Agent badge / become agent ---------- */
-.agent-badge {
-    background: rgba(245, 158, 11, 0.15);
+.referral-page .agent-badge {
+    background: rgba(var(--warning-rgb), 0.15);
     border: 1px solid var(--warning);
     border-radius: var(--radius);
     padding: 0.75rem 1rem;
+    box-sizing: border-box;
     margin-top: 1.5rem;
     text-align: center;
     color: var(--text-secondary);
 }
-.become-agent {
+.referral-page .become-agent {
     margin-top: 1.5rem;
     padding: 1rem;
+    box-sizing: border-box;
     background: var(--bg-secondary);
     border-radius: var(--radius);
     text-align: center;
     border: 1px dashed var(--border);
 }
-.become-agent a {
+.referral-page .become-agent a {
     color: var(--accent);
     font-weight: 600;
     text-decoration: none;
 }
-.become-agent a:hover { text-decoration: underline; }
+.referral-page .become-agent a:hover {
+    text-decoration: underline;
+}
 
 /* ---------- Withdrawal status ---------- */
-.withdraw-status {
+.referral-page .withdraw-status {
     margin-top: 0.75rem;
     padding: 0.5rem;
+    box-sizing: border-box;
     border-radius: var(--radius-sm);
     font-size: 0.9rem;
 }
-.withdraw-status.success { background: rgba(16, 185, 129, 0.2); color: var(--success); }
-.withdraw-status.error   { background: rgba(239, 68, 68, 0.2);  color: var(--danger);  }
-.withdraw-status.info    { background: rgba(37, 99, 235, 0.2);  color: var(--accent);  }
+.referral-page .withdraw-status.success {
+    background: rgba(var(--success-rgb), 0.2);
+    color: var(--success);
+}
+.referral-page .withdraw-status.error {
+    background: rgba(var(--danger-rgb), 0.2);
+    color: var(--danger);
+}
+.referral-page .withdraw-status.info {
+    background: rgba(var(--accent-rgb), 0.2);
+    color: var(--accent);
+}
 
-/* ---------- No-data override ---------- */
-.no-data { padding: 1rem 0; }
+/* ---------- No-data override (scoped) ---------- */
+.referral-page .no-data {
+    padding: 1rem 0;
+}
 
 /* ---------- Error state ---------- */
-.error-state {
+.referral-page .error-state {
     text-align: center;
     padding: 3rem 1.5rem;
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
+    box-sizing: border-box;
 }
-.error-state p {
+.referral-page .error-state p {
     margin-bottom: 1rem;
     color: var(--text-secondary);
 }
 
 /* ---------- Action buttons row ---------- */
-.action-buttons {
+.referral-page .action-buttons {
     margin-top: 2rem;
     display: flex;
     gap: 1rem;
@@ -219,124 +313,172 @@ main {
     justify-content: center;
 }
 
-/* ---------- Modal (page-specific overrides) ----------
-   Common's .modal-overlay uses display: none (activated via .active/.show).
-   This page's modal is created on-demand by JS and expected to be visible
-   as soon as it's in the DOM. Force display: flex to match original. */
-.modal-overlay { display: flex; }
+/* ==========================================================================
+   MODAL — CRITICAL SCOPING FIX
+   The original had `.modal-overlay { display: flex }` at TOP LEVEL, which
+   forced EVERY modal on EVERY page to be visible as soon as referral.css
+   loaded (overriding common's `.modal-overlay { display: none }`).
 
-/* Modal body internals — not in common */
-.modal-body .form-group { margin-bottom: 1rem; }
-.modal-body .form-group label {
+   The JS creates this page's modal on-demand and expects it to display
+   immediately (no .active class added). To preserve that behavior while
+   preventing the cross-page leak:
+
+   - `.referral-page .modal-overlay` handles modals appended inside the
+     section.
+   - `body:has(.referral-page) > .modal-overlay` handles modals appended
+     directly to <body> by JS (the pattern notes-ui.js uses).
+
+   Both selectors only apply while .referral-page is mounted. When the
+   page unmounts, other pages' modals work normally again.
+   ========================================================================== */
+.referral-page .modal-overlay,
+body:has(.referral-page) > .modal-overlay {
+    display: flex;
+}
+
+/* Modal body internals — scoped to referral page modals only */
+.referral-page .modal-body .form-group,
+body:has(.referral-page) > .modal-overlay .modal-body .form-group {
+    margin-bottom: 1rem;
+}
+.referral-page .modal-body .form-group label,
+body:has(.referral-page) > .modal-overlay .modal-body .form-group label {
     display: block;
     font-weight: 500;
     margin-bottom: 0.3rem;
     font-size: 0.9rem;
 }
-.modal-body .form-group input {
+.referral-page .modal-body .form-group input,
+body:has(.referral-page) > .modal-overlay .modal-body .form-group input {
     width: 100%;
     padding: 0.5rem;
+    box-sizing: border-box;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     background: var(--bg-card);
     color: var(--text-primary);
 }
 
+/* Modal responsive — scoped */
+@media (max-width: 640px) {
+    .referral-page .modal,
+    body:has(.referral-page) > .modal-overlay .modal {
+        margin: 1rem;
+        padding: 1rem;
+    }
+}
+
 /* ================================================================
-   SHIMMER SKELETON
+   SHIMMER SKELETON — Rule 7 compliant
+   Consumes standard --shimmer-base / --shimmer-highlight tokens.
+   Keyframe namespaced referral-shimmer.
    ================================================================ */
-.shimmer-overlay {
+.referral-page .shimmer-overlay {
     position: fixed;
     inset: 0;
-    background: var(--bg-primary, #121212);
+    background: var(--bg-primary);
     z-index: 9999;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     padding: 1.5rem;
+    box-sizing: border-box;
     transition: opacity 0.3s ease;
 }
-/* Block common's `.hidden { display: none !important }` so the fade plays. */
-.shimmer-overlay.hidden {
+/* Block common's .hidden { display: none !important } so the fade plays. */
+.referral-page .shimmer-overlay.hidden {
     display: flex !important;
     opacity: 0;
     pointer-events: none;
 }
 
-.shimmer-grid {
+.referral-page .shimmer-grid {
     width: 100%;
     max-width: 600px;
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
+    box-sizing: border-box;
 }
-.shimmer-card {
-    background: var(--bg-secondary, #1e1e1e);
+.referral-page .shimmer-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
     border-radius: var(--radius, 12px);
     padding: 1.5rem;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-    animation: shimmer-pulse 1.5s ease-in-out infinite;
+    box-sizing: border-box;
+    box-shadow: var(--shadow-sm);
 }
-.shimmer-line {
+.referral-page .shimmer-line {
     height: 14px;
-    background: var(--border, #2a2a2a);
     border-radius: 8px;
     margin-bottom: 0.75rem;
     width: 100%;
+    background: linear-gradient(
+        90deg,
+        var(--shimmer-base)      25%,
+        var(--shimmer-highlight) 50%,
+        var(--shimmer-base)      75%
+    );
+    background-size: 200% 100%;
+    animation: referral-shimmer 1.5s infinite linear;
 }
-.shimmer-line.short   { width: 40%; }
-.shimmer-line.medium  { width: 60%; }
-.shimmer-line.large   { width: 80%; }
-.shimmer-line:last-child { margin-bottom: 0; }
+.referral-page .shimmer-line.short   { width: 40%; }
+.referral-page .shimmer-line.medium  { width: 60%; }
+.referral-page .shimmer-line.large   { width: 80%; }
+.referral-page .shimmer-line:last-child { margin-bottom: 0; }
 
-/* Page-specific keyframe (different from common's shimmer). */
-@keyframes shimmer-pulse {
-    0%   { opacity: 0.6; }
-    50%  { opacity: 1;   }
-    100% { opacity: 0.6; }
+@keyframes referral-shimmer {
+    0%   { background-position:  200% 0; }
+    100% { background-position: -200% 0; }
 }
 
-.shimmer-overlay .shimmer-subtitle {
-    color: var(--text-muted, #888);
+@media (prefers-reduced-motion: reduce) {
+    .referral-page .shimmer-line {
+        animation: none;
+        background: var(--shimmer-base);
+    }
+}
+
+.referral-page .shimmer-overlay .shimmer-subtitle {
+    color: var(--text-muted);
     margin-top: 1rem;
     font-size: 0.9rem;
 }
 
-#main-content {
+/* Real-content gate — scoped */
+.referral-page #main-content {
     display: none;
     opacity: 0;
     transition: opacity 0.4s ease;
 }
-#main-content.show {
+.referral-page #main-content.show {
     display: block;
     opacity: 1;
 }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 640px) {
-    .code-display {
+    .referral-page .code-display {
         flex-direction: column;
         align-items: stretch;
     }
-    .code-display .code {
+    .referral-page .code-display .code {
         text-align: center;
         font-size: 1.2rem;
         padding: 0.4rem 0.8rem;
     }
-    .code-display .btn { width: 100%; }
-    .referral-item {
+    .referral-page .code-display .btn { width: 100%; }
+    .referral-page .referral-item {
         flex-direction: column;
         align-items: flex-start;
     }
-    .wallet-stats { grid-template-columns: 1fr 1fr; }
-    .wallet-balance {
+    .referral-page .wallet-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .referral-page .wallet-balance {
         flex-direction: column;
         text-align: center;
         gap: 0.5rem;
-    }
-    .modal {
-        margin: 1rem;
-        padding: 1rem;
     }
 }

@@ -1,130 +1,207 @@
 /* ==========================================================================
    SUBSCRIPTION — page-specific styles
-   Requires common.css (reset, tokens, buttons base, .hidden, keyframes
-   shimmer/spin, utilities).
+   Root wrapper: .subscription-page
+   (from <section class="page subscription-page">)
+
+   Requires common.css (reset, tokens, buttons base, .hidden, utilities,
+   --shimmer-base, --shimmer-highlight, --success-rgb, --danger-rgb).
+
    Original file duplicated the entire .sub-header block THREE times.
    This consolidation keeps one canonical copy of every rule.
+
+   7-RULE COMPLIANCE
+   Rule 1: every selector prefixed with .subscription-page (~75 selectors)
+           — including the previously-bare shared-class overrides
+           (.btn-text/.btn-outline/.btn-primary/.btn-secondary) and the
+           colliding top-level IDs (#shimmer-content / #real-content).
+   Rule 2: every grid template uses minmax with a 100%-cap floor guard
+           (minmax(min(Npx, 100%), 1fr) or repeat(2, minmax(0, 1fr))).
+   Rule 3: common's universal reset already handles box-sizing — no
+           redundant per-container declarations needed.
+   Rule 4: N/A (no viewport units).
+   Rule 5: .btn-* overrides, sub-header chrome, and all page-specific
+           classes scoped. Theme overrides via .dark-theme ancestor.
+   Rule 6: .sub-header overflow: visible (defensive for future dropdowns).
+   Rule 7: shimmer uses var(--shimmer-base) / var(--shimmer-highlight);
+           keyframe namespaced subscription-shimmer; reduced-motion guard.
+           NOTE: previous @keyframes shimmer no longer exists in common.css
+           — shimmer was DEAD. Fixed.
    ========================================================================== */
 
 /* ================================================================
    SHIMMER SKELETON
+   #shimmer-content / #real-content collide with payment, pdf-settings,
+   ai, subject-specific, and subjects pages (all use the same IDs at
+   section level). Scoped here.
    ================================================================ */
-#shimmer-content { display: block; }
-#real-content    { display: none; }
+.subscription-page #shimmer-content { display: block; }
+.subscription-page #real-content    { display: none; }
 
-.shimmer-header {
+.subscription-page .shimmer-header {
     padding: 0.5rem 1rem;
-    background: #1e1e2f;
-    border-bottom: 1px solid #333;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
 }
-.shimmer-header-top,
-.shimmer-header-bottom {
+.subscription-page .shimmer-header-top,
+.subscription-page .shimmer-header-bottom {
     display: flex;
     justify-content: space-between;
     align-items: center;
 }
-.shimmer-header-bottom { margin-top: 0.5rem; }
+.subscription-page .shimmer-header-bottom { margin-top: 0.5rem; }
 
-.shimmer-logo {
+.subscription-page .shimmer-logo {
     display: flex;
     align-items: center;
     gap: 0.5rem;
 }
-.shimmer-logo-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 6px;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
+
+/* Shared shimmer background helper (applied to every skeleton block) */
+.subscription-page .shimmer-logo-icon,
+.subscription-page .shimmer-logo-text,
+.subscription-page .shimmer-btn-sm,
+.subscription-page .shimmer-title-large,
+.subscription-page .shimmer-status,
+.subscription-page .shimmer-line,
+.subscription-page .shimmer-btn,
+.subscription-page .shimmer-banner,
+.subscription-page .shimmer-payment-info,
+.subscription-page .shimmer-device-chip {
+    background: linear-gradient(
+        90deg,
+        var(--shimmer-base)      25%,
+        var(--shimmer-highlight) 50%,
+        var(--shimmer-base)      75%
+    );
     background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
-}
-.shimmer-logo-text {
-    width: 80px;
-    height: 20px;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
-    border-radius: 4px;
-}
-.shimmer-btn-sm {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
-    display: inline-block;
-}
-.shimmer-title-large {
-    height: 28px;
-    width: 200px;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
-    border-radius: 4px;
-}
-.shimmer-status {
-    height: 28px;
-    width: 140px;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
+    animation: subscription-shimmer 1.5s infinite linear;
     border-radius: 4px;
 }
 
-.shimmer-grid {
+@keyframes subscription-shimmer {
+    0%   { background-position: -200px 0; }
+    100% { background-position: calc(200px + 100%) 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .subscription-page .shimmer-logo-icon,
+    .subscription-page .shimmer-logo-text,
+    .subscription-page .shimmer-btn-sm,
+    .subscription-page .shimmer-title-large,
+    .subscription-page .shimmer-status,
+    .subscription-page .shimmer-line,
+    .subscription-page .shimmer-btn,
+    .subscription-page .shimmer-banner,
+    .subscription-page .shimmer-payment-info,
+    .subscription-page .shimmer-device-chip {
+        animation: none;
+        background: var(--shimmer-base);
+    }
+}
+
+.subscription-page .shimmer-logo-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
+}
+.subscription-page .shimmer-logo-text {
+    width: 80px;
+    height: 20px;
+}
+.subscription-page .shimmer-btn-sm {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: inline-block;
+}
+.subscription-page .shimmer-title-large {
+    height: 28px;
+    width: 200px;
+}
+.subscription-page .shimmer-status {
+    height: 28px;
+    width: 140px;
+}
+
+/* Rule 2: min(260px, 100%) prevents horizontal overflow on ultra-narrow
+   viewports (previously 260px forced overflow below that width). */
+.subscription-page .shimmer-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
     gap: 1.5rem;
     margin: 2rem 0;
 }
-.shimmer-plan-card {
-    background: #2a2a3e;
-    border: 1px solid #444;
+.subscription-page .shimmer-plan-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 1.5rem;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
 }
-.shimmer-line {
+.subscription-page .shimmer-line {
     height: 16px;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
-    border-radius: 4px;
 }
-.shimmer-title    { height: 24px; width: 60%; }
-.shimmer-price    { height: 32px; width: 40%; }
-.shimmer-duration { height: 18px; width: 50%; }
-.shimmer-feature  { height: 14px; width: 80%; }
-.shimmer-btn {
+.subscription-page .shimmer-title    { height: 24px; width: 60%; }
+.subscription-page .shimmer-price    { height: 32px; width: 40%; }
+.subscription-page .shimmer-duration { height: 18px; width: 50%; }
+.subscription-page .shimmer-feature  { height: 14px; width: 80%; }
+.subscription-page .shimmer-btn {
     height: 40px;
     width: 100%;
     border-radius: var(--radius-sm);
 }
 
-.shimmer-banner {
+/* Extra shimmer helpers referenced by section HTML but previously
+   undefined — they rendered as plain .shimmer-line at 100% width.
+   Added to make the shimmer layout match the real card structure. */
+.subscription-page .shimmer-period {
+    height: 12px;
+    width: 40%;
+    margin: 0 auto;
+}
+.subscription-page .shimmer-price-lg {
+    height: 32px;
+    width: 50%;
+    margin: 0 auto;
+}
+.subscription-page .shimmer-tagline {
+    height: 18px;
+    width: 70%;
+    margin: 0 auto;
+}
+.subscription-page .shimmer-device-label {
+    height: 12px;
+    width: 30%;
+    margin: 0.5rem 0 0.25rem;
+}
+.subscription-page .shimmer-device-row {
+    display: flex;
+    gap: 0.6rem;
+    margin-bottom: 0.5rem;
+}
+.subscription-page .shimmer-device-chip {
+    flex: 1;
+    height: 48px;
+    border-radius: var(--radius-sm);
+}
+
+.subscription-page .shimmer-banner {
     height: 60px;
     border-radius: var(--radius);
     margin-bottom: 2rem;
-    background: linear-gradient(90deg, #2a2a3e 25%, #444 50%, #2a2a3e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
 }
-.shimmer-payment-info {
+.subscription-page .shimmer-payment-info {
     height: 80px;
     border-radius: var(--radius);
     margin-top: 2rem;
-    background: linear-gradient(90deg, #2a2a3e 25%, #444 50%, #2a2a3e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
 }
 
 /* ================================================================
    STICKY HEADER — canonical single definition
    ================================================================ */
-.sub-header {
+.subscription-page .sub-header {
     position: sticky;
     top: 0;
     z-index: 50;
@@ -134,52 +211,56 @@
     margin-bottom: 0.5rem;
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
+    /* Rule 6: keep future dropdowns in the header unclipped */
+    overflow: visible;
 }
 
-.sub-header-top {
+.subscription-page .sub-header-top {
     display: flex;
     justify-content: space-between;
     align-items: center;
     flex-wrap: nowrap;
+    gap: 0.5rem;
 }
-.sub-header-top .left-group,
-.sub-header-top .right-group {
+.subscription-page .sub-header-top .left-group,
+.subscription-page .sub-header-top .right-group {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    min-width: 0;
 }
-.sub-header-top .right-group,
-.header-right {
+.subscription-page .sub-header-top .right-group,
+.subscription-page .header-right {
     flex-shrink: 0;
 }
-.header-right {
+.subscription-page .header-right {
     display: flex;
     align-items: center;
     gap: 0.75rem;
 }
 
-.sub-header-bottom {
+.subscription-page .sub-header-bottom {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-top: 0.3rem;
 }
-.sub-header-bottom h1 {
+.subscription-page .sub-header-bottom h1 {
     font-size: 1.4rem;
     margin: 0;
     color: var(--text-primary);
 }
 
-.status-area {
+.subscription-page .status-area {
     display: flex;
     align-items: center;
     gap: 0.75rem;
     font-size: 0.9rem;
     white-space: nowrap;
 }
-.status-area .status-text { color: var(--text-secondary); }
+.subscription-page .status-area .status-text { color: var(--text-secondary); }
 
-.trial-btn {
+.subscription-page .trial-btn {
     background: var(--accent);
     color: #fff;
     border: none;
@@ -190,10 +271,21 @@
     transition: background 0.2s;
     white-space: nowrap;
 }
-.trial-btn:hover { background: var(--accent-dark); }
+.subscription-page .trial-btn:hover { background: var(--accent-dark); }
 
-/* ---------- Button overrides ---------- */
-.btn-text {
+/* ================================================================
+   BUTTON OVERRIDES — SCOPED
+   CRITICAL FIX: the original file had bare `.btn-text`, `.btn-outline`,
+   `.btn-primary`, `.btn-secondary` overrides — these leaked to EVERY
+   page loaded after subscription.css:
+     • .btn-primary lost its common pill styling, became rectangular
+       with 0.75rem padding app-wide.
+     • .btn-secondary lost common's pill styling.
+     • .btn-text turned into a bordered box on every page's header.
+     • .btn-outline turned into the same bordered treatment.
+   Now scoped.
+   ================================================================ */
+.subscription-page .btn-text {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     color: var(--text-primary);
@@ -206,13 +298,13 @@
     white-space: nowrap;
     flex-shrink: 0;
 }
-.btn-text:hover:not(:disabled) {
+.subscription-page .btn-text:hover:not(:disabled) {
     background: var(--bg-card);
     border-color: var(--accent);
     color: var(--text-primary);
 }
 
-.btn-outline {
+.subscription-page .btn-outline {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     color: var(--text-primary);
@@ -223,14 +315,13 @@
     transition: var(--transition);
     flex-shrink: 0;
 }
-.btn-outline:hover:not(:disabled) {
+.subscription-page .btn-outline:hover:not(:disabled) {
     background: var(--bg-card);
     border-color: var(--accent);
     color: var(--text-primary);
 }
 
-/* ---------- Primary / secondary base overrides ---------- */
-.btn-primary {
+.subscription-page .btn-primary {
     background: var(--accent);
     color: #fff;
     border: none;
@@ -239,17 +330,17 @@
     font-weight: 600;
     cursor: pointer;
 }
-.btn-primary:hover:not(:disabled) { background: var(--accent-dark); }
+.subscription-page .btn-primary:hover:not(:disabled) { background: var(--accent-dark); }
 
-.btn-secondary {
+.subscription-page .btn-secondary {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     color: var(--text-primary);
 }
-.btn-secondary:hover:not(:disabled) { background: var(--bg-card); }
+.subscription-page .btn-secondary:hover:not(:disabled) { background: var(--bg-card); }
 
 /* ---------- Current-plan banner (hidden by default) ---------- */
-.current-plan-banner {
+.subscription-page .current-plan-banner {
     background: var(--bg-secondary);
     border-radius: var(--radius);
     padding: 1rem 1.5rem;
@@ -263,20 +354,20 @@
 /* ================================================================
    MAIN BODY
    ================================================================ */
-.main-body {
+.subscription-page .main-body {
     padding: 1.5rem 1rem;
     max-width: 1100px;
     margin: 0 auto;
 }
 
-.section-title {
+.subscription-page .section-title {
     font-size: 1.3rem;
     font-weight: 700;
     margin-bottom: 1.25rem;
     color: var(--text-primary);
     text-align: center;
 }
-.section-subtitle {
+.subscription-page .section-subtitle {
     font-size: 0.9rem;
     color: var(--text-muted);
     text-align: center;
@@ -285,13 +376,13 @@
 }
 
 /* ---------- Inline view switcher ---------- */
-.body-view {
+.subscription-page .body-view {
     display: none;
-    animation: fadeSlideIn 0.35s ease;
+    animation: subscription-fade-slide-in 0.35s ease;
 }
-.body-view.active { display: block; }
+.subscription-page .body-view.active { display: block; }
 
-@keyframes fadeSlideIn {
+@keyframes subscription-fade-slide-in {
     from { opacity: 0; transform: translateY(18px); }
     to   { opacity: 1; transform: translateY(0);    }
 }
@@ -299,14 +390,14 @@
 /* ================================================================
    PAYMENT METHOD OPTIONS
    ================================================================ */
-.payment-options {
+.subscription-page .payment-options {
     display: flex;
     flex-direction: column;
     gap: 0.85rem;
     max-width: 620px;
     margin: 0 auto;
 }
-.payment-option {
+.subscription-page .payment-option {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -317,26 +408,35 @@
     flex-direction: column;
     gap: 0.5rem;
 }
-.payment-option:hover {
+.subscription-page .payment-option:hover {
     border-color: var(--accent);
     background: var(--bg-card);
     transform: translateX(4px);
 }
-.payment-option .option-header {
+.subscription-page .payment-option .option-header {
     display: flex;
     align-items: center;
     gap: 1rem;
 }
-.payment-option .icon {
+.subscription-page .payment-option .icon {
     font-size: 1.8rem;
     width: 3rem;
     text-align: center;
     flex-shrink: 0;
 }
-.payment-option .text { flex: 1; }
-.payment-option .text .title { font-weight: 600; font-size: 1.05rem; }
-.payment-option .text .desc  { font-size: 0.85rem; color: var(--text-secondary); }
-.payment-option .badge {
+.subscription-page .payment-option .text {
+    flex: 1;
+    min-width: 0;
+}
+.subscription-page .payment-option .text .title {
+    font-weight: 600;
+    font-size: 1.05rem;
+}
+.subscription-page .payment-option .text .desc {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+.subscription-page .payment-option .badge {
     background: var(--accent);
     color: #fff;
     font-size: 0.7rem;
@@ -345,14 +445,14 @@
     font-weight: 600;
     flex-shrink: 0;
 }
-.payment-option.hidden { display: none; }
+.subscription-page .payment-option.hidden { display: none; }
 
-.trial-features {
+.subscription-page .trial-features {
     list-style: none;
     padding: 0;
     margin: 0.2rem 0 0 0;
 }
-.trial-features li {
+.subscription-page .trial-features li {
     font-size: 0.85rem;
     padding: 0.2rem 0;
     display: flex;
@@ -360,12 +460,12 @@
     gap: 0.4rem;
     color: var(--text-secondary);
 }
-.trial-features li::before {
+.subscription-page .trial-features li::before {
     content: "✓";
     color: var(--accent);
     font-weight: bold;
 }
-.trial-limitations {
+.subscription-page .trial-limitations {
     font-size: 0.75rem;
     color: var(--warning);
     margin-top: 0.4rem;
@@ -374,14 +474,15 @@
 /* ================================================================
    PLAN GRID + PLAN CARDS
    ================================================================ */
-.plan-grid {
+.subscription-page .plan-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    /* Rule 2 */
+    grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
     gap: 1.5rem;
     margin: 2rem 0;
-    align-items: stretch;   /* ensure custom card stretches to match */
+    align-items: stretch;
 }
-.plan-card {
+.subscription-page .plan-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -392,15 +493,15 @@
     display: flex;
     flex-direction: column;
 }
-.plan-card:hover {
+.subscription-page .plan-card:hover {
     transform: translateY(-4px);
     box-shadow: var(--shadow-lg);
 }
-.plan-card.popular {
+.subscription-page .plan-card.popular {
     border: 2px solid var(--accent);
-    box-shadow: 0 4px 12px rgba(79, 140, 255, 0.2);
+    box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.2);
 }
-.plan-card.popular::before {
+.subscription-page .plan-card.popular::before {
     content: "🔥 POPULAR";
     position: absolute;
     top: -12px;
@@ -414,34 +515,34 @@
     font-weight: 600;
     z-index: 2;
 }
-.plan-card.disabled {
+.subscription-page .plan-card.disabled {
     opacity: 0.6;
     pointer-events: none;
     cursor: not-allowed;
 }
 
 /* Legacy / custom-card typography still in use */
-.plan-card h3 {
+.subscription-page .plan-card h3 {
     margin-bottom: 0.5rem;
     font-size: 1.25rem;
 }
-.plan-card .price {
+.subscription-page .plan-card .price {
     font-size: 2rem;
     font-weight: 700;
     color: var(--accent);
     margin-bottom: 0.25rem;
 }
-.plan-card .duration {
+.subscription-page .plan-card .duration {
     color: var(--text-muted);
     margin-bottom: 1.5rem;
     font-size: 0.9rem;
 }
-.plan-card .features {
+.subscription-page .plan-card .features {
     list-style: none;
     margin-bottom: 1.5rem;
     flex: 1;
 }
-.plan-card .features li {
+.subscription-page .plan-card .features li {
     padding: 0.375rem 0;
     color: var(--text-secondary);
     font-size: 0.875rem;
@@ -449,20 +550,19 @@
     align-items: center;
     gap: 0.5rem;
 }
-.plan-card .features li::before {
+.subscription-page .plan-card .features li::before {
     content: "✓";
     color: var(--accent);
     font-weight: bold;
 }
-.plan-card .limitations {
+.subscription-page .plan-card .limitations {
     font-size: 0.75rem;
     color: var(--warning);
     margin-bottom: 1.5rem;
 }
 
-/* IMPORTANT: only direct-child <button> gets the plan CTA styling.
-   This prevents the rule from also styling .device-option buttons. */
-.plan-card > button {
+/* IMPORTANT: only direct-child <button> gets the plan CTA styling. */
+.subscription-page .plan-card > button {
     width: 100%;
     margin-top: auto;
     background: var(--accent);
@@ -475,14 +575,14 @@
     transition: var(--transition);
     pointer-events: auto;
 }
-.plan-card > button:hover { background: var(--accent-dark); }
-.plan-card > button.btn-secondary {
+.subscription-page .plan-card > button:hover { background: var(--accent-dark); }
+.subscription-page .plan-card > button.btn-secondary {
     background: transparent;
     color: var(--accent);
 }
 
 /* Custom amount card */
-.custom-card .price input {
+.subscription-page .custom-card .price input {
     width: 100%;
     padding: 0.5rem;
     border-radius: 6px;
@@ -492,30 +592,28 @@
     font-size: 1.2rem;
     text-align: center;
 }
-.custom-card .price input:focus {
+.subscription-page .custom-card .price input:focus {
     outline: none;
     border-color: var(--accent);
     box-shadow: none;
 }
-.custom-duration-preview {
+.subscription-page .custom-duration-preview {
     font-size: 0.85rem;
     color: var(--text-secondary);
     margin-top: 0.2rem;
 }
-.custom-duration-preview strong { color: var(--text-primary); }
+.subscription-page .custom-duration-preview strong { color: var(--text-primary); }
 
 /* ================================================================
    NEW DEVICE-AWARE PLAN CARD
-   (Monthly / Quarterly / Yearly)
    ================================================================ */
 
 /* --- Header (period label + price + tagline) --- */
-.plan-header {
+.subscription-page .plan-header {
     text-align: center;
     margin-bottom: 1rem;
 }
-
-.plan-period {
+.subscription-page .plan-period {
     font-size: 0.72rem;
     font-weight: 700;
     letter-spacing: 0.15em;
@@ -523,29 +621,25 @@
     margin: 0 0 0.5rem;
     text-transform: uppercase;
 }
-
-.plan-price-row {
+.subscription-page .plan-price-row {
     display: flex;
     align-items: baseline;
     justify-content: center;
     gap: 0.4rem;
     flex-wrap: wrap;
 }
-
-.plan-price {
+.subscription-page .plan-price {
     font-size: 2rem;
     font-weight: 800;
     color: var(--text-primary);
     line-height: 1.1;
 }
-
-.plan-price-suffix {
+.subscription-page .plan-price-suffix {
     font-size: 0.95rem;
     font-weight: 500;
     color: var(--text-muted);
 }
-
-.plan-tagline {
+.subscription-page .plan-tagline {
     font-size: 0.9rem;
     font-weight: 600;
     color: var(--text-secondary);
@@ -553,7 +647,7 @@
 }
 
 /* --- Feature checklist (new list styling) --- */
-.plan-features {
+.subscription-page .plan-features {
     list-style: none;
     padding: 0;
     margin: 0 0 1.25rem;
@@ -562,8 +656,7 @@
     gap: 0.45rem;
     flex: 1;
 }
-
-.plan-features li {
+.subscription-page .plan-features li {
     font-size: 0.875rem;
     color: var(--text-secondary);
     display: flex;
@@ -571,21 +664,21 @@
     gap: 0.4rem;
     line-height: 1.35;
 }
-
-.plan-features li::before {
+.subscription-page .plan-features li::before {
     content: "✓";
-    color: #16a34a;   /* green tick like the mock */
+    /* Green tick — matches the design mock. Uses --success for theme
+       consistency. (Was hardcoded #16a34a; equivalent green token.) */
+    color: var(--success);
     font-weight: 700;
     flex-shrink: 0;
 }
 
 /* --- USE ON selector --- */
-.device-selector {
+.subscription-page .device-selector {
     margin-top: 0.75rem;
     margin-bottom: 1rem;
 }
-
-.device-label {
+.subscription-page .device-label {
     font-size: 0.7rem;
     font-weight: 700;
     letter-spacing: 0.15em;
@@ -594,13 +687,15 @@
     text-transform: uppercase;
 }
 
-.device-options {
+/* Rule 2: minmax(0, 1fr) — long device labels could otherwise push
+   the columns wider than 50% each. */
+.subscription-page .device-options {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.6rem;
 }
 
-.device-option {
+.subscription-page .device-option {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -615,49 +710,42 @@
     font-family: inherit;
     color: inherit;
     width: 100%;
-    /* Reset any inherited button styles */
     box-shadow: none;
     margin: 0;
     line-height: 1.2;
 }
-
-.device-option:hover {
+.subscription-page .device-option:hover {
     border-color: var(--accent);
     background: var(--bg-card);
-    transform: none;   /* override .plan-card:hover on children */
+    transform: none;
 }
-
-.device-option.active {
+.subscription-page .device-option.active {
     border-color: var(--accent);
     background: color-mix(in srgb, var(--accent) 14%, transparent);
     box-shadow: 0 0 0 1px var(--accent);
 }
-
-.device-icon {
+.subscription-page .device-icon {
     font-size: 1.1rem;
     line-height: 1;
 }
-
-.device-name {
+.subscription-page .device-name {
     font-size: 0.7rem;
     font-weight: 700;
     letter-spacing: 0.05em;
     color: var(--text-primary);
     text-transform: uppercase;
 }
-
-.device-price {
+.subscription-page .device-price {
     font-size: 0.75rem;
     font-weight: 600;
     color: var(--text-secondary);
 }
-
-.device-option.active .device-price {
+.subscription-page .device-option.active .device-price {
     color: var(--text-primary);
 }
 
 /* --- Subscribe button (new plan cards only) --- */
-.plan-subscribe-btn {
+.subscription-page .plan-subscribe-btn {
     width: 100%;
     margin-top: auto;
     background: var(--accent);
@@ -670,15 +758,14 @@
     cursor: pointer;
     transition: var(--transition);
 }
-
-.plan-subscribe-btn:hover {
+.subscription-page .plan-subscribe-btn:hover {
     background: var(--accent-dark);
 }
 
 /* ================================================================
    C2B (M-PESA Buy Goods) INSTRUCTIONS + CLAIM FORM
    ================================================================ */
-.c2b-instructions {
+.subscription-page .c2b-instructions {
     background: var(--bg-secondary);
     border-radius: var(--radius);
     padding: 1.25rem;
@@ -686,9 +773,12 @@
     font-size: 0.95rem;
     max-width: 600px;
 }
-.c2b-instructions ol { margin: 0.5rem 0; padding-left: 1.25rem; }
-.c2b-instructions ol li { margin-bottom: 0.4rem; }
-.c2b-instructions .till-number {
+.subscription-page .c2b-instructions ol {
+    margin: 0.5rem 0;
+    padding-left: 1.25rem;
+}
+.subscription-page .c2b-instructions ol li { margin-bottom: 0.4rem; }
+.subscription-page .c2b-instructions .till-number {
     background: var(--bg-card);
     padding: 0.2rem 0.6rem;
     border-radius: 4px;
@@ -699,17 +789,17 @@
     display: inline-block;
 }
 
-.c2b-claim-form {
+.subscription-page .c2b-claim-form {
     max-width: 500px;
     margin: 0 auto;
 }
-.c2b-claim-form .form-group { margin-bottom: 1rem; }
-.c2b-claim-form .form-group label {
+.subscription-page .c2b-claim-form .form-group { margin-bottom: 1rem; }
+.subscription-page .c2b-claim-form .form-group label {
     display: block;
     font-weight: 500;
     margin-bottom: 0.25rem;
 }
-.c2b-claim-form .form-group input {
+.subscription-page .c2b-claim-form .form-group input {
     width: 100%;
     padding: 0.6rem 0.8rem;
     border-radius: var(--radius-sm);
@@ -718,31 +808,36 @@
     color: var(--text-primary);
     font-size: 1rem;
 }
-.c2b-claim-form .form-group input:focus {
+.subscription-page .c2b-claim-form .form-group input:focus {
     outline: none;
     border-color: var(--accent);
     box-shadow: none;
 }
-.c2b-claim-form .form-group .hint {
+.subscription-page .c2b-claim-form .form-group .hint {
     font-size: 0.8rem;
     color: var(--text-secondary);
     margin-top: 0.2rem;
 }
-.c2b-claim-form .btn-primary {
+.subscription-page .c2b-claim-form .btn-primary {
     width: 100%;
     padding: 0.75rem;
     font-weight: 600;
     font-size: 1rem;
 }
-.c2b-claim-form .btn-primary:disabled {
+.subscription-page .c2b-claim-form .btn-primary:disabled {
     opacity: 0.6;
     cursor: not-allowed;
 }
 
 /* ================================================================
    VERIFICATION STATUS
+   The original used Bootstrap-style hex greens/reds (#d4edda / #155724 /
+   #f8d7da / #721c24). Those are light-theme only — invisible or broken
+   in dark mode. Migrated to theme-aware tokens so both themes render
+   correctly. Visual in light mode is close (soft green/red tint with
+   readable foreground text).
    ================================================================ */
-.verification-status {
+.subscription-page .verification-status {
     margin-top: 1rem;
     padding: 0.75rem;
     border-radius: var(--radius-sm);
@@ -751,19 +846,19 @@
     margin-left: auto;
     margin-right: auto;
 }
-.verification-status.success {
+.subscription-page .verification-status.success {
     display: block;
-    background: #d4edda;
-    color: #155724;
-    border: 1px solid #c3e6cb;
+    background: rgba(var(--success-rgb), 0.15);
+    color: var(--success);
+    border: 1px solid rgba(var(--success-rgb), 0.3);
 }
-.verification-status.error {
+.subscription-page .verification-status.error {
     display: block;
-    background: #f8d7da;
-    color: #721c24;
-    border: 1px solid #f5c6cb;
+    background: rgba(var(--danger-rgb), 0.15);
+    color: var(--danger);
+    border: 1px solid rgba(var(--danger-rgb), 0.3);
 }
-.verification-status .close-status {
+.subscription-page .verification-status .close-status {
     float: right;
     background: var(--bg-card);
     border: none;
@@ -778,12 +873,12 @@
 /* ================================================================
    FOOTER — BACK BUTTON + PAYMENT INFO
    ================================================================ */
-.footer-back {
+.subscription-page .footer-back {
     margin-top: 1.5rem;
     display: flex;
     justify-content: center;
 }
-.inline-back-btn {
+.subscription-page .inline-back-btn {
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
@@ -797,13 +892,13 @@
     font-weight: 500;
     transition: var(--transition);
 }
-.inline-back-btn:hover {
+.subscription-page .inline-back-btn:hover {
     background: var(--bg-card);
     border-color: var(--accent);
     color: var(--text-primary);
 }
 
-.payment-info {
+.subscription-page .payment-info {
     margin-top: 2rem;
     padding: 1rem;
     background: var(--bg-secondary);
@@ -820,22 +915,26 @@
    RESPONSIVE
    ================================================================ */
 @media (max-width: 640px) {
-    .plan-grid { grid-template-columns: 1fr; }
-    .sub-header-bottom h1 { font-size: 1.2rem; }
-    .main-body { padding: 1rem 0.75rem; }
-    .sub-header-top {
+    /* Rule 2: minmax(0, 1fr) instead of bare 1fr — keeps long feature
+       text from forcing the column wider than 100%. */
+    .subscription-page .plan-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .subscription-page .sub-header-bottom h1 { font-size: 1.2rem; }
+    .subscription-page .main-body { padding: 1rem 0.75rem; }
+    .subscription-page .sub-header-top {
         flex-wrap: wrap;
         gap: 0.5rem;
     }
-    .status-area {
+    .subscription-page .status-area {
         font-size: 0.8rem;
         gap: 0.4rem;
     }
-    .trial-btn {
+    .subscription-page .trial-btn {
         padding: 0.25rem 0.6rem;
         font-size: 0.8rem;
     }
-    .current-plan-banner {
+    .subscription-page .current-plan-banner {
         flex-direction: column;
         align-items: flex-start;
     }
@@ -843,10 +942,10 @@
 
 /* Extra-small screens: tighten the device chips so 2 fit comfortably */
 @media (max-width: 400px) {
-    .device-option { padding: 0.6rem; gap: 0.25rem; }
-    .device-icon   { font-size: 1rem; }
-    .device-name   { font-size: 0.65rem; }
-    .device-price  { font-size: 0.7rem; }
-    .plan-price    { font-size: 1.75rem; }
-    .plan-price-suffix { font-size: 0.85rem; }
+    .subscription-page .device-option { padding: 0.6rem; gap: 0.25rem; }
+    .subscription-page .device-icon   { font-size: 1rem; }
+    .subscription-page .device-name   { font-size: 0.65rem; }
+    .subscription-page .device-price  { font-size: 0.7rem; }
+    .subscription-page .plan-price    { font-size: 1.75rem; }
+    .subscription-page .plan-price-suffix { font-size: 0.85rem; }
 }

@@ -1,115 +1,150 @@
 /* ==========================================================================
    AGENT TERMS — page-specific styles
+   Root wrapper: .agent-terms-page (from <section class="page agent-terms-page">)
    Requires common.css (tokens, header-row base, buttons, utilities).
    Adds ONLY: fixed header wrapper, TOC, long-form content, accept footer.
+
+   7-RULE COMPLIANCE
+   Rule 1 (Scoping):              Every selector prefixed with .agent-terms-page
+   Rule 2 (Grid Safety):          TOC grid uses minmax(min(180px, 100%), 1fr)
+                                  — never overflows; keeps 180px floor when space allows
+   Rule 3 (Box-Sizing):           Layout containers: width: 100%; box-sizing: border-box
+   Rule 4 (Viewport Trap):        No 100vw / 100vh
+   Rule 5 (Global Pollution):     No bare html/body/* selectors
+   Rule 6 (Overflow):             Sticky header overflow: visible; title truncation isolated
+   Rule 7 (Theme-Aware Shimmer):  N/A — no loaders on this page
    ========================================================================== */
 
-/* ---------- Page container override (common = 1200px) ---------- */
-.page-container {
+/* ---------- Page container override (common = 1200px) ----------
+   RULE 1 FIX: previously bare `.page-container { max-width: 900px }`
+   which silently overrode the shared 1200px container on every page
+   loaded after this CSS. Now scoped. */
+.agent-terms-page .page-container {
     max-width: 900px;
+    width: 100%;
+    box-sizing: border-box;
     margin: 0 auto;
     padding: 1rem 1.2rem 2rem;
 }
 
 /* ---------- Fixed header (sticky wrapper — .header-row* is in common) ---------- */
-.fixed-header {
+.agent-terms-page .fixed-header {
     position: sticky;
     top: 0;
     z-index: 100;
+    width: 100%;
+    box-sizing: border-box;
     background: var(--bg-card);
     border-bottom: 1px solid var(--border);
     padding: 0.5rem 1rem;
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
+    /* Rule 6: keep overflow visible so a future dropdown appended inside
+       the header (theme menu, avatar menu) can render outside its box.
+       Text truncation is handled at the .title-area level below. */
+    overflow: visible;
 }
 
 /* Page uses .title-area h1 + nested .sub — common only styles .page-title */
-.header-row.bottom .title-area h1 {
+.agent-terms-page .header-row.bottom .title-area {
+    min-width: 0;
+    overflow: hidden;
+}
+.agent-terms-page .header-row.bottom .title-area h1 {
     font-size: 1.3rem;
     margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
-.header-row.bottom .title-area .sub {
+.agent-terms-page .header-row.bottom .title-area .sub {
     font-size: 0.85rem;
     color: var(--text-muted);
     margin-left: 0.5rem;
 }
 
 /* ---------- Table of contents ---------- */
-.toc {
+.agent-terms-page .toc {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 1.2rem 1.5rem;
     margin: 2rem 0 2.5rem;
+    box-sizing: border-box;
 }
-.toc h2 {
+.agent-terms-page .toc h2 {
     font-size: 1.1rem;
     margin-top: 0;
     margin-bottom: 0.75rem;
 }
-.toc ul {
+.agent-terms-page .toc ul {
     list-style: none;
     padding: 0;
     margin: 0;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    /* Rule 2: min(180px, 100%) keeps the 180px card floor when space
+       allows, but caps it to container width on ultra-narrow viewports
+       so the track can never force horizontal overflow. */
+    grid-template-columns: repeat(auto-fill, minmax(min(180px, 100%), 1fr));
     gap: 0.4rem 1rem;
 }
-.toc li {
+.agent-terms-page .toc li {
     font-size: 0.9rem;
+    min-width: 0;
 }
-.toc a {
+.agent-terms-page .toc a {
     color: var(--accent);
     text-decoration: none;
     transition: color 0.2s;
 }
-.toc a:hover {
+.agent-terms-page .toc a:hover {
     text-decoration: underline;
     color: var(--accent-dark);
 }
 
 /* ---------- Long-form terms content ---------- */
-.terms-content h2 {
+.agent-terms-page .terms-content h2 {
     font-size: 1.4rem;
     margin-top: 2.5rem;
     margin-bottom: 0.75rem;
     padding-bottom: 0.3rem;
     border-bottom: 1px solid var(--border);
 }
-.terms-content h3 {
+.agent-terms-page .terms-content h3 {
     font-size: 1.1rem;
     margin-top: 1.8rem;
     margin-bottom: 0.4rem;
 }
-.terms-content p,
-.terms-content li {
+.agent-terms-page .terms-content p,
+.agent-terms-page .terms-content li {
     line-height: 1.6;
     color: var(--text-secondary);
 }
-.terms-content ul,
-.terms-content ol {
+.agent-terms-page .terms-content ul,
+.agent-terms-page .terms-content ol {
     padding-left: 1.5rem;
     margin-bottom: 1rem;
 }
-.terms-content li {
+.agent-terms-page .terms-content li {
     margin-bottom: 0.3rem;
 }
-.terms-content strong {
+.agent-terms-page .terms-content strong {
     color: var(--text-primary);
 }
-.terms-content .highlight-box {
+.agent-terms-page .terms-content .highlight-box {
     background: var(--bg-secondary);
     border-left: 4px solid var(--accent);
     padding: 1rem 1.2rem;
     border-radius: 0 var(--radius) var(--radius) 0;
     margin: 1.5rem 0;
+    box-sizing: border-box;
 }
-.terms-content .highlight-box p:last-child {
+.agent-terms-page .terms-content .highlight-box p:last-child {
     margin-bottom: 0;
 }
 
 /* ---------- Accept / back footer ---------- */
-.accept-section {
+.agent-terms-page .accept-section {
     margin-top: 3rem;
     padding-top: 1.5rem;
     border-top: 1px solid var(--border);
@@ -118,8 +153,9 @@
     align-items: center;
     flex-wrap: wrap;
     gap: 1rem;
+    box-sizing: border-box;
 }
-.accept-section .btn-primary {
+.agent-terms-page .accept-section .btn-primary {
     padding: 0.75rem 2.5rem;
     font-weight: 600;
     border-radius: 30px;
@@ -129,10 +165,10 @@
     cursor: pointer;
     transition: background 0.2s;
 }
-.accept-section .btn-primary:hover {
+.agent-terms-page .accept-section .btn-primary:hover {
     background: var(--accent-dark);
 }
-.accept-section .btn-secondary {
+.agent-terms-page .accept-section .btn-secondary {
     padding: 0.75rem 1.5rem;
     font-weight: 500;
     border-radius: 30px;
@@ -142,31 +178,38 @@
     cursor: pointer;
     transition: background 0.2s;
 }
-.accept-section .btn-secondary:hover {
+.agent-terms-page .accept-section .btn-secondary:hover {
     background: var(--bg-secondary);
 }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 640px) {
-    .page-container {
+    .agent-terms-page .page-container {
         padding: 0.8rem 0.8rem 1.5rem;
     }
-    .toc ul {
-        grid-template-columns: 1fr;
+    .agent-terms-page .toc ul {
+        /* Rule 2: single-column tracks now explicitly minmax(0, 1fr). */
+        grid-template-columns: minmax(0, 1fr);
     }
-    .accept-section {
+    .agent-terms-page .accept-section {
         flex-direction: column;
         align-items: stretch;
     }
-    .accept-section .btn-primary,
-    .accept-section .btn-secondary {
+    .agent-terms-page .accept-section .btn-primary,
+    .agent-terms-page .accept-section .btn-secondary {
         width: 100%;
         text-align: center;
     }
-    .header-row.bottom .title-area h1 {
+    /* Header title stacks on mobile so .sub can sit on its own line.
+       Reset truncation so the block-displayed .sub doesn't inherit
+       nowrap from h1 (white-space is inherited). */
+    .agent-terms-page .header-row.bottom .title-area h1 {
         font-size: 1.1rem;
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
     }
-    .header-row.bottom .title-area .sub {
+    .agent-terms-page .header-row.bottom .title-area .sub {
         display: block;
         margin-left: 0;
         font-size: 0.75rem;

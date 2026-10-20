@@ -1,18 +1,29 @@
 /* ==========================================================================
    EXAM ROOM — page-specific styles
-   Requires common.css (tokens, reset, body base, buttons, badge, progress-bar,
-   modal-overlay, hidden, keyframes slideDown/spin/shimmer).
-   Contains THREE modes: standard exam, revision, and shared challenge.
+   Root wrapper: .exam-room-page (from <section class="page exam-room-page">)
+   Requires common.css. Contains THREE modes: standard exam, revision,
+   and shared challenge.
+
+   7-RULE COMPLIANCE
+   Rule 1: every selector prefixed with .exam-room-page.
+   Rule 2: no grids on this page.
+   Rule 3: layout containers have box-sizing: border-box.
+   Rule 4: 100dvh fallback wherever 100vh was used.
+   Rule 5: body override via :has(.exam-room-page); shared classes scoped.
+   Rule 6: overflow patterns preserved (attach/dropdown overlays intact).
+   Rule 7: shimmer uses var(--shimmer-base)/(--highlight) with namespaced
+           @keyframes exam-room-shimmer; no raw colors in loader rules.
    ========================================================================== */
 
-/* ---------- Body override — fixed-viewport exam shell ---------- */
-body {
+/* ---------- Body override — only while exam room is mounted ---------- */
+body:has(.exam-room-page) {
     height: 100vh;
+    height: 100dvh;
     overflow: hidden;
 }
 
-/* ---------- Shared badge override (wider than common's) ---------- */
-.badge {
+/* ---------- Shared-component overrides (scoped) ---------- */
+.exam-room-page .badge {
     background: var(--bg-secondary);
     padding: 0.25rem 0.75rem;
     border-radius: 9999px;
@@ -22,45 +33,46 @@ body {
     border: 1px solid var(--border);
 }
 
-/* ---------- Shared btn-icon override ---------- */
-.btn-icon {
+.exam-room-page .btn-icon {
     color: var(--text-secondary);
     font-size: 1.25rem;
     border-radius: 50%;
 }
-.btn-icon:hover { background: var(--border); }
+.exam-room-page .btn-icon:hover { background: var(--border); }
 
-/* ---------- Shared progress-bar override (adds spacing) ---------- */
-.progress-bar { margin-bottom: 0.5rem; }
+.exam-room-page .progress-bar { margin-bottom: 0.5rem; }
 
 /* ================================================================
    STANDARD MODE
    ================================================================ */
-.exam-container {
+.exam-room-page .exam-container {
     display: flex;
     flex-direction: column;
     height: 100vh;
+    height: 100dvh;
     overflow: hidden;
     background: var(--bg-primary);
+    box-sizing: border-box;
 }
 
-.exam-header {
+.exam-room-page .exam-header {
     background: var(--bg-card);
     border-bottom: 2px solid var(--border);
     padding: 0.75rem 1.5rem;
+    box-sizing: border-box;
     display: flex;
     justify-content: space-between;
     align-items: center;
     flex-shrink: 0;
 }
 
-.header-left { display: flex; align-items: center; gap: 1rem; }
-.logo-small { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; }
-.logo-small img { width: 32px; height: 32px; }
-.exam-meta { display: flex; gap: 0.5rem; }
+.exam-room-page .header-left { display: flex; align-items: center; gap: 1rem; min-width: 0; }
+.exam-room-page .logo-small { display: flex; align-items: center; gap: 0.5rem; font-weight: 600; }
+.exam-room-page .logo-small img { width: 32px; height: 32px; flex-shrink: 0; }
+.exam-room-page .exam-meta { display: flex; gap: 0.5rem; }
 
-.header-center { flex: 1; display: flex; justify-content: center; }
-.timer {
+.exam-room-page .header-center { flex: 1; display: flex; justify-content: center; }
+.exam-room-page .timer {
     font-size: 1.5rem;
     font-weight: 700;
     padding: 0.5rem 1.5rem;
@@ -69,42 +81,43 @@ body {
     text-align: center;
     transition: background 0.3s, color 0.3s;
 }
-.timer.green  { background: var(--success); color: #fff; }
-.timer.yellow { background: var(--warning); color: #fff; }
-.timer.red    { background: var(--danger);  color: #fff; }
-.timer.flash  { animation: flash 1s infinite; }
+.exam-room-page .timer.green  { background: var(--success); color: #fff; }
+.exam-room-page .timer.yellow { background: var(--warning); color: #fff; }
+.exam-room-page .timer.red    { background: var(--danger);  color: #fff; }
+.exam-room-page .timer.flash  { animation: exam-room-timer-flash 1s infinite; }
 
-@keyframes flash {
+@keyframes exam-room-timer-flash {
     0%, 100% { opacity: 1;   }
     50%      { opacity: 0.5; }
 }
 
-.header-right { display: flex; gap: 0.5rem; align-items: center; }
+.exam-room-page .header-right { display: flex; gap: 0.5rem; align-items: center; }
 
-.exam-main { display: flex; flex: 1; overflow: hidden; }
+.exam-room-page .exam-main { display: flex; flex: 1; overflow: hidden; min-height: 0; }
 
-.question-section {
+.exam-room-page .question-section {
     flex: 0 0 90%;
     display: flex;
     flex-direction: column;
     padding: 1.5rem;
+    box-sizing: border-box;
     overflow-y: auto;
     border-right: 2px solid var(--border);
     background: var(--bg-primary);
 }
-.question-header {
+.exam-room-page .question-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 1.5rem;
 }
-#q-counter-std {
+.exam-room-page #q-counter-std {
     font-weight: 600;
     color: var(--accent);
     font-size: 1.1rem;
 }
 
-.btn-flag {
+.exam-room-page .btn-flag {
     background: transparent;
     border: 1px solid var(--border);
     border-radius: 9999px;
@@ -113,21 +126,21 @@ body {
     cursor: pointer;
     transition: all 0.2s;
 }
-.btn-flag.flagged {
+.exam-room-page .btn-flag.flagged {
     background: var(--warning);
     color: #fff;
     border-color: var(--warning);
 }
 
-.question-content { flex: 1; overflow-y: auto; }
-.question-text {
+.exam-room-page .question-content { flex: 1; overflow-y: auto; }
+.exam-room-page .question-text {
     font-size: 1.25rem;
     font-weight: 500;
     margin-bottom: 1.5rem;
     line-height: 1.6;
 }
-.question-image { margin-bottom: 1.5rem; text-align: center; }
-.question-image img {
+.exam-room-page .question-image { margin-bottom: 1.5rem; text-align: center; }
+.exam-room-page .question-image img {
     max-width: 100%;
     max-height: 300px;
     border: 1px solid var(--border);
@@ -135,10 +148,15 @@ body {
     box-shadow: var(--shadow-sm);
 }
 
-.answer-list { list-style: none; margin: 1rem 0 0 0; padding: 0; width: 100%; }
-.answer-list li { margin-bottom: 0.75rem; width: 100%; }
+.exam-room-page .answer-list {
+    list-style: none;
+    margin: 1rem 0 0 0;
+    padding: 0;
+    width: 100%;
+}
+.exam-room-page .answer-list li { margin-bottom: 0.75rem; width: 100%; }
 
-.option-item {
+.exam-room-page .option-item {
     display: flex;
     align-items: center;
     padding: 0.75rem 1rem 0.75rem 0.5rem;
@@ -148,25 +166,26 @@ body {
     transition: all 0.2s;
     background: var(--bg-card);
     width: 100%;
+    box-sizing: border-box;
     text-align: left;
     justify-content: flex-start;
 }
-.option-item:hover {
+.exam-room-page .option-item:hover {
     background: var(--bg-secondary);
     border-color: var(--accent);
 }
-.option-item.selected {
-    background: rgba(37, 99, 235, 0.1);
+.exam-room-page .option-item.selected {
+    background: rgba(var(--accent-rgb), 0.1);
     border-color: var(--accent);
     border-width: 2px;
 }
-.option-item input[type="radio"] {
+.exam-room-page .option-item input[type="radio"] {
     margin: 0 0.5rem 0 0;
     accent-color: var(--accent);
     transform: scale(1.1);
     flex-shrink: 0;
 }
-.option-letter {
+.exam-room-page .option-letter {
     font-weight: 700;
     width: 2rem;
     height: 2rem;
@@ -179,15 +198,16 @@ body {
     border: 1px solid var(--border);
     flex-shrink: 0;
 }
-.option-text {
+.exam-room-page .option-text {
     flex: 1;
+    min-width: 0;
     color: var(--text-primary);
     text-align: left;
     word-break: break-word;
     white-space: normal;
 }
 
-.question-footer {
+.exam-room-page .question-footer {
     display: flex;
     justify-content: space-between;
     margin-top: 2rem;
@@ -195,17 +215,18 @@ body {
     border-top: 1px solid var(--border);
 }
 
-.nav-sidebar {
+.exam-room-page .nav-sidebar {
     flex: 0 0 10%;
     display: flex;
     flex-direction: column;
     background: var(--bg-secondary);
     border-left: 1px solid var(--border);
     padding: 1rem 0.5rem;
+    box-sizing: border-box;
     overflow-y: auto;
 }
-.nav-controls { display: flex; flex-direction: column; gap: 0.5rem; flex: 1; }
-.btn-nav {
+.exam-room-page .nav-controls { display: flex; flex-direction: column; gap: 0.5rem; flex: 1; }
+.exam-room-page .btn-nav {
     width: 100%;
     padding: 0.75rem;
     background: var(--bg-card);
@@ -215,12 +236,12 @@ body {
     cursor: pointer;
     transition: background 0.2s;
 }
-.btn-nav:hover {
+.exam-room-page .btn-nav:hover {
     background: var(--accent);
     color: #fff;
     border-color: var(--accent);
 }
-.question-grid {
+.exam-room-page .question-grid {
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
@@ -229,7 +250,7 @@ body {
     overflow-y: auto;
     padding-right: 0.25rem;
 }
-.q-btn {
+.exam-room-page .q-btn {
     width: 100%;
     aspect-ratio: 1 / 1;
     border: 1px solid var(--border);
@@ -243,13 +264,13 @@ body {
     cursor: pointer;
     transition: all 0.2s;
 }
-.q-btn.current  { background: var(--accent);  color: #fff; border-color: var(--accent);  transform: scale(1.02); }
-.q-btn.answered { background: var(--success); color: #fff; border-color: var(--success); }
-.q-btn.flagged  { background: var(--warning); color: #fff; border-color: var(--warning); }
-.q-btn.visited  { background: var(--bg-secondary); border-color: var(--border-dark); }
-.q-btn.unseen   { background: var(--bg-card); }
+.exam-room-page .q-btn.current  { background: var(--accent);  color: #fff; border-color: var(--accent);  transform: scale(1.02); }
+.exam-room-page .q-btn.answered { background: var(--success); color: #fff; border-color: var(--success); }
+.exam-room-page .q-btn.flagged  { background: var(--warning); color: #fff; border-color: var(--warning); }
+.exam-room-page .q-btn.visited  { background: var(--bg-secondary); border-color: var(--border-dark); }
+.exam-room-page .q-btn.unseen   { background: var(--bg-card); }
 
-.btn-submit {
+.exam-room-page .btn-submit {
     width: 100%;
     background: var(--danger);
     color: #fff;
@@ -261,21 +282,22 @@ body {
     cursor: pointer;
     transition: background 0.2s;
 }
-.btn-submit:hover { background: var(--danger-dark); }
+.exam-room-page .btn-submit:hover { background: var(--danger-dark); }
 
-.exam-footer {
+.exam-room-page .exam-footer {
     background: var(--bg-card);
     border-top: 2px solid var(--border);
     padding: 0.75rem 1.5rem;
+    box-sizing: border-box;
     flex-shrink: 0;
 }
-.progress-stats {
+.exam-room-page .progress-stats {
     font-size: 0.875rem;
     color: var(--text-muted);
     text-align: right;
     margin-bottom: 0.5rem;
 }
-.legend {
+.exam-room-page .legend {
     display: flex;
     flex-wrap: wrap;
     gap: 1.5rem;
@@ -286,32 +308,31 @@ body {
     font-size: 0.8rem;
     color: var(--text-secondary);
 }
-.legend-item { display: flex; align-items: center; gap: 0.5rem; }
-.legend .dot {
+.exam-room-page .legend-item { display: flex; align-items: center; gap: 0.5rem; }
+.exam-room-page .legend .dot {
     width: 16px;
     height: 16px;
     border-radius: 4px;
     display: inline-block;
 }
-.dot.answered { background: var(--success); }
-.dot.flagged  { background: var(--warning); }
-.dot.current  { background: var(--accent);  }
-.dot.unseen   { background: var(--bg-card); border: 1px solid var(--border); }
+.exam-room-page .dot.answered { background: var(--success); }
+.exam-room-page .dot.flagged  { background: var(--warning); }
+.exam-room-page .dot.current  { background: var(--accent);  }
+.exam-room-page .dot.unseen   { background: var(--bg-card); border: 1px solid var(--border); }
 
-.distraction-free .nav-sidebar { display: none; }
-.distraction-free .question-section {
+.exam-room-page .distraction-free .nav-sidebar { display: none; }
+.exam-room-page .distraction-free .question-section {
     flex: 0 0 100%;
     border-right: none;
 }
 
 /* ================================================================
    SHARED — question navigator + dash progress
-   Used by revision mode and shared-challenge mode.
    ================================================================ */
-.question-navigator {
+.exam-room-page .question-navigator {
     background: var(--bg-card);
     border-bottom: 1px solid var(--border);
-    padding: 12px 32px 12px 16px;   /* extra right padding keeps dashes off scrollbar */
+    padding: 12px 32px 12px 16px;
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
@@ -319,9 +340,10 @@ body {
     position: sticky;
     top: 0;
     z-index: 9;
+    box-sizing: border-box;
 }
 
-.dash-progress {
+.exam-room-page .dash-progress {
     display: flex;
     gap: 8px;
     align-items: center;
@@ -330,7 +352,7 @@ body {
     padding: 4px 2px 6px;
     width: 100%;
 }
-.dash {
+.exam-room-page .dash {
     height: 6px;
     border-radius: 3px;
     background: var(--border-dark);
@@ -339,37 +361,40 @@ body {
     flex-shrink: 0;
     width: 14px;
 }
-.dash.answered   { background: var(--success); }
-.dash.flagged    { background: var(--warning); }
-.dash.current    { background: var(--accent); width: 24px; border-radius: 3px; }
-.dash.unanswered { background: var(--border-dark); }
-.dash:hover      { opacity: 0.8; transform: scaleY(1.8); }
+.exam-room-page .dash.answered   { background: var(--success); }
+.exam-room-page .dash.flagged    { background: var(--warning); }
+.exam-room-page .dash.current    { background: var(--accent); width: 24px; border-radius: 3px; }
+.exam-room-page .dash.unanswered { background: var(--border-dark); }
+.exam-room-page .dash:hover      { opacity: 0.8; transform: scaleY(1.8); }
 
 /* ================================================================
    REVISION MODE
    ================================================================ */
-.revision-container {
+.exam-room-page .revision-container {
     display: flex;
     flex-direction: column;
     height: 100vh;
+    height: 100dvh;
     background: var(--bg-primary);
     font-family: 'Segoe UI', system-ui, sans-serif;
     overflow: hidden;
+    box-sizing: border-box;
 }
-.revision-header {
+.exam-room-page .revision-header {
     background: var(--bg-card);
     border-bottom: 2px solid var(--border);
     padding: 0.5rem 1.5rem;
+    box-sizing: border-box;
     display: flex;
     justify-content: space-between;
     align-items: center;
     flex-shrink: 0;
 }
-.revision-header-left  { display: flex; align-items: center; gap: 1rem; }
-.revision-header-right { display: flex; align-items: center; gap: 1rem; }
-.revision-title { font-size: 1.2rem; font-weight: 600; }
+.exam-room-page .revision-header-left  { display: flex; align-items: center; gap: 1rem; }
+.exam-room-page .revision-header-right { display: flex; align-items: center; gap: 1rem; }
+.exam-room-page .revision-title { font-size: 1.2rem; font-weight: 600; }
 
-.btn-back {
+.exam-room-page .btn-back {
     background: none;
     border: none;
     color: var(--accent);
@@ -377,105 +402,108 @@ body {
     cursor: pointer;
     padding: 0.5rem;
 }
-.btn-back:hover {
-    background: rgba(37, 99, 235, 0.1);
+.exam-room-page .btn-back:hover {
+    background: rgba(var(--accent-rgb), 0.1);
     border-radius: 50%;
 }
 
-.progress-area {
+.exam-room-page .progress-area {
     background: var(--bg-card);
     padding: 8px 16px;
+    box-sizing: border-box;
     border-bottom: 1px solid var(--border);
     position: sticky;
     top: 0;
     z-index: 10;
 }
-.progress-bar-wrap {
+.exam-room-page .progress-bar-wrap {
     background: var(--border);
     border-radius: 10px;
     height: 8px;
     overflow: hidden;
     margin-bottom: 4px;
 }
-.progress-bar-fill {
+.exam-room-page .progress-bar-fill {
     height: 100%;
     background: linear-gradient(90deg, var(--accent), var(--accent-light));
     border-radius: 10px;
     transition: width 0.4s ease;
 }
-.progress-text {
+.exam-room-page .progress-text {
     display: flex;
     justify-content: space-between;
     font-size: 0.75rem;
     color: var(--text-muted);
 }
 
-.revision-main {
+.exam-room-page .revision-main {
     flex: 1;
     overflow-y: auto;
     padding: 1rem 1.5rem 2rem;
     min-height: 0;
+    box-sizing: border-box;
 }
-.revision-question-card {
+.exam-room-page .revision-question-card {
     background: var(--bg-card);
     border-radius: var(--radius);
     padding: 1.5rem;
+    box-sizing: border-box;
     box-shadow: var(--shadow-sm);
     max-width: 800px;
     margin: 0 auto;
 }
-.revision-q-header {
+.exam-room-page .revision-q-header {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     gap: 0.5rem;
     margin-bottom: 1rem;
 }
-.q-number-row {
+.exam-room-page .q-number-row {
     display: flex;
     width: 100%;
     justify-content: space-between;
     align-items: center;
 }
-.revision-q-number {
+.exam-room-page .revision-q-number {
     font-weight: 700;
     color: var(--accent);
     font-size: 1rem;
 }
-.revision-q-text {
+.exam-room-page .revision-q-text {
     flex: 1;
     font-weight: 500;
     font-size: 1.1rem;
     margin-top: 0.25rem;
 }
 
-.option-feedback {
+.exam-room-page .option-feedback {
     margin-bottom: 0.5rem;
     animation: slideDown 0.2s ease-out;
 }
 
-.overall-explanation {
+.exam-room-page .overall-explanation {
     margin-top: 1.5rem;
     padding: 1rem;
     background: var(--bg-secondary);
     border-radius: var(--radius-sm);
     border-top: 1px solid var(--border);
 }
-.overall-explanation .explanation-title {
+.exam-room-page .overall-explanation .explanation-title {
     font-weight: 600;
     font-size: 0.9rem;
     color: var(--accent);
     margin-bottom: 0.5rem;
 }
-.overall-explanation .explanation-body,
-.overall-explanation .high-yield,
-.overall-explanation .clinical-correlation {
+.exam-room-page .overall-explanation .explanation-body,
+.exam-room-page .overall-explanation .high-yield,
+.exam-room-page .overall-explanation .clinical-correlation {
     font-size: 0.9rem;
     color: var(--text-secondary);
     margin-bottom: 0.5rem;
 }
 
-.revision-footer {
+.exam-room-page .revision-footer {
     flex-shrink: 0;
     display: flex;
     gap: 1rem;
@@ -484,22 +512,22 @@ body {
     padding: 1rem 0 0.5rem;
     margin-top: auto;
 }
-.revision-footer .btn {
+.exam-room-page .revision-footer .btn {
     min-width: 120px;
     padding: 0.6rem 1.2rem;
     border-radius: 30px;
     font-weight: 600;
 }
-.revision-footer .btn-primary {
+.exam-room-page .revision-footer .btn-primary {
     background: var(--accent);
     color: #fff;
     border: none;
 }
-.revision-footer .btn-primary:disabled {
+.exam-room-page .revision-footer .btn-primary:disabled {
     opacity: 0.5;
     cursor: not-allowed;
 }
-.revision-footer .btn-secondary {
+.exam-room-page .revision-footer .btn-secondary {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     color: var(--text-primary);
@@ -508,15 +536,17 @@ body {
 /* ================================================================
    SHARED MODE
    ================================================================ */
-#shared-layout {
+.exam-room-page #shared-layout {
     display: none;
     flex-direction: column;
     height: 100vh;
+    height: 100dvh;
     overflow: hidden;
     background: var(--bg-primary);
     font-family: system-ui, -apple-system, sans-serif;
+    box-sizing: border-box;
 }
-#shared-layout .app-container {
+.exam-room-page #shared-layout .app-container {
     max-width: 720px;
     margin: 0 auto;
     background: var(--bg-primary);
@@ -524,26 +554,32 @@ body {
     min-height: 100dvh;
     position: relative;
     padding-bottom: 100px;
+    box-sizing: border-box;
     overflow-y: auto;
     width: 100%;
 }
 
 /* Room header */
-#shared-layout .room-header {
+.exam-room-page #shared-layout .room-header {
     position: sticky;
     top: 0;
     z-index: 100;
     background: var(--bg-card);
     border-bottom: 1px solid var(--border);
     padding: 12px 16px;
+    box-sizing: border-box;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
     box-shadow: var(--shadow-sm);
 }
-#shared-layout .room-header .title-group { display: flex; flex-direction: column; min-width: 0; }
-#shared-layout .room-header .room-title {
+.exam-room-page #shared-layout .room-header .title-group {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.exam-room-page #shared-layout .room-header .room-title {
     font-weight: 700;
     font-size: 1rem;
     color: var(--text-primary);
@@ -551,7 +587,7 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
 }
-#shared-layout .room-header .room-meta {
+.exam-room-page #shared-layout .room-header .room-meta {
     font-size: 0.75rem;
     color: var(--text-secondary);
     display: flex;
@@ -559,30 +595,30 @@ body {
     align-items: center;
     flex-wrap: wrap;
 }
-#shared-layout .room-header .meta-item {
+.exam-room-page #shared-layout .room-header .meta-item {
     display: flex;
     align-items: center;
     gap: 4px;
     white-space: nowrap;
 }
-#shared-layout .room-header .timer {
+.exam-room-page #shared-layout .room-header .timer {
     font-weight: 600;
     color: var(--warning);
     font-variant-numeric: tabular-nums;
     font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
     font-size: 0.9rem;
 }
-#shared-layout .room-header .timer.warning {
+.exam-room-page #shared-layout .room-header .timer.warning {
     color: var(--danger);
-    animation: pulse-timer 1s infinite;
+    animation: exam-room-pulse-timer 1s infinite;
 }
 
-@keyframes pulse-timer {
+@keyframes exam-room-pulse-timer {
     0%, 100% { opacity: 1;   }
     50%      { opacity: 0.5; }
 }
 
-#shared-layout .participants-badge {
+.exam-room-page #shared-layout .participants-badge {
     background: var(--bg-secondary);
     color: var(--text-primary);
     padding: 4px 10px;
@@ -593,44 +629,45 @@ body {
     cursor: pointer;
     transition: all 0.25s;
 }
-#shared-layout .participants-badge.updating {
-    animation: badge-pop 0.4s ease-out;
+.exam-room-page #shared-layout .participants-badge.updating {
+    animation: exam-room-badge-pop 0.4s ease-out;
 }
 
-@keyframes badge-pop {
+@keyframes exam-room-badge-pop {
     0%   { transform: scale(1);    }
     50%  { transform: scale(1.15); }
     100% { transform: scale(1);    }
 }
 
-/* Shared progress area (offset for sticky room header) */
-#shared-layout .progress-area {
+/* Shared progress area */
+.exam-room-page #shared-layout .progress-area {
     background: var(--bg-card);
     padding: 12px 16px;
+    box-sizing: border-box;
     border-bottom: 1px solid var(--border);
     position: sticky;
     top: 56px;
     z-index: 99;
 }
-#shared-layout .progress-bar-fill {
+.exam-room-page #shared-layout .progress-bar-fill {
     height: 100%;
     background: var(--accent);
     border-radius: 10px;
     transition: width 0.4s ease;
 }
-#shared-layout .progress-text {
+.exam-room-page #shared-layout .progress-text {
     display: flex;
     justify-content: space-between;
     font-size: 0.78rem;
     color: var(--text-secondary);
 }
-#shared-layout .progress-text span {
+.exam-room-page #shared-layout .progress-text span {
     font-weight: 600;
     color: var(--text-primary);
 }
 
-/* Shared navigator (offset for sticky header + progress) */
-#shared-layout .question-navigator {
+/* Shared navigator */
+.exam-room-page #shared-layout .question-navigator {
     position: sticky;
     top: 104px;
     z-index: 98;
@@ -641,20 +678,21 @@ body {
     gap: 8px;
     flex-wrap: wrap;
     align-items: center;
+    box-sizing: border-box;
 }
 
 /* Question area */
-#shared-layout .questions-area { padding: 8px 12px 20px; }
+.exam-room-page #shared-layout .questions-area { padding: 8px 12px 20px; }
 
 /* Section blocks */
-#shared-layout .section-block {
+.exam-room-page #shared-layout .section-block {
     margin-bottom: 8px;
     border-radius: var(--radius);
     overflow: hidden;
     background: var(--bg-card);
     box-shadow: var(--shadow-sm);
 }
-#shared-layout .section-header {
+.exam-room-page #shared-layout .section-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -668,70 +706,76 @@ body {
     user-select: none;
     gap: 8px;
 }
-#shared-layout .section-header:hover { background: var(--bg-card); }
-#shared-layout .section-header .section-title {
+.exam-room-page #shared-layout .section-header:hover { background: var(--bg-card); }
+.exam-room-page #shared-layout .section-header .section-title {
     display: flex;
     align-items: center;
     gap: 8px;
     color: var(--text-primary);
 }
-#shared-layout .section-header .chevron {
+.exam-room-page #shared-layout .section-header .chevron {
     transition: transform 0.25s ease;
     font-size: 0.7rem;
     color: var(--text-secondary);
     flex-shrink: 0;
 }
-#shared-layout .section-block.expanded .section-header .chevron { transform: rotate(180deg); }
-#shared-layout .section-block.expanded .section-header { border-bottom: 1px solid var(--border); }
-#shared-layout .section-badge {
+.exam-room-page #shared-layout .section-block.expanded .section-header .chevron {
+    transform: rotate(180deg);
+}
+.exam-room-page #shared-layout .section-block.expanded .section-header {
+    border-bottom: 1px solid var(--border);
+}
+.exam-room-page #shared-layout .section-badge {
     font-size: 0.7rem;
     padding: 3px 8px;
     border-radius: 12px;
     font-weight: 600;
 }
-#shared-layout .badge-complete    { background: var(--success); color: #fff; }
-#shared-layout .badge-in-progress { background: var(--warning); color: #fff; }
-#shared-layout .section-questions { display: none; }
-#shared-layout .section-block.expanded .section-questions { display: block; }
+.exam-room-page #shared-layout .badge-complete    { background: var(--success); color: #fff; }
+.exam-room-page #shared-layout .badge-in-progress { background: var(--warning); color: #fff; }
+.exam-room-page #shared-layout .section-questions { display: none; }
+.exam-room-page #shared-layout .section-block.expanded .section-questions { display: block; }
 
 /* Question cards */
-#shared-layout .question-card {
+.exam-room-page #shared-layout .question-card {
     padding: 16px;
     border-bottom: 1px solid var(--border);
     background: var(--bg-card);
     transition: background 0.3s;
     position: relative;
+    box-sizing: border-box;
 }
-#shared-layout .question-card:last-child { border-bottom: none; }
-#shared-layout .question-card.highlight-flash {
-    animation: card-flash 0.8s ease-out;
+.exam-room-page #shared-layout .question-card:last-child { border-bottom: none; }
+.exam-room-page #shared-layout .question-card.highlight-flash {
+    animation: exam-room-card-flash 0.8s ease-out;
 }
 
-@keyframes card-flash {
+@keyframes exam-room-card-flash {
     0%   { background: rgba(var(--accent-rgb), 0.1); }
     100% { background: transparent; }
 }
 
-#shared-layout .question-card .q-header {
+.exam-room-page #shared-layout .question-card .q-header {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: 8px;
     margin-bottom: 10px;
 }
-#shared-layout .question-card .q-number {
+.exam-room-page #shared-layout .question-card .q-number {
     font-weight: 700;
     font-size: 0.85rem;
     color: var(--accent);
     white-space: nowrap;
 }
-#shared-layout .question-card .q-text {
+.exam-room-page #shared-layout .question-card .q-text {
     font-weight: 500;
     font-size: 0.95rem;
     flex: 1;
+    min-width: 0;
     color: var(--text-primary);
 }
-#shared-layout .flag-btn {
+.exam-room-page #shared-layout .flag-btn {
     background: none;
     border: none;
     cursor: pointer;
@@ -743,12 +787,22 @@ body {
     color: var(--text-muted);
     line-height: 1;
 }
-#shared-layout .flag-btn:hover { background: rgba(245, 158, 11, 0.15); color: var(--warning); }
-#shared-layout .flag-btn.flagged { color: var(--warning); background: rgba(245, 158, 11, 0.15); }
+.exam-room-page #shared-layout .flag-btn:hover {
+    background: rgba(var(--warning-rgb), 0.15);
+    color: var(--warning);
+}
+.exam-room-page #shared-layout .flag-btn.flagged {
+    color: var(--warning);
+    background: rgba(var(--warning-rgb), 0.15);
+}
 
-/* Options in shared mode */
-#shared-layout .options-list { display: flex; flex-direction: column; gap: 6px; }
-#shared-layout .option-item {
+/* Options */
+.exam-room-page #shared-layout .options-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.exam-room-page #shared-layout .option-item {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -760,23 +814,27 @@ body {
     background: var(--bg-secondary);
     font-size: 0.9rem;
     position: relative;
+    box-sizing: border-box;
     color: var(--text-primary);
 }
-#shared-layout .option-item:hover { border-color: var(--accent); background: var(--bg-card); }
-#shared-layout .option-item.selected {
+.exam-room-page #shared-layout .option-item:hover {
+    border-color: var(--accent);
+    background: var(--bg-card);
+}
+.exam-room-page #shared-layout .option-item.selected {
     border-color: var(--accent);
     background: rgba(var(--accent-rgb), 0.08);
     font-weight: 600;
 }
-#shared-layout .option-item.correct-reveal {
+.exam-room-page #shared-layout .option-item.correct-reveal {
     border-color: var(--success) !important;
-    background: rgba(16, 185, 129, 0.15) !important;
+    background: rgba(var(--success-rgb), 0.15) !important;
 }
-#shared-layout .option-item.incorrect-reveal {
+.exam-room-page #shared-layout .option-item.incorrect-reveal {
     border-color: var(--danger) !important;
-    background: rgba(239, 68, 68, 0.15) !important;
+    background: rgba(var(--danger-rgb), 0.15) !important;
 }
-#shared-layout .option-radio {
+.exam-room-page #shared-layout .option-radio {
     width: 20px;
     height: 20px;
     border-radius: 50%;
@@ -787,11 +845,11 @@ body {
     justify-content: center;
     transition: all 0.15s;
 }
-#shared-layout .option-item.selected .option-radio {
+.exam-room-page #shared-layout .option-item.selected .option-radio {
     border-color: var(--accent);
     background: var(--accent);
 }
-#shared-layout .option-item.selected .option-radio::after {
+.exam-room-page #shared-layout .option-item.selected .option-radio::after {
     content: '';
     width: 8px;
     height: 8px;
@@ -799,7 +857,7 @@ body {
     background: #fff;
 }
 
-#shared-layout .save-indicator {
+.exam-room-page #shared-layout .save-indicator {
     position: absolute;
     top: 8px;
     right: 12px;
@@ -813,31 +871,32 @@ body {
     align-items: center;
     gap: 3px;
 }
-#shared-layout .save-indicator.visible {
+.exam-room-page #shared-layout .save-indicator.visible {
     opacity: 1;
-    animation: fade-out 1.5s forwards;
+    animation: exam-room-fade-out 1.5s forwards;
 }
 
-@keyframes fade-out {
+@keyframes exam-room-fade-out {
     0%, 40% { opacity: 1; }
     100%    { opacity: 0; }
 }
 
 /* Shared submit area */
-#shared-layout .submit-area {
+.exam-room-page #shared-layout .submit-area {
     padding: 16px;
     background: var(--bg-card);
     border-radius: var(--radius);
     margin: 0 12px 16px;
+    box-sizing: border-box;
     box-shadow: var(--shadow-sm);
     text-align: center;
 }
-#shared-layout .submit-area .submit-info {
+.exam-room-page #shared-layout .submit-area .submit-info {
     font-size: 0.85rem;
     color: var(--text-secondary);
     margin-bottom: 10px;
 }
-#shared-layout .submit-btn {
+.exam-room-page #shared-layout .submit-btn {
     background: var(--accent);
     color: #fff;
     border: none;
@@ -849,12 +908,12 @@ body {
     transition: all 0.25s ease;
     box-shadow: 0 4px 14px rgba(var(--accent-rgb), 0.35);
 }
-#shared-layout .submit-btn:hover {
+.exam-room-page #shared-layout .submit-btn:hover {
     transform: translateY(-1px);
     box-shadow: 0 6px 20px rgba(var(--accent-rgb), 0.45);
 }
-#shared-layout .submit-btn:active { transform: scale(0.96); }
-#shared-layout .submit-btn:disabled {
+.exam-room-page #shared-layout .submit-btn:active { transform: scale(0.96); }
+.exam-room-page #shared-layout .submit-btn:disabled {
     background: var(--border);
     cursor: not-allowed;
     box-shadow: none;
@@ -862,7 +921,7 @@ body {
 }
 
 /* Floating discussion button */
-#shared-layout .floating-discuss-btn {
+.exam-room-page #shared-layout .floating-discuss-btn {
     position: fixed;
     bottom: 24px;
     right: 20px;
@@ -881,12 +940,15 @@ body {
     align-items: center;
     justify-content: center;
 }
-#shared-layout .floating-discuss-btn:hover {
+.exam-room-page #shared-layout .floating-discuss-btn:hover {
     transform: translateY(-2px);
     box-shadow: 0 10px 30px rgba(var(--accent-rgb), 0.55);
 }
-#shared-layout .floating-discuss-btn:active { transform: scale(0.9); transition: 0.1s; }
-#shared-layout .floating-discuss-btn .badge-count {
+.exam-room-page #shared-layout .floating-discuss-btn:active {
+    transform: scale(0.9);
+    transition: 0.1s;
+}
+.exam-room-page #shared-layout .floating-discuss-btn .badge-count {
     position: absolute;
     top: -4px;
     right: -4px;
@@ -901,23 +963,23 @@ body {
     align-items: center;
     justify-content: center;
     border: 2px solid var(--bg-card);
-    animation: pop-in 0.3s ease-out;
+    animation: exam-room-pop-in 0.3s ease-out;
 }
 
-@keyframes pop-in {
+@keyframes exam-room-pop-in {
     0%   { transform: scale(0);   }
     70%  { transform: scale(1.3); }
     100% { transform: scale(1);   }
 }
 
-#shared-layout .floating-discuss-btn.hidden {
+.exam-room-page #shared-layout .floating-discuss-btn.hidden {
     opacity: 0;
     pointer-events: none;
     transform: scale(0.5);
 }
 
 /* Discussion bottom sheet */
-#shared-layout .discussion-sheet {
+.exam-room-page #shared-layout .discussion-sheet {
     position: fixed;
     bottom: 0;
     left: 50%;
@@ -935,11 +997,17 @@ body {
     max-width: 720px;
     will-change: transform;
 }
-#shared-layout .discussion-sheet.half-open { transform: translateX(-50%) translateY(55%); }
-#shared-layout .discussion-sheet.full-open { transform: translateX(-50%) translateY(0);   }
-#shared-layout .discussion-sheet.no-transition { transition: none !important; }
+.exam-room-page #shared-layout .discussion-sheet.half-open {
+    transform: translateX(-50%) translateY(55%);
+}
+.exam-room-page #shared-layout .discussion-sheet.full-open {
+    transform: translateX(-50%) translateY(0);
+}
+.exam-room-page #shared-layout .discussion-sheet.no-transition {
+    transition: none !important;
+}
 
-#shared-layout .sheet-drag-handle {
+.exam-room-page #shared-layout .sheet-drag-handle {
     display: flex;
     justify-content: center;
     padding: 10px 0 4px;
@@ -947,13 +1015,13 @@ body {
     flex-shrink: 0;
     touch-action: none;
 }
-#shared-layout .drag-bar {
+.exam-room-page #shared-layout .drag-bar {
     width: 40px;
     height: 5px;
     border-radius: 3px;
     background: var(--border);
 }
-#shared-layout .sheet-header {
+.exam-room-page #shared-layout .sheet-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -961,12 +1029,12 @@ body {
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
 }
-#shared-layout .sheet-header h3 {
+.exam-room-page #shared-layout .sheet-header h3 {
     font-size: 1rem;
     font-weight: 700;
     color: var(--text-primary);
 }
-#shared-layout .sheet-close-btn {
+.exam-room-page #shared-layout .sheet-close-btn {
     background: var(--bg-secondary);
     border: none;
     width: 30px;
@@ -980,19 +1048,21 @@ body {
     transition: all 0.25s ease;
     color: var(--text-secondary);
 }
-#shared-layout .sheet-content {
+.exam-room-page #shared-layout .sheet-content {
     flex: 1;
     overflow-y: auto;
     padding: 12px 16px;
     display: flex;
     flex-direction: column;
     gap: 10px;
+    box-sizing: border-box;
 }
-#shared-layout .pinned-message {
-    background: rgba(245, 158, 11, 0.08);
-    border: 1px solid rgba(245, 158, 11, 0.3);
+.exam-room-page #shared-layout .pinned-message {
+    background: rgba(var(--warning-rgb), 0.08);
+    border: 1px solid rgba(var(--warning-rgb), 0.3);
     border-radius: var(--radius-sm);
     padding: 10px 14px;
+    box-sizing: border-box;
     font-size: 0.8rem;
     color: var(--text-primary);
     display: flex;
@@ -1000,52 +1070,55 @@ body {
     gap: 8px;
 }
 
-#shared-layout .chat-message {
+.exam-room-page #shared-layout .chat-message {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    animation: msg-fade-in 0.3s ease-out;
+    animation: exam-room-msg-fade-in 0.3s ease-out;
 }
 
-@keyframes msg-fade-in {
+@keyframes exam-room-msg-fade-in {
     from { opacity: 0; transform: translateY(8px); }
     to   { opacity: 1; transform: translateY(0);   }
 }
 
-#shared-layout .chat-message.own-message .chat-body {
-    background: #eef1ff;
+/* Theme-aware chat bubbles — used to be hardcoded light colors. */
+.exam-room-page #shared-layout .chat-message.own-message .chat-body {
+    background: rgba(var(--accent-rgb), 0.12);
     align-self: flex-end;
 }
-#shared-layout .chat-message.own-message .chat-author {
+.exam-room-page #shared-layout .chat-message.own-message .chat-author {
     justify-content: flex-end;
 }
-#shared-layout .chat-author {
+.exam-room-page #shared-layout .chat-author {
     font-weight: 700;
     font-size: 0.78rem;
-    color: #1a1d23;
+    color: var(--text-primary);
     display: flex;
     align-items: center;
     gap: 6px;
 }
-#shared-layout .chat-body {
-    background: #f5f6f8;
+.exam-room-page #shared-layout .chat-body {
+    background: var(--bg-secondary);
     padding: 8px 12px;
     border-radius: 12px;
     font-size: 0.88rem;
+    color: var(--text-primary);
     display: inline-block;
     align-self: flex-start;
     max-width: 85%;
     word-break: break-word;
+    box-sizing: border-box;
 }
 
-#shared-layout .chat-reactions {
+.exam-room-page #shared-layout .chat-reactions {
     display: flex;
     gap: 6px;
     flex-wrap: wrap;
     margin-top: 3px;
     padding-left: 4px;
 }
-#shared-layout .reaction-btn {
+.exam-room-page #shared-layout .reaction-btn {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: 14px;
@@ -1059,13 +1132,13 @@ body {
     white-space: nowrap;
     color: var(--text-secondary);
 }
-#shared-layout .reaction-btn.active-reaction {
+.exam-room-page #shared-layout .reaction-btn.active-reaction {
     background: var(--bg-secondary);
     border-color: var(--accent);
     font-weight: 600;
 }
 
-#shared-layout .online-presence {
+.exam-room-page #shared-layout .online-presence {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
@@ -1075,14 +1148,19 @@ body {
     align-items: center;
 }
 
-#shared-layout .mood-section {
+.exam-room-page #shared-layout .mood-section {
     background: var(--bg-secondary);
     border-radius: var(--radius-sm);
     padding: 10px 14px;
+    box-sizing: border-box;
     font-size: 0.8rem;
 }
-#shared-layout .mood-options { display: flex; flex-wrap: wrap; gap: 6px; }
-#shared-layout .mood-chip {
+.exam-room-page #shared-layout .mood-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.exam-room-page #shared-layout .mood-chip {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: 16px;
@@ -1095,22 +1173,24 @@ body {
     gap: 4px;
     color: var(--text-secondary);
 }
-#shared-layout .mood-chip.voted {
+.exam-room-page #shared-layout .mood-chip.voted {
     background: var(--bg-secondary);
     border-color: var(--accent);
     font-weight: 600;
 }
 
-#shared-layout .sheet-input-area {
+.exam-room-page #shared-layout .sheet-input-area {
     display: flex;
     gap: 8px;
     padding: 10px 16px;
+    box-sizing: border-box;
     border-top: 1px solid var(--border);
     flex-shrink: 0;
     background: var(--bg-card);
 }
-#shared-layout .sheet-input-area input {
+.exam-room-page #shared-layout .sheet-input-area input {
     flex: 1;
+    min-width: 0;
     padding: 10px 14px;
     border-radius: 20px;
     border: 2px solid var(--border);
@@ -1119,9 +1199,10 @@ body {
     transition: border 0.25s ease;
     background: var(--bg-secondary);
     color: var(--text-primary);
+    box-sizing: border-box;
 }
-#shared-layout .sheet-input-area input:focus { border-color: var(--accent); }
-#shared-layout .sheet-input-area button {
+.exam-room-page #shared-layout .sheet-input-area input:focus { border-color: var(--accent); }
+.exam-room-page #shared-layout .sheet-input-area button {
     background: var(--accent);
     color: #fff;
     border: none;
@@ -1134,12 +1215,12 @@ body {
     white-space: nowrap;
 }
 
-/* Shared confirmation modal (overrides common's display-based modal) */
-#shared-layout .modal-overlay {
+/* Shared confirmation modal (scoped override of common's modal-overlay) */
+.exam-room-page #shared-layout .modal-overlay {
     position: fixed;
     inset: 0;
     z-index: 500;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--overlay);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1147,15 +1228,17 @@ body {
     pointer-events: none;
     transition: opacity 0.25s ease;
     padding: 20px;
+    box-sizing: border-box;
 }
-#shared-layout .modal-overlay.active {
+.exam-room-page #shared-layout .modal-overlay.active {
     opacity: 1;
-    pointer-events: all;
+    pointer-events: auto;
 }
-#shared-layout .modal-card {
+.exam-room-page #shared-layout .modal-card {
     background: var(--bg-card);
     border-radius: var(--radius);
     padding: 24px;
+    box-sizing: border-box;
     max-width: 400px;
     width: 100%;
     text-align: center;
@@ -1163,20 +1246,13 @@ body {
     color: var(--text-primary);
 }
 
-/* ---------- Question image in shared/challenge mode ----------
-   Rendered by exam-room.js's buildQuestionCard() →
-   `<div class="shared-q-image" data-q-idx="…"></div>`, hydrated
-   asynchronously by hydrateSharedImages(). Scoped under #shared-layout
-   so it can never affect standard/revision (those use
-   .question-image → #q-image-std / #q-image-rev). */
-
-#shared-layout .shared-q-image {
+/* Question image in shared/challenge mode */
+.exam-room-page #shared-layout .shared-q-image {
     display: flex;
     justify-content: center;
     margin: 0.5rem 0;
 }
-
-#shared-layout .shared-q-image img {
+.exam-room-page #shared-layout .shared-q-image img {
     display: inline-block;
     max-width: 100%;
     max-height: 300px;
@@ -1187,16 +1263,17 @@ body {
     background: var(--bg-secondary);
     padding: 4px;
     border: 1px solid var(--border);
+    box-sizing: border-box;
 }
 
 @media (max-width: 480px) {
-    #shared-layout .shared-q-image img { max-height: 220px; }
+    .exam-room-page #shared-layout .shared-q-image img { max-height: 220px; }
 }
 
 /* ================================================================
    SUBSCRIPTION PROMPT CARD (JS-rendered)
    ================================================================ */
-.subscription-card {
+.exam-room-page .subscription-card {
     position: fixed;
     top: 20px;
     left: 50%;
@@ -1206,18 +1283,18 @@ body {
     background: var(--bg-card);
     border: 2px solid var(--accent);
     border-radius: 30px;
+    box-sizing: border-box;
     box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
     z-index: 2000;
-    animation: subCardSlideDown 0.3s ease;
+    animation: exam-room-sub-card-slide-down 0.3s ease;
 }
 
-/* Renamed from `slideDown` to avoid clobbering common.css's keyframe */
-@keyframes subCardSlideDown {
+@keyframes exam-room-sub-card-slide-down {
     from { opacity: 0; transform: translate(-50%, -20px); }
     to   { opacity: 1; transform: translate(-50%, 0);     }
 }
 
-.subscription-card-content {
+.exam-room-page .subscription-card-content {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -1225,16 +1302,16 @@ body {
     position: relative;
     color: var(--text-primary);
 }
-.subscription-card-content strong {
+.exam-room-page .subscription-card-content strong {
     font-size: 1rem;
     color: var(--accent);
 }
-.subscription-card-content p {
+.exam-room-page .subscription-card-content p {
     font-size: 0.85rem;
     color: var(--text-muted);
     margin-top: 2px;
 }
-.subscribe-now-btn {
+.exam-room-page .subscribe-now-btn {
     background: var(--accent);
     border: none;
     color: #fff;
@@ -1246,7 +1323,7 @@ body {
     min-height: 44px;
     white-space: nowrap;
 }
-.close-card {
+.exam-room-page .close-card {
     position: absolute;
     top: 5px;
     right: 5px;
@@ -1260,136 +1337,185 @@ body {
     justify-content: center;
     border-radius: 50%;
 }
-.close-card:hover {
+.exam-room-page .close-card:hover {
     background: rgba(255, 255, 255, 0.1);
     color: var(--danger);
 }
 
 /* ================================================================
-   SHIMMER SKELETON (top of page)
+   SHIMMER SKELETON — Rule 7 compliant
+   Tokens resolve via common.css (--shimmer-base/--shimmer-highlight).
+   Overlay background uses --bg-primary so it adapts to active theme.
+   Keyframe namespaced to exam-room-shimmer.
    ================================================================ */
-#shimmer-overlay {
+.exam-room-page #shimmer-overlay {
     position: fixed;
     inset: 0;
-    background: #0f172a;
+    background: var(--bg-primary);
     z-index: 9999;
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
     padding: 1.5rem;
-    color: #94a3b8;
+    box-sizing: border-box;
+    color: var(--text-muted);
     font-family: system-ui, -apple-system, sans-serif;
 }
 
-.shimmer-header {
+.exam-room-page .shimmer-header {
     width: 100%;
     max-width: 600px;
     display: flex;
     align-items: center;
     gap: 1rem;
     margin-bottom: 2rem;
+    box-sizing: border-box;
 }
-.shimmer-back-btn {
+.exam-room-page .shimmer-back-btn {
     width: 50px;
     height: 20px;
-    background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+    background: linear-gradient(
+        90deg,
+        var(--shimmer-base) 25%,
+        var(--shimmer-highlight) 50%,
+        var(--shimmer-base) 75%
+    );
     background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
+    animation: exam-room-shimmer 1.5s infinite;
     border-radius: 4px;
 }
-.shimmer-header-title {
+.exam-room-page .shimmer-header-title {
     flex: 1;
     height: 24px;
-    background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+    background: linear-gradient(
+        90deg,
+        var(--shimmer-base) 25%,
+        var(--shimmer-highlight) 50%,
+        var(--shimmer-base) 75%
+    );
     background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
+    animation: exam-room-shimmer 1.5s infinite;
     border-radius: 4px;
 }
 
-.shimmer-content {
+.exam-room-page .shimmer-content {
     width: 100%;
     max-width: 600px;
     display: flex;
     flex-direction: column;
     gap: 1rem;
+    box-sizing: border-box;
 }
-.shimmer-question-block {
+.exam-room-page .shimmer-question-block {
     width: 100%;
     height: 28px;
-    background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+    background: linear-gradient(
+        90deg,
+        var(--shimmer-base) 25%,
+        var(--shimmer-highlight) 50%,
+        var(--shimmer-base) 75%
+    );
     background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
+    animation: exam-room-shimmer 1.5s infinite;
     border-radius: 4px;
 }
-.shimmer-image-block {
+.exam-room-page .shimmer-image-block {
     width: 100%;
     height: 120px;
-    background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+    background: linear-gradient(
+        90deg,
+        var(--shimmer-base) 25%,
+        var(--shimmer-highlight) 50%,
+        var(--shimmer-base) 75%
+    );
     background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
+    animation: exam-room-shimmer 1.5s infinite;
     border-radius: 8px;
     margin: 0.5rem 0;
 }
-.shimmer-option {
+.exam-room-page .shimmer-option {
     display: flex;
     align-items: center;
     gap: 0.75rem;
     width: 100%;
 }
-.shimmer-radio {
+.exam-room-page .shimmer-radio {
     width: 20px;
     height: 20px;
     border-radius: 50%;
-    background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+    background: linear-gradient(
+        90deg,
+        var(--shimmer-base) 25%,
+        var(--shimmer-highlight) 50%,
+        var(--shimmer-base) 75%
+    );
     background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
+    animation: exam-room-shimmer 1.5s infinite;
     flex-shrink: 0;
 }
-.shimmer-option-text {
+.exam-room-page .shimmer-option-text {
     flex: 1;
     height: 16px;
-    background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+    background: linear-gradient(
+        90deg,
+        var(--shimmer-base) 25%,
+        var(--shimmer-highlight) 50%,
+        var(--shimmer-base) 75%
+    );
     background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
+    animation: exam-room-shimmer 1.5s infinite;
     border-radius: 4px;
 }
-.shimmer-separator {
+.exam-room-page .shimmer-separator {
     width: 100%;
     height: 1px;
-    background: #334155;
+    background: var(--border);
     margin: 0.5rem 0;
 }
-.shimmer-message {
+.exam-room-page .shimmer-message {
     font-size: 0.9rem;
-    color: #64748b;
+    color: var(--text-muted);
     text-align: center;
     margin-top: 0.5rem;
     font-style: italic;
 }
 
+@keyframes exam-room-shimmer {
+    0%   { background-position: -200px 0; }
+    100% { background-position: calc(200px + 100%) 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .exam-room-page .shimmer-back-btn,
+    .exam-room-page .shimmer-header-title,
+    .exam-room-page .shimmer-question-block,
+    .exam-room-page .shimmer-image-block,
+    .exam-room-page .shimmer-radio,
+    .exam-room-page .shimmer-option-text {
+        animation: none;
+        background: var(--shimmer-base);
+    }
+}
+
 /* ================================================================
    RESPONSIVE
    ================================================================ */
-
-/* ---------- <= 640px ---------- */
 @media (max-width: 640px) {
-    /* Compact headers */
-    .exam-header,
-    .revision-header {
+    .exam-room-page .exam-header,
+    .exam-room-page .revision-header {
         padding: 0.5rem 1rem;
         flex-wrap: wrap;
         gap: 0.5rem;
     }
 
-    /* Standard mode: sidebar moves below question */
-    .exam-main { flex-direction: column; }
-    .question-section {
+    .exam-room-page .exam-main { flex-direction: column; }
+    .exam-room-page .question-section {
         flex: 1 1 auto;
         border-right: none;
         padding: 1rem 1rem 0.5rem;
     }
-    .nav-sidebar {
+    .exam-room-page .nav-sidebar {
         flex: 0 0 auto;
         flex-direction: row;
         overflow-x: auto;
@@ -1398,27 +1524,27 @@ body {
         border-top: 2px solid var(--border);
         background: var(--bg-card);
     }
-    .nav-controls {
+    .exam-room-page .nav-controls {
         flex-direction: row;
         gap: 0.5rem;
         align-items: center;
         flex: 1;
     }
-    .question-grid {
+    .exam-room-page .question-grid {
         flex-direction: row;
         max-height: none;
         gap: 0.5rem;
         overflow-x: auto;
         flex: 1;
     }
-    .q-btn {
+    .exam-room-page .q-btn {
         width: 36px;
         height: 36px;
         aspect-ratio: auto;
         font-size: 0.75rem;
     }
-    .btn-nav { display: none; }
-    .btn-submit {
+    .exam-room-page .btn-nav { display: none; }
+    .exam-room-page .btn-submit {
         margin-top: 0;
         margin-left: 0.5rem;
         white-space: nowrap;
@@ -1426,31 +1552,28 @@ body {
         width: auto;
     }
 
-    /* Revision */
-    .revision-main { padding: 0.5rem; }
-    .revision-question-card { padding: 1rem; }
-    .revision-footer {
+    .exam-room-page .revision-main { padding: 0.5rem; }
+    .exam-room-page .revision-question-card { padding: 1rem; }
+    .exam-room-page .revision-footer {
         flex-direction: column;
         align-items: stretch;
     }
 
-    /* Shared floating buttons */
-    .floating-discuss-btn {
+    .exam-room-page #shared-layout .floating-discuss-btn {
         bottom: 16px;
         right: 12px;
         width: 48px;
         height: 48px;
         font-size: 1.1rem;
     }
-    .discussion-sheet { border-radius: 16px 16px 0 0; }
+    .exam-room-page #shared-layout .discussion-sheet { border-radius: 16px 16px 0 0; }
 }
 
-/* ---------- <= 480px ---------- */
 @media (max-width: 480px) {
-    .revision-main { padding: 0.75rem 0.75rem 4rem; }
-    .revision-q-header { gap: 0.25rem; }
-    .revision-footer { flex-direction: column; align-items: stretch; }
-    .revision-footer .btn {
+    .exam-room-page .revision-main { padding: 0.75rem 0.75rem 4rem; }
+    .exam-room-page .revision-q-header { gap: 0.25rem; }
+    .exam-room-page .revision-footer { flex-direction: column; align-items: stretch; }
+    .exam-room-page .revision-footer .btn {
         width: 100%;
         min-width: 80px;
         padding: 0.5rem 0.75rem;

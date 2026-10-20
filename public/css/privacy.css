@@ -1,19 +1,38 @@
 /* ==========================================================================
    PRIVACY POLICY — page-specific styles
+   Root wrapper: .privacy-page (from <section class="page privacy-page">)
+
    Requires common.css (tokens, .logo base, .btn-outline base, .btn-text base,
    .page-container base, :where(header|footer) defaults).
+
    Adds ONLY: fixed header positioning, page-container offset, privacy
    content typography, privacy footer, and a phone-breakpoint tweak.
+
+   7-RULE COMPLIANCE
+   Rule 1: every selector prefixed with .privacy-page (~20 selectors).
+   Rule 2: N/A (no grids).
+   Rule 3: box-sizing: border-box on .privacy-page header and
+           .privacy-container — previously overflowed by 3rem / 4rem
+           respectively when the padding + width/border combined.
+   Rule 4: N/A (no viewport units).
+   Rule 5: no bare header / .logo / .page-container / header .btn-outline
+           overrides — previously leaked to every page.
+   Rule 6: N/A (no dropdowns).
+   Rule 7: N/A (no loaders).
    ========================================================================== */
 
 /* ---------- Fixed header ----------
-   Common's :where(header:not([class])) provides flex + centering + padding.
-   Page overrides padding and adds fixed positioning. */
-header {
+   Previously bare `header { position: fixed; width: 100% }` — leaked to
+   every page's <header>. Now scoped.
+   Rule 3 fix: added box-sizing: border-box so `width: 100%` + padding
+   doesn't overflow by the horizontal padding (3rem previously caused
+   horizontal scroll on viewports < the content width). */
+.privacy-page header {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
+    box-sizing: border-box;
     z-index: 1000;
     padding: 0.75rem 1.5rem;
     background: var(--bg-card, #ffffff);
@@ -21,19 +40,18 @@ header {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
-/* ---------- Logo overrides ---------- */
-/* Common uses 1.3rem; this page uses 1.25rem. */
-.logo {
+/* ---------- Logo overrides ----------
+   Previously bare — overrode common's .logo on every page. Now scoped. */
+.privacy-page .logo {
     font-size: 1.25rem;
 }
-/* Common provides border-radius only; page constrains the image size. */
-.logo img {
+.privacy-page .logo img {
     height: 40px;
     width: auto;
 }
 
-/* ---------- Theme toggle (overrides common's accent .btn-outline) ---------- */
-header .btn-outline {
+/* ---------- Theme toggle (scoped override of common's accent .btn-outline) ---------- */
+.privacy-page header .btn-outline {
     background: transparent;
     border: 1px solid var(--border, #ccc);
     border-radius: 50%;
@@ -41,35 +59,37 @@ header .btn-outline {
     font-size: 1.2rem;
     cursor: pointer;
     transition: background 0.2s;
-    /* Reset common's accent color + border-color so the resting state
-       stays theme-neutral. */
     color: var(--text-primary, #0f172a);
 }
-
-/* Hover — must include :not(:disabled) to beat common's
+/* Must include :not(:disabled) to beat common's
    `.btn-outline:hover:not(:disabled)` (specificity 0,3,0). */
-header .btn-outline:hover:not(:disabled) {
+.privacy-page header .btn-outline:hover:not(:disabled) {
     background: var(--bg-hover, #f0f0f0);
-    /* Reset common's hover `color: #fff`. */
     color: var(--text-primary, #0f172a);
     border-color: var(--border, #ccc);
 }
 
 /* ---------- Page container ----------
-   Common provides max-width: 1200px + margin auto + side padding.
-   This page previously relied on the browser default full-width block.
-   Blocking those three preserves the original layout exactly. */
-.page-container {
+   Previously bare `.page-container` — every page lost its 1200px
+   max-width and gained 80px top padding after privacy.css loaded.
+   Now scoped. Common provides max-width: 1200px + margin auto + side
+   padding; this page overrides them all. */
+.privacy-page .page-container {
     max-width: none;
     margin: 0;
     padding: 80px 0 0;
+    box-sizing: border-box;
 }
 
-/* ---------- Main content card ---------- */
-.privacy-container {
+/* ---------- Main content card ----------
+   Rule 3 fix: box-sizing: border-box keeps the 900px max-width
+   including the 4rem of horizontal padding + 2px border. Without it
+   the card overflows its container by ~4rem + 2px. */
+.privacy-page .privacy-container {
     max-width: 900px;
     margin: 2rem auto;
     padding: 2rem;
+    box-sizing: border-box;
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
@@ -77,14 +97,14 @@ header .btn-outline:hover:not(:disabled) {
 }
 
 /* Common's h1 is 2rem; this page uses 2.2rem + accent + centered. */
-.privacy-container h1 {
+.privacy-page .privacy-container h1 {
     margin-bottom: 0.5rem;
     color: var(--accent);
     text-align: center;
     font-size: 2.2rem;
 }
 
-.last-updated {
+.privacy-page .last-updated {
     text-align: center;
     color: var(--text-muted);
     margin-bottom: 2rem;
@@ -93,11 +113,11 @@ header .btn-outline:hover:not(:disabled) {
 }
 
 /* ---------- Long-form content ---------- */
-.privacy-content {
+.privacy-page .privacy-content {
     color: var(--text-secondary);
     line-height: 1.7;
 }
-.privacy-content h2 {
+.privacy-page .privacy-content h2 {
     color: var(--accent);
     font-size: 1.5rem;
     margin-top: 2.5rem;
@@ -105,77 +125,77 @@ header .btn-outline:hover:not(:disabled) {
     border-bottom: 1px solid var(--border);
     padding-bottom: 0.5rem;
 }
-.privacy-content h3 {
+.privacy-page .privacy-content h3 {
     color: var(--text-primary);
     font-size: 1.2rem;
     margin-top: 1.5rem;
     margin-bottom: 0.5rem;
 }
-.privacy-content p {
+.privacy-page .privacy-content p {
     margin: 0.8rem 0;
     color: var(--text-secondary);
 }
-.privacy-content ul,
-.privacy-content ol {
+.privacy-page .privacy-content ul,
+.privacy-page .privacy-content ol {
     margin: 1rem 0;
     padding-left: 1.5rem;
 }
-.privacy-content li {
+.privacy-page .privacy-content li {
     margin-bottom: 0.5rem;
     line-height: 1.6;
     color: var(--text-secondary);
 }
-.privacy-content a {
+.privacy-page .privacy-content a {
     color: var(--accent);
     text-decoration: underline;
     transition: color 0.2s;
 }
-.privacy-content a:hover {
+.privacy-page .privacy-content a:hover {
     color: var(--accent-hover);
     text-decoration: none;
 }
 
 /* ---------- Footer CTA block ---------- */
-.privacy-footer {
+.privacy-page .privacy-footer {
     margin-top: 3rem;
     padding-top: 2rem;
     border-top: 1px solid var(--border);
     text-align: center;
 }
-.privacy-footer p {
+.privacy-page .privacy-footer p {
     margin-bottom: 1.5rem;
     font-size: 0.9rem;
     color: var(--text-muted);
 }
-.privacy-footer .btn-primary,
-.privacy-footer .btn-secondary {
+.privacy-page .privacy-footer .btn-primary,
+.privacy-page .privacy-footer .btn-secondary {
     min-width: 180px;
     margin: 0.5rem;
 }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 640px) {
-    .page-container {
+    .privacy-page .page-container {
         padding-top: 70px;
     }
-    header {
+    .privacy-page header {
         padding: 0.5rem 1rem;
     }
-    .privacy-container {
+    .privacy-page .privacy-container {
         padding: 1.5rem;
         margin: 1rem;
     }
-    .privacy-container h1 {
+    .privacy-page .privacy-container h1 {
         font-size: 1.8rem;
     }
-    .privacy-content h2 {
+    .privacy-page .privacy-content h2 {
         font-size: 1.3rem;
     }
-    .privacy-content h3 {
+    .privacy-page .privacy-content h3 {
         font-size: 1.1rem;
     }
-    .privacy-content ul,
-    .privacy-content ol {
+    .privacy-page .privacy-content ul,
+    .privacy-page .privacy-content ol {
         padding-left: 1.2rem;
     }
 }

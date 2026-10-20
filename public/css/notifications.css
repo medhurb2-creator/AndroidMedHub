@@ -1,58 +1,78 @@
 /* ==========================================================================
    NOTIFICATIONS — page-specific styles
-   Requires common.css (tokens, reset, buttons, .btn-icon base, .fab base,
-   keyframes pulse/shimmer/spin, utilities).
+   Root wrapper: .notifications-page
+   (from <section class="page notifications-page">)
+
+   Requires common.css (tokens, reset, buttons, .fab base, keyframes spin,
+   utilities).
 
    Adds ONLY: notification shell, header, toolbar, search, stats, card
    system, floating buttons, help overlay, responsive.
 
+   7-RULE COMPLIANCE
+   Rule 1: every selector prefixed with .notifications-page.
+   Rule 2: N/A (no grids).
+   Rule 3: box-sizing: border-box on all layout containers.
+   Rule 4: 100vh / 90vh have dvh fallbacks.
+   Rule 5: .btn-icon / .fab overrides are SCOPED — previously leaked to
+           every page. No global selectors.
+   Rule 6: .notif-header is sticky + overflow: visible (defensive for
+           future dropdowns).
+   Rule 7: skeleton loader uses --shimmer-base / --shimmer-highlight
+           tokens; keyframe namespaced as notifications-shimmer;
+           prefers-reduced-motion guard.
+
    THEME POLICY:
-     Every surface and text colour in this file goes through a CSS variable
-     (--bg-card, --bg-secondary, --bg-primary, --text-primary,
-     --text-secondary, --text-muted, --accent, --border). No hardcoded
-     card backgrounds. This means the page renders correctly in both the
-     app's dark (default) theme and its `body.light-mode` theme, and it
-     never depends on `prefers-color-scheme` — the app's theme toggle is
-     the only source of truth.
+     Every surface and text colour resolves through a CSS variable
+     (--bg-card, --bg-secondary, --bg-primary, --text-*, --accent,
+     --border, --shimmer-*). No hardcoded card backgrounds. App's theme
+     toggle is the sole source of truth — this file never uses
+     prefers-color-scheme for theme switching.
    ========================================================================== */
 
 /* ---------- App shell ---------- */
-.notification-app {
+.notifications-page .notification-app {
     max-width: 800px;
     margin: 0 auto;
     padding: 0 1rem 6rem;
+    box-sizing: border-box;
     background: var(--bg-primary);
     min-height: 100vh;
+    min-height: 100dvh;
 }
 
 /* ---------- Header ---------- */
-.notif-header {
+.notifications-page .notif-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 1rem 0;
+    box-sizing: border-box;
     border-bottom: 1px solid var(--border);
     position: sticky;
     top: 0;
     background: var(--bg-primary);
     z-index: 10;
+    /* Rule 6: keep future dropdowns/panels unclipped from the sticky bar */
+    overflow: visible;
 }
-.header-left {
+.notifications-page .header-left {
     display: flex;
     align-items: center;
     gap: 0.75rem;
+    min-width: 0;
 }
-.header-left h1 {
+.notifications-page .header-left h1 {
     font-size: 1.5rem;
     margin: 0;
 }
-.header-right {
+.notifications-page .header-right {
     display: flex;
     align-items: center;
     gap: 0.5rem;
 }
 
-.unread-badge {
+.notifications-page .unread-badge {
     background: var(--accent);
     color: #fff;
     border-radius: 9999px;
@@ -61,7 +81,7 @@
     font-weight: 600;
 }
 
-.btn-back {
+.notifications-page .btn-back {
     background: none;
     border: none;
     font-size: 1.5rem;
@@ -70,9 +90,9 @@
     padding: 0.25rem 0.5rem;
 }
 
-/* Override common's .btn-icon (larger font, tighter padding,
-   color-hover instead of bg-hover). */
-.btn-icon {
+/* Override common's .btn-icon — SCOPED to this page.
+   Previously bare, which broke every other page's icon buttons. */
+.notifications-page .btn-icon {
     background: none;
     border: none;
     font-size: 1.3rem;
@@ -82,13 +102,13 @@
     min-width: auto;
     min-height: auto;
 }
-.btn-icon:hover {
+.notifications-page .btn-icon:hover {
     color: var(--accent);
     background: none;
 }
 
 /* ---------- Toolbar ---------- */
-.notif-toolbar {
+.notifications-page .notif-toolbar {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -96,12 +116,12 @@
     flex-wrap: wrap;
     gap: 0.5rem;
 }
-.filter-tabs {
+.notifications-page .filter-tabs {
     display: flex;
     gap: 0.3rem;
     flex-wrap: wrap;
 }
-.filter-btn {
+.notifications-page .filter-btn {
     padding: 0.25rem 0.8rem;
     border-radius: 30px;
     border: 1px solid var(--border);
@@ -111,13 +131,14 @@
     color: var(--text-secondary);
     transition: all 0.2s;
 }
-.filter-btn.active {
+.notifications-page .filter-btn.active {
     background: var(--accent);
     color: #fff;
     border-color: var(--accent);
 }
-#sortSelect {
+.notifications-page #sortSelect {
     padding: 0.25rem 0.8rem;
+    box-sizing: border-box;
     border-radius: 30px;
     border: 1px solid var(--border);
     background: var(--bg-card);
@@ -125,20 +146,21 @@
 }
 
 /* ---------- Search ---------- */
-.search-container {
+.notifications-page .search-container {
     position: relative;
     margin: 0.5rem 0 1rem;
 }
-#searchInput {
+.notifications-page #searchInput {
     width: 100%;
     padding: 0.6rem 2.5rem 0.6rem 1rem;
+    box-sizing: border-box;
     border-radius: 30px;
     border: 1px solid var(--border);
     background: var(--bg-card);
     color: var(--text-primary);
     font-size: 0.95rem;
 }
-.clear-search {
+.notifications-page .clear-search {
     position: absolute;
     right: 0.8rem;
     top: 50%;
@@ -150,10 +172,10 @@
     color: var(--text-muted);
     display: none;
 }
-.clear-search.visible { display: block; }
+.notifications-page .clear-search.visible { display: block; }
 
 /* ---------- Statistics row ---------- */
-.stats-row {
+.notifications-page .stats-row {
     display: flex;
     flex-wrap: wrap;
     gap: 0.8rem 1.5rem;
@@ -163,50 +185,46 @@
     font-size: 0.85rem;
     color: var(--text-secondary);
 }
-.stat-item strong { color: var(--text-primary); }
+.notifications-page .stat-item strong { color: var(--text-primary); }
 
 /* ---------- Notification list ---------- */
-.notification-list {
+.notifications-page .notification-list {
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
 }
 
 /* ---------- Notification card ---------- */
-/* The card uses `var(--bg-card)` for its background and `var(--border)`
-   for its outline. Nothing here is hardcoded, so switching the app to
-   `body.light-mode` swaps everything to the light palette automatically.
-   The unread accent (left border) and the pinned/warning tint are
-   achieved with the theme's own --accent and --warning variables, so
-   they read correctly in both themes. */
-.notif-card {
+.notifications-page .notif-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 0.75rem 1rem;
+    box-sizing: border-box;
     transition: all 0.2s;
     position: relative;
-    overflow: hidden;
+    overflow: hidden; /* for rounded corners on the border-left accent */
     color: var(--text-primary);
 }
-.notif-card.unread {
+.notifications-page .notif-card.unread {
     border-left: 4px solid var(--accent);
 }
-.notif-card.pinned {
+.notifications-page .notif-card.pinned {
     border-color: var(--warning);
-    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.15);
+    /* Token-driven tint — was hardcoded rgba(245,158,11,0.15) */
+    box-shadow: 0 2px 8px rgba(var(--warning-rgb), 0.15);
 }
-.notif-card.critical {
+.notifications-page .notif-card.critical {
     border-color: var(--danger);
 }
 
 /* Card header */
-.card-header {
+.notifications-page .card-header {
     display: flex;
     align-items: flex-start;
     gap: 0.75rem;
 }
-.card-icon {
+.notifications-page .card-icon {
     width: 36px;
     height: 36px;
     border-radius: 50%;
@@ -217,25 +235,25 @@
     font-size: 1.2rem;
     flex-shrink: 0;
 }
-.card-title-area {
+.notifications-page .card-title-area {
     flex: 1;
     min-width: 0;
 }
-.card-title {
+.notifications-page .card-title {
     font-weight: 600;
     font-size: 1rem;
     color: var(--text-primary);
 }
-.card-subtitle {
+.notifications-page .card-subtitle {
     font-size: 0.8rem;
     color: var(--text-muted);
 }
-.card-actions {
+.notifications-page .card-actions {
     display: flex;
     gap: 0.3rem;
     flex-shrink: 0;
 }
-.card-actions button {
+.notifications-page .card-actions button {
     background: none;
     border: none;
     cursor: pointer;
@@ -244,44 +262,44 @@
     padding: 0.1rem 0.2rem;
     transition: color 0.2s;
 }
-.card-actions button:hover { color: var(--accent); }
+.notifications-page .card-actions button:hover { color: var(--accent); }
 
 /* Card body */
-.card-body {
+.notifications-page .card-body {
     margin-top: 0.4rem;
     font-size: 0.9rem;
     color: var(--text-secondary);
     line-height: 1.4;
     padding-left: 3rem;
 }
-.card-body.expanded { max-height: none; }
-.card-body .more {
+.notifications-page .card-body.expanded { max-height: none; }
+.notifications-page .card-body .more {
     color: var(--accent);
     cursor: pointer;
 }
 
 /* Card media */
-.card-media {
+.notifications-page .card-media {
     margin-top: 0.5rem;
     padding-left: 3rem;
 }
-.card-media img {
+.notifications-page .card-media img {
     max-width: 100%;
     max-height: 200px;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border);
 }
-.card-media video {
+.notifications-page .card-media video {
     max-width: 100%;
     border-radius: var(--radius-sm);
 }
 
 /* Card progress */
-.card-progress {
+.notifications-page .card-progress {
     margin-top: 0.5rem;
     padding-left: 3rem;
 }
-.card-progress progress {
+.notifications-page .card-progress progress {
     width: 100%;
     height: 6px;
     border-radius: 9999px;
@@ -289,24 +307,24 @@
     -webkit-appearance: none;
     background: var(--border);
 }
-.card-progress progress::-webkit-progress-bar {
+.notifications-page .card-progress progress::-webkit-progress-bar {
     background: var(--border);
     border-radius: 9999px;
 }
-.card-progress progress::-webkit-progress-value {
+.notifications-page .card-progress progress::-webkit-progress-value {
     background: var(--accent);
     border-radius: 9999px;
 }
 
 /* Card buttons */
-.card-buttons {
+.notifications-page .card-buttons {
     margin-top: 0.5rem;
     padding-left: 3rem;
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
 }
-.card-buttons button {
+.notifications-page .card-buttons button {
     padding: 0.25rem 0.8rem;
     border-radius: 30px;
     border: 1px solid var(--border);
@@ -316,20 +334,20 @@
     color: var(--text-primary);
     transition: all 0.2s;
 }
-.card-buttons button.primary {
+.notifications-page .card-buttons button.primary {
     background: var(--accent);
     color: #fff;
     border-color: var(--accent);
 }
-.card-buttons button:hover {
+.notifications-page .card-buttons button:hover {
     background: var(--border);
 }
-.card-buttons button.primary:hover {
+.notifications-page .card-buttons button.primary:hover {
     background: var(--accent-dark);
 }
 
 /* Card footer */
-.card-footer {
+.notifications-page .card-footer {
     margin-top: 0.4rem;
     padding-left: 3rem;
     display: flex;
@@ -337,41 +355,67 @@
     font-size: 0.7rem;
     color: var(--text-muted);
 }
-.card-priority {
+.notifications-page .card-priority {
     text-transform: uppercase;
     font-weight: 600;
 }
-.priority-critical { color: var(--danger); }
-.priority-high     { color: var(--warning); }
-.priority-normal   { color: var(--text-secondary); }
-.priority-low      { color: var(--text-muted); }
-.priority-silent   { color: var(--text-muted); opacity: 0.6; }
+.notifications-page .priority-critical { color: var(--danger); }
+.notifications-page .priority-high     { color: var(--warning); }
+.notifications-page .priority-normal   { color: var(--text-secondary); }
+.notifications-page .priority-low      { color: var(--text-muted); }
+.notifications-page .priority-silent   { color: var(--text-muted); opacity: 0.6; }
 
 /* ---------- State messages ---------- */
-.state-message {
+.notifications-page .state-message {
     text-align: center;
     padding: 3rem 1rem;
 }
-.skeleton-card {
-    background: var(--bg-secondary);
+
+/* ---------- Skeleton loader — Rule 7 compliant ----------
+   Uses the standard shimmer tokens from common.css. Keyframe namespaced
+   so it can never collide with any other page's shimmer. */
+.notifications-page .skeleton-card {
     height: 80px;
     border-radius: var(--radius);
     margin-bottom: 0.75rem;
-    animation: pulse 1.5s infinite;
+    box-sizing: border-box;
+    background: linear-gradient(
+        90deg,
+        var(--shimmer-base)      25%,
+        var(--shimmer-highlight) 50%,
+        var(--shimmer-base)      75%
+    );
+    background-size: 200% 100%;
+    animation: notifications-shimmer 1.5s infinite linear;
 }
-.empty-icon,
-.error-icon {
+
+@keyframes notifications-shimmer {
+    0%   { background-position:  200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .notifications-page .skeleton-card {
+        animation: none;
+        background: var(--shimmer-base);
+    }
+}
+
+.notifications-page .empty-icon,
+.notifications-page .error-icon {
     font-size: 3rem;
     margin-bottom: 1rem;
 }
-.empty h3, .error h3 { margin-bottom: 0.5rem; }
-.empty p,  .error p {
+.notifications-page .empty h3,
+.notifications-page .error h3 { margin-bottom: 0.5rem; }
+.notifications-page .empty p,
+.notifications-page .error p {
     color: var(--text-muted);
     margin-bottom: 1rem;
 }
 
 /* ---------- Floating buttons ---------- */
-.floating-buttons {
+.notifications-page .floating-buttons {
     position: fixed;
     bottom: 2rem;
     right: 1.5rem;
@@ -380,9 +424,11 @@
     gap: 0.5rem;
     z-index: 100;
 }
-/* Override common's fixed-position .fab so buttons stay inside
-   the flex column container above. */
-.fab {
+
+/* Override common's .fab — SCOPED to this page.
+   Previously bare, which turned every page's floating button into a static
+   circle inside whatever flex container it happened to be in. */
+.notifications-page .fab {
     position: static;
     width: 52px;
     height: 52px;
@@ -398,16 +444,16 @@
     align-items: center;
     justify-content: center;
 }
-.fab:hover {
+.notifications-page .fab:hover {
     transform: scale(1.05);
     background: var(--accent-dark);
 }
-.fab:active {
+.notifications-page .fab:active {
     transform: scale(0.95);
 }
 
 /* ---------- Help overlay ---------- */
-.help-overlay {
+.notifications-page .help-overlay {
     position: fixed;
     inset: 0;
     background: var(--overlay);
@@ -418,66 +464,93 @@
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
     padding: 1rem;
+    box-sizing: border-box;
 }
-.help-panel {
+.notifications-page .help-panel {
     background: var(--bg-card);
     border-radius: var(--radius-lg);
     max-width: 600px;
     width: 100%;
     max-height: 90vh;
+    max-height: 90dvh;
     overflow-y: auto;
     padding: 2rem;
+    box-sizing: border-box;
     box-shadow: var(--shadow-lg);
     color: var(--text-primary);
+
+    /* Persistent scrollbar — Firefox */
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent) var(--bg-secondary);
+    scrollbar-gutter: stable;
+    overscroll-behavior: contain;
 }
-.help-panel .help-header {
+.notifications-page .help-panel::-webkit-scrollbar {
+    width: 10px;
+}
+.notifications-page .help-panel::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+.notifications-page .help-panel::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    border-radius: 8px;
+    border: 2px solid var(--bg-secondary);
+    min-height: 40px;
+}
+.notifications-page .help-panel::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-dark);
+}
+
+.notifications-page .help-panel .help-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 1.5rem;
 }
-.help-panel .help-header h2 { margin: 0; }
-.help-panel .help-close {
+.notifications-page .help-panel .help-header h2 { margin: 0; }
+.notifications-page .help-panel .help-close {
     background: none;
     border: none;
     font-size: 2rem;
     cursor: pointer;
     color: var(--text-muted);
 }
-.help-panel .help-search {
+.notifications-page .help-panel .help-search {
     width: 100%;
     padding: 0.6rem 1rem;
+    box-sizing: border-box;
     border-radius: 30px;
     border: 1px solid var(--border);
     background: var(--bg-secondary);
     color: var(--text-primary);
     margin-bottom: 1.5rem;
 }
-.help-panel .faq-item {
+.notifications-page .help-panel .faq-item {
     border-bottom: 1px solid var(--border);
     padding: 0.75rem 0;
     cursor: pointer;
 }
-.help-panel .faq-item .question {
+.notifications-page .help-panel .faq-item .question {
     font-weight: 600;
     display: flex;
     justify-content: space-between;
     align-items: center;
     color: var(--text-primary);
 }
-.help-panel .faq-item .answer {
+.notifications-page .help-panel .faq-item .answer {
     margin-top: 0.5rem;
     color: var(--text-secondary);
     display: none;
 }
-.help-panel .faq-item.open .answer { display: block; }
-.help-panel .help-contacts {
+.notifications-page .help-panel .faq-item.open .answer { display: block; }
+.notifications-page .help-panel .help-contacts {
     margin-top: 1.5rem;
     display: flex;
     gap: 1rem;
     flex-wrap: wrap;
 }
-.help-panel .help-contacts button {
+.notifications-page .help-panel .help-contacts button {
     flex: 1;
     min-width: 120px;
     padding: 0.5rem;
@@ -490,28 +563,28 @@
 
 /* ---------- Responsive ---------- */
 @media (max-width: 640px) {
-    .notif-header h1 { font-size: 1.2rem; }
+    .notifications-page .notif-header h1 { font-size: 1.2rem; }
 
-    .stats-row {
+    .notifications-page .stats-row {
         gap: 0.5rem 1rem;
         font-size: 0.75rem;
     }
 
-    .card-title { font-size: 0.9rem; }
-    .card-body {
+    .notifications-page .card-title { font-size: 0.9rem; }
+    .notifications-page .card-body {
         font-size: 0.85rem;
         padding-left: 0;
     }
-    .card-media,
-    .card-progress,
-    .card-buttons,
-    .card-footer { padding-left: 0; }
+    .notifications-page .card-media,
+    .notifications-page .card-progress,
+    .notifications-page .card-buttons,
+    .notifications-page .card-footer { padding-left: 0; }
 
-    .floating-buttons {
+    .notifications-page .floating-buttons {
         bottom: 1rem;
         right: 1rem;
     }
-    .fab {
+    .notifications-page .fab {
         width: 44px;
         height: 44px;
         font-size: 1.2rem;
@@ -524,36 +597,36 @@
    theme-agnostic.
    ================================================================ */
 
-.notif-card p,
-.notif-card .card-body p {
+.notifications-page .notif-card p,
+.notifications-page .notif-card .card-body p {
     margin: 0.35rem 0;
     font-size: 0.95rem;
     line-height: 1.5;
     color: var(--text-primary);
 }
-.notif-card strong,
-.notif-card .card-body strong {
+.notifications-page .notif-card strong,
+.notifications-page .notif-card .card-body strong {
     font-weight: 600;
 }
-.notif-card a,
-.notif-card .card-body a {
+.notifications-page .notif-card a,
+.notifications-page .notif-card .card-body a {
     color: var(--accent);
     text-decoration: underline;
     word-break: break-all;
 }
-.notif-card ul,
-.notif-card .card-body ul {
+.notifications-page .notif-card ul,
+.notifications-page .notif-card .card-body ul {
     margin: 0.35rem 0;
     padding-left: 1.2rem;
 }
-.notif-card li,
-.notif-card .card-body li {
+.notifications-page .notif-card li,
+.notifications-page .notif-card .card-body li {
     margin-bottom: 0.3rem;
 }
 
 /* Backend-provided action buttons */
-.notif-card button[data-action],
-.notif-card .card-body button[data-action] {
+.notifications-page .notif-card button[data-action],
+.notifications-page .notif-card .card-body button[data-action] {
     display: inline-block;
     background: var(--accent);
     color: #fff;
@@ -567,8 +640,8 @@
     margin-right: 0.4rem;
     transition: background 0.2s, transform 0.1s;
 }
-.notif-card button[data-action]:hover,
-.notif-card .card-body button[data-action]:hover {
+.notifications-page .notif-card button[data-action]:hover,
+.notifications-page .notif-card .card-body button[data-action]:hover {
     background: var(--accent-dark);
     transform: scale(1.02);
 }

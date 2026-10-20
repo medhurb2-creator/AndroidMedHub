@@ -1,8 +1,35 @@
 /* ==========================================================================
    SHARED NOTE — page-specific styles
+   Root wrapper: .shared-note-page
+   (from <section class="page shared-note-page">)
+
    Requires common.css.
+
    Layout: fixed header + scrollable middle + fixed footer.
+
+   7-RULE COMPLIANCE
+   Rule 1: every selector prefixed with .shared-note-page (~30 selectors).
+   Rule 2: N/A (no grids).
+   Rule 3: box-sizing from common's universal reset — no redundant decls.
+   Rule 4: shell uses position: fixed; inset: 0 (no 100vw/100vh) — correct.
+   Rule 5: .app-footer, .footer-btn, .note-card, .loading, .error all
+           scoped. Previously each was a global override or a collision.
+   Rule 6: overflow pattern preserved (shell locked, .shared-note-main
+           scrolls with flex:1 + min-height:0).
+   Rule 7: N/A (no loaders).
    ========================================================================== */
+
+/* ---------- Page-scoped tokens ----------
+   The original design expected --radius: 12px and --radius-lg: 16px
+   (as seen in .note-card border-radius: var(--radius-lg)). Those values
+   came from notes.css's old :root leak (now fixed). This scoped block
+   preserves the original appearance without depending on cross-page
+   leaks. If you want common's tighter 8px/12px defaults instead, delete
+   this block. */
+.shared-note-page {
+    --radius: 12px;
+    --radius-lg: 16px;
+}
 
 /* ═══════════ PAGE SHELL ═══════════════════════════════════════════
    Anchored to the viewport, flex column so header and footer are
@@ -29,7 +56,7 @@
 }
 
 /* ═══════════ FIXED HEADER ═══════════════════════════════════════ */
-.shared-note-header {
+.shared-note-page .shared-note-header {
     flex-shrink: 0;
     height: 60px;
     display: flex;
@@ -43,7 +70,7 @@
     box-sizing: border-box;
 }
 
-.shared-note-header .logo {
+.shared-note-page .shared-note-header .logo {
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -54,20 +81,20 @@
     margin: 0;
 }
 
-.shared-note-header .logo img {
+.shared-note-page .shared-note-header .logo img {
     border-radius: 8px;
     object-fit: cover;
     flex-shrink: 0;
 }
 
-.shared-note-header .header-right {
+.shared-note-page .shared-note-header .header-right {
     display: flex;
     align-items: center;
     gap: 0.75rem;
 }
 
 /* Theme toggle — matches the .btn-outline pattern used elsewhere */
-.shared-note-header .btn-outline {
+.shared-note-page .shared-note-header .btn-outline {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     padding: 0.4rem 0.7rem;
@@ -79,15 +106,15 @@
     transition: background 0.15s, border-color 0.15s;
     -webkit-tap-highlight-color: transparent;
 }
-.shared-note-header .btn-outline:hover,
-.shared-note-header .btn-outline:focus-visible {
+.shared-note-page .shared-note-header .btn-outline:hover,
+.shared-note-page .shared-note-header .btn-outline:focus-visible {
     background: var(--bg-card);
     border-color: var(--accent);
     outline: none;
 }
 
 /* ═══════════ SCROLLABLE CONTENT ═════════════════════════════════ */
-.shared-note-main {
+.shared-note-page .shared-note-main {
     flex: 1;
     min-height: 0;         /* allows overflow-y to work inside flex */
     overflow-y: auto;
@@ -97,17 +124,42 @@
     justify-content: center;
     align-items: flex-start;
     background-color: var(--bg-primary, var(--bg-card, #f7f7f8));
+    box-sizing: border-box;
+
+    /* Persistent scrollbar — matches every other scroll container
+       in the app (notes grid, editor body, review list, etc.) */
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent) var(--bg-secondary);
+    scrollbar-gutter: stable;
+    overscroll-behavior: contain;
+}
+.shared-note-page .shared-note-main::-webkit-scrollbar {
+    width: 10px;
+}
+.shared-note-page .shared-note-main::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+.shared-note-page .shared-note-main::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    border-radius: 8px;
+    border: 2px solid var(--bg-secondary);
+    min-height: 40px;
+}
+.shared-note-page .shared-note-main::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-dark);
 }
 
-.shared-note-container {
+.shared-note-page .shared-note-container {
     width: 100%;
     max-width: 800px;
     margin: 0 auto;
+    box-sizing: border-box;
 }
 
 /* ═══════════ LOADING & ERROR ════════════════════════════════════ */
-.loading,
-.error {
+.shared-note-page .loading,
+.shared-note-page .error {
     text-align: center;
     padding: 3rem;
     background: var(--bg-card);
@@ -115,21 +167,23 @@
     border: 1px solid var(--border);
     color: var(--text-secondary);
     font-size: 1.2rem;
+    box-sizing: border-box;
 }
-.error {
+.shared-note-page .error {
     color: var(--danger);
     border-color: var(--danger);
 }
 
 /* ═══════════ NOTE CARD ══════════════════════════════════════════ */
-.note-card {
+.shared-note-page .note-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     padding: 2rem;
     box-shadow: var(--shadow-lg);
+    box-sizing: border-box;
 }
-.note-card h1 {
+.shared-note-page .note-card h1 {
     font-size: 2rem;
     margin-bottom: 1rem;
     color: var(--text-primary);
@@ -137,7 +191,7 @@
     padding-bottom: 0.75rem;
 }
 
-.note-meta {
+.shared-note-page .note-meta {
     display: flex;
     flex-wrap: wrap;
     gap: 1rem;
@@ -147,66 +201,73 @@
     background: var(--bg-secondary);
     padding: 0.75rem 1rem;
     border-radius: var(--radius);
+    box-sizing: border-box;
 }
 
-.note-content {
+.shared-note-page .note-content {
     line-height: 1.8;
     font-size: 1.1rem;
     color: var(--text-primary);
     margin-bottom: 2rem;
 }
-.note-content h1,
-.note-content h2,
-.note-content h3 {
+.shared-note-page .note-content h1,
+.shared-note-page .note-content h2,
+.shared-note-page .note-content h3 {
     margin: 1.5rem 0 1rem;
     font-weight: 600;
 }
-.note-content p { margin: 1rem 0; }
-.note-content ul,
-.note-content ol { margin: 1rem 0 1rem 2rem; }
-.note-content img {
+.shared-note-page .note-content p {
+    margin: 1rem 0;
+}
+.shared-note-page .note-content ul,
+.shared-note-page .note-content ol {
+    margin: 1rem 0 1rem 2rem;
+}
+.shared-note-page .note-content img {
     max-width: 100%;
     height: auto;
     border-radius: var(--radius);
     margin: 1rem 0;
 }
-.note-content blockquote {
+.shared-note-page .note-content blockquote {
     border-left: 4px solid var(--accent);
     padding: 0.5rem 1rem;
     background: var(--bg-secondary);
     margin: 1rem 0;
     font-style: italic;
 }
-.note-content code {
+.shared-note-page .note-content code {
     background: var(--bg-secondary);
     padding: 0.2rem 0.4rem;
     border-radius: var(--radius-sm);
     font-family: monospace;
     font-size: 0.9rem;
 }
-.note-content pre {
+.shared-note-page .note-content pre {
     background: var(--bg-secondary);
     padding: 1rem;
     border-radius: var(--radius);
     overflow-x: auto;
     border: 1px solid var(--border);
+    box-sizing: border-box;
 }
 
-.note-actions {
+.shared-note-page .note-actions {
     display: flex;
     gap: 1rem;
     margin-top: 2rem;
     border-top: 1px solid var(--border);
     padding-top: 2rem;
 }
-.note-actions button { flex: 0 0 auto; }
+.shared-note-page .note-actions button {
+    flex: 0 0 auto;
+}
 
 /* ═══════════ FIXED FOOTER NAV ═══════════════════════════════════
-   Matches the performance-page footer: full-width bar, four
-   flex-1 buttons with emoji + label, accent highlight on hover /
-   focus. Safe-area padding for iPhone home indicator.
-   ================================================================ */
-.app-footer {
+   CRITICAL FIX: .app-footer and .footer-btn were previously bare,
+   overriding common.css's .app-footer / .footer-btn on every page.
+   z-index leaked from common's 50 → 10. Now scoped. */
+.shared-note-page .app-footer {
     flex-shrink: 0;
     min-height: 60px;
     background: var(--bg-card);
@@ -220,7 +281,7 @@
     box-sizing: border-box;
 }
 
-.footer-btn {
+.shared-note-page .footer-btn {
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -238,55 +299,59 @@
     border-radius: 10px;
     -webkit-tap-highlight-color: transparent;
 }
-.footer-btn span {
+.shared-note-page .footer-btn span {
     font-size: 0.7rem;
     letter-spacing: 0.02em;
 }
-.footer-btn:hover,
-.footer-btn:active,
-.footer-btn:focus-visible {
+
+/* Token-driven hover tint — was hardcoded green rgba(16,163,127,0.08)
+   (OpenAI green). App accent is blue #2563eb. Mismatched — text turned
+   blue but background tint was green. Now both follow --accent-rgb. */
+.shared-note-page .footer-btn:hover,
+.shared-note-page .footer-btn:active,
+.shared-note-page .footer-btn:focus-visible {
     color: var(--accent);
-    background: rgba(16, 163, 127, 0.08);
+    background: rgba(var(--accent-rgb), 0.08);
     outline: none;
 }
 
 /* ═══════════ RESPONSIVE ═════════════════════════════════════════ */
 @media (max-width: 640px) {
-    .shared-note-header {
+    .shared-note-page .shared-note-header {
         padding: 0 1rem;
         height: 56px;
     }
-    .shared-note-header .logo {
+    .shared-note-page .shared-note-header .logo {
         font-size: 1.05rem;
     }
-    .shared-note-header .logo img {
+    .shared-note-page .shared-note-header .logo img {
         width: 32px;
         height: 32px;
     }
 
-    .shared-note-main {
+    .shared-note-page .shared-note-main {
         padding: 1rem;
     }
 
-    .note-card {
+    .shared-note-page .note-card {
         padding: 1.5rem;
         border-radius: var(--radius);
     }
-    .note-card h1 {
+    .shared-note-page .note-card h1 {
         font-size: 1.5rem;
     }
 
-    .note-actions {
+    .shared-note-page .note-actions {
         flex-direction: column;
     }
-    .note-actions button {
+    .shared-note-page .note-actions button {
         width: 100%;
     }
 
-    .footer-btn {
+    .shared-note-page .footer-btn {
         font-size: 1.05rem;
     }
-    .footer-btn span {
+    .shared-note-page .footer-btn span {
         font-size: 0.65rem;
     }
 }

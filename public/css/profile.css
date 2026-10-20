@@ -1,68 +1,96 @@
 /* ==========================================================================
    PROFILE — page-specific styles
+   Root wrapper: .profile-page (from <section class="page profile-page">)
+
    Requires common.css (tokens, form primitives, buttons base, .badge,
    .header-row base, .no-data base, hr base, :where(header|footer) defaults,
-   .page-container base, keyframes shimmer/spin).
+   .page-container base, --shimmer-base, --shimmer-highlight).
+
    Adds ONLY: page container block, page-sticky fixed-header, tabs override,
    profile form, subscription card, devices, stats, institution dropdown,
    storage tab, shimmer skeleton, responsive overrides.
+
+   7-RULE COMPLIANCE
+   Rule 1: every selector prefixed with .profile-page (or
+           body:has(.profile-page) for JS-appended modal buttons).
+   Rule 2: .stats-grid uses minmax(0, 1fr) in every template.
+   Rule 3: box-sizing: border-box on all layout containers.
+   Rule 4: N/A (no viewport units).
+   Rule 5: .btn-* / main / main h1 / footer / hr / .no-data / .page-container
+           / .fixed-header / .tabs / .tab-button overrides ALL scoped.
+           @keyframes renamed to profile-shimmer; shimmer-spin dropped in
+           favor of common's spin (identical).
+   Rule 6: .fixed-header overflow: visible (defensive).
+   Rule 7: shimmer uses --shimmer-base / --shimmer-highlight tokens;
+           keyframe namespaced profile-shimmer; reduced-motion guard.
    ========================================================================== */
 
 /* ---------- Page container override ----------
-   Block common's max-width + centering + side padding at all widths,
-   then re-apply on large screens (matches original behavior). */
-.page-container {
+   Previously bare — every page's container lost 1200px max-width.
+   Now scoped. Common provides max-width: 1200px + margin auto + side
+   padding; this page blocks them at small widths and re-applies on large. */
+.profile-page .page-container {
     max-width: none;
     margin: 0;
     padding: 0;
+    box-sizing: border-box;
 }
 @media (min-width: 1025px) {
-    .page-container {
+    .profile-page .page-container {
         max-width: 1200px;
         margin: 0 auto;
     }
 }
 
-/* ---------- Page-sticky fixed header ---------- */
-.fixed-header {
+/* ---------- Page-sticky fixed header ----------
+   Previously bare — every page's .fixed-header got sticky positioning,
+   background, border, and padding from this file. Now scoped. */
+.profile-page .fixed-header {
     position: sticky;
     top: 0;
     z-index: 100;
+    width: 100%;
+    box-sizing: border-box;
     background: var(--bg-card);
     border-bottom: 1px solid var(--border);
     padding: 0.5rem 1rem;
+    /* Rule 6: keep future dropdowns from being clipped */
+    overflow: visible;
 }
 
 /* ---------- Header-row overrides (base is in common) ---------- */
-.header-row .left-group { flex-shrink: 1; }   /* common has no shrink limit */
-.header-row .right-group { flex-shrink: 0; }  /* pins theme toggle */
+.profile-page .header-row .left-group  { flex-shrink: 1; }
+.profile-page .header-row .right-group { flex-shrink: 0; }
 
-/* Page uses .title-area h1 instead of common's .page-title */
-.header-row.bottom .title-area {
+.profile-page .header-row.bottom .title-area {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    min-width: 0;
 }
-.header-row.bottom .title-area h1 {
+.profile-page .header-row.bottom .title-area h1 {
     font-size: 1.2rem;
     margin: 0;
 }
-#header-status {
+.profile-page #header-status {
     font-size: 0.85rem;
     color: var(--text-muted);
 }
 
-/* ---------- Main ---------- */
-main { padding: 0.5rem 1rem; }
-
-main h1 {
+/* ---------- Main ----------
+   Previously bare `main` and `main h1` — restyled every page. Now scoped. */
+.profile-page main {
+    padding: 0.5rem 1rem;
+}
+.profile-page main h1 {
     font-size: 1.8rem;
     margin: 1rem 0.5rem;
 }
 
-/* ---------- Tabs — visible scrollbar on mouse, hidden on touch ---------- */
-
-.tabs {
+/* ---------- Tabs override ----------
+   Scoped. Consolidates the duplicated .tab-button rule from the original
+   (there were two, second won the cascade; now merged into one). */
+.profile-page .tabs {
     display: flex;
     flex-wrap: nowrap;
     gap: 0.5rem;
@@ -74,16 +102,15 @@ main h1 {
 
     padding: 0 0.5rem 0.5rem;
     margin-bottom: 1rem;
+    box-sizing: border-box;
     position: relative;
 
-    /* Firefox: full-size scrollbar, high-contrast thumb.
-       `auto` (not `thin`) keeps the bar thick enough to grab. */
     scrollbar-width: auto;
     scrollbar-color: var(--accent) var(--bg-secondary);
 }
 
-.tab-button {
-    flex: 0 0 auto;          /* don't squash — overflow and scroll */
+.profile-page .tab-button {
+    flex: 0 0 auto;
     padding: 0.75rem 1.2rem;
     font-size: 1rem;
     min-height: 48px;
@@ -91,88 +118,67 @@ main h1 {
     white-space: nowrap;
 }
 
-/* WebKit (Chrome, Edge, Brave, Safari, Android WebView):
-   thick, high-contrast scrollbar visible whenever content overflows.
-   Defining ::-webkit-scrollbar at all overrides macOS "when scrolling"
-   auto-hide — the bar shows as soon as the tab bar overflows. */
-.tabs::-webkit-scrollbar {
+/* WebKit scrollbar — persistent while tabs overflow */
+.profile-page .tabs::-webkit-scrollbar {
     height: 10px;
 }
-
-.tabs::-webkit-scrollbar-track {
+.profile-page .tabs::-webkit-scrollbar-track {
     background: var(--bg-secondary);
     border-radius: 5px;
     margin: 0 0.5rem;
 }
-
-.tabs::-webkit-scrollbar-thumb {
+.profile-page .tabs::-webkit-scrollbar-thumb {
     background: var(--accent);
     border-radius: 5px;
-    /* Inset look — thumb has a 2px gap from the track edges
-       so it reads as a grab handle, not a flat stripe. */
     border: 2px solid var(--bg-secondary);
-    /* Minimum grab width so a barely-overflowing bar is still usable */
     min-width: 40px;
 }
-
-.tabs::-webkit-scrollbar-thumb:hover {
+.profile-page .tabs::-webkit-scrollbar-thumb:hover,
+.profile-page .tabs::-webkit-scrollbar-thumb:active {
     background: var(--accent-dark);
 }
 
-.tabs::-webkit-scrollbar-thumb:active {
-    background: var(--accent-dark);
-}
-
-/* Touch devices (phones, tablets): swipe is the interaction,
-   so the scrollbar is visual noise. Hide it and use a right-edge
-   fade to hint that more tabs exist. */
 @media (hover: none) and (pointer: coarse) {
-    .tabs {
+    .profile-page .tabs {
         scrollbar-width: none;
         -ms-overflow-style: none;
         -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
         mask-image: linear-gradient(to right, black 85%, transparent 100%);
     }
-
-    .tabs::-webkit-scrollbar {
+    .profile-page .tabs::-webkit-scrollbar {
         display: none;
     }
 }
 
-.tab-button {
-    padding: 0.75rem 1.2rem;       /* common: 0.625/1.25rem */
-    font-size: 1rem;
-    min-height: 48px;              /* common: 44px */
-    /* Block common's margin-bottom: -2px */
-    margin-bottom: 0;
-}
-
 /* ---------- Profile form ---------- */
-.profile-form {
+.profile-page .profile-form {
     max-width: 600px;
     margin-bottom: 2rem;
 }
-.profile-form .form-group { margin-bottom: 1.25rem; }
-.profile-form .form-row {
+.profile-page .profile-form .form-group {
+    margin-bottom: 1.25rem;
+}
+.profile-page .profile-form .form-row {
     display: flex;
     gap: 1rem;
     flex-wrap: wrap;
 }
-.profile-form .form-row .half {
+.profile-page .profile-form .form-row .half {
     flex: 1;
     min-width: 140px;
 }
-.profile-form label {
+.profile-page .profile-form label {
     display: block;
     margin-bottom: 0.375rem;
     font-weight: 500;
     color: var(--text-secondary);
     font-size: 0.875rem;
 }
-.profile-form input,
-.profile-form select {
+.profile-page .profile-form input,
+.profile-page .profile-form select {
     width: 100%;
     padding: 0.625rem 0.875rem;
+    box-sizing: border-box;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     background: var(--bg-secondary);
@@ -181,13 +187,13 @@ main h1 {
     font-size: 0.9375rem;
     transition: border-color 0.2s, box-shadow 0.2s;
 }
-.profile-form input:focus,
-.profile-form select:focus {
+.profile-page .profile-form input:focus,
+.profile-page .profile-form select:focus {
     outline: none;
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.1);
 }
-.profile-form small {
+.profile-page .profile-form small {
     font-size: 0.75rem;
     color: var(--text-muted);
     display: block;
@@ -195,52 +201,54 @@ main h1 {
 }
 
 /* ---------- Subscription card ---------- */
-.subscription-card {
+.profile-page .subscription-card {
     background: var(--bg-secondary);
     border-radius: var(--radius);
     padding: 1.5rem;
+    box-sizing: border-box;
     margin-top: 2rem;
     border: 1px solid var(--border);
 }
-.subscription-card h3 {
+.profile-page .subscription-card h3 {
     font-size: 1.2rem;
     margin-bottom: 0.75rem;
 }
-.subscription-card p {
+.profile-page .subscription-card p {
     margin-bottom: 0.5rem;
     font-size: 0.95rem;
 }
 
 /* ---------- Devices ---------- */
-.devices-list { margin: 1rem 0; }
-
-.device-item {
+.profile-page .devices-list {
+    margin: 1rem 0;
+}
+.profile-page .device-item {
     display: flex;
     align-items: center;
     gap: 1rem;
     padding: 1rem;
+    box-sizing: border-box;
     border-bottom: 1px solid var(--border);
     flex-wrap: wrap;
 }
-.device-item.current-device {
-    background: rgba(16, 185, 129, 0.1);
+.profile-page .device-item.current-device {
+    background: rgba(var(--success-rgb), 0.1);
     border-left: 4px solid var(--success);
 }
-.device-icon {
+.profile-page .device-icon {
     font-size: 1.5rem;
     flex-shrink: 0;
 }
-.device-name {
+.profile-page .device-name {
     flex: 1;
     font-weight: 500;
     min-width: 100px;
 }
-.device-last {
+.profile-page .device-last {
     color: var(--text-muted);
     font-size: 0.75rem;
 }
-/* Override common's .badge (blocks border + weight leaks) */
-.device-item .badge {
+.profile-page .device-item .badge {
     background: var(--success);
     color: #fff;
     padding: 0.2rem 0.5rem;
@@ -250,56 +258,64 @@ main h1 {
     font-weight: 400;
 }
 
-/* ---------- Stats ---------- */
-.stats-grid {
+/* ---------- Stats ----------
+   Rule 2: minmax(0, 1fr) prevents long stat values from blowing out the
+   grid columns past the container width. */
+.profile-page .stats-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 1rem;
     margin: 1.5rem 0;
 }
-.stat-item {
+.profile-page .stat-item {
     background: var(--bg-secondary);
     padding: 1rem;
+    box-sizing: border-box;
     border-radius: var(--radius);
     text-align: center;
     border: 1px solid var(--border);
 }
-.stat-label {
+.profile-page .stat-label {
     font-size: 0.75rem;
     text-transform: uppercase;
     color: var(--text-muted);
     margin-bottom: 0.25rem;
 }
-.stat-value {
+.profile-page .stat-value {
     font-size: 1.8rem;
     font-weight: 700;
     color: var(--accent);
 }
 
-/* ---------- Button overrides ---------- */
-/* Common provides base; page widens padding + pill radius. */
-.btn-primary {
+/* ---------- Button overrides — SCOPED ----------
+   Previously bare .btn-* — restyled EVERY page's buttons. Now scoped.
+   Uses body:has(.profile-page) .modal-overlay for JS-appended modals. */
+.profile-page .btn-primary,
+body:has(.profile-page) .modal-overlay .btn-primary {
     padding: 0.6rem 1.2rem;
     border-radius: 30px;
     font-weight: 600;
 }
-.btn-secondary {
+.profile-page .btn-secondary,
+body:has(.profile-page) .modal-overlay .btn-secondary {
     padding: 0.6rem 1.2rem;
     border-radius: 30px;
     font-weight: 600;
 }
-.btn-outline {
+.profile-page .btn-outline,
+body:has(.profile-page) .modal-overlay .btn-outline {
     padding: 0.6rem 1.2rem;
     border-radius: 30px;
     font-weight: 500;
 }
-.btn-danger {
+.profile-page .btn-danger,
+body:has(.profile-page) .modal-overlay .btn-danger {
     padding: 0.6rem 1.2rem;
     border-radius: 30px;
     font-weight: 600;
 }
-/* Common's .btn-small only sets padding + font-size; page adds colors. */
-.btn-small {
+.profile-page .btn-small,
+body:has(.profile-page) .modal-overlay .btn-small {
     padding: 0.3rem 0.8rem;
     font-size: 0.85rem;
     border-radius: 30px;
@@ -308,25 +324,26 @@ main h1 {
     background: var(--bg-secondary);
     color: var(--text-primary);
 }
-/* Common's .btn-text is 500 weight; page uses inherit (400). */
-.btn-text {
+.profile-page .btn-text,
+body:has(.profile-page) .modal-overlay .btn-text {
     font-weight: 400;
 }
 
-/* ---------- Utility ---------- */
-hr { margin: 2rem 0; }
-
-.note {
+/* ---------- Utility ----------
+   Scoped hr / .no-data / .note / footer overrides — previously bare and
+   leaked to terms pages, agent-terms, privacy, notes, etc. */
+.profile-page hr {
+    margin: 2rem 0;
+}
+.profile-page .note {
     font-size: 0.75rem;
     color: var(--text-muted);
     margin-top: 1rem;
 }
-
-.no-data {
-    padding: 1rem 0;         /* common: 2rem 1rem */
+.profile-page .no-data {
+    padding: 1rem 0;
 }
-
-.devices-header {
+.profile-page .devices-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -334,23 +351,26 @@ hr { margin: 2rem 0; }
     gap: 0.5rem;
     margin-bottom: 1rem;
 }
-
-footer {
+.profile-page footer {
     padding: 1rem;
+    box-sizing: border-box;
     text-align: center;
 }
 
 /* ---------- Institution dropdown ---------- */
-.institution-wrapper { position: relative; }
-.institution-wrapper input {
+.profile-page .institution-wrapper {
+    position: relative;
+}
+.profile-page .institution-wrapper input {
     width: 100%;
     padding: 0.5rem;
+    box-sizing: border-box;
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     background: var(--bg-card);
     color: var(--text-primary);
 }
-.institution-dropdown {
+.profile-page .institution-dropdown {
     position: absolute;
     top: 100%;
     left: 0;
@@ -363,16 +383,20 @@ footer {
     z-index: 10;
     display: none;
     box-shadow: var(--shadow);
+    box-sizing: border-box;
 }
-.institution-dropdown.show { display: block; }
-.institution-dropdown .item {
+.profile-page .institution-dropdown.show { display: block; }
+.profile-page .institution-dropdown .item {
     padding: 0.5rem;
     cursor: pointer;
     border-bottom: 1px solid var(--border);
 }
-.institution-dropdown .item:hover    { background: var(--bg-secondary); }
-.institution-dropdown .item.selected { background: var(--accent); color: #fff; }
-.institution-dropdown .no-result {
+.profile-page .institution-dropdown .item:hover    { background: var(--bg-secondary); }
+.profile-page .institution-dropdown .item.selected {
+    background: var(--accent);
+    color: #fff;
+}
+.profile-page .institution-dropdown .no-result {
     padding: 0.5rem;
     color: var(--text-muted);
     text-align: center;
@@ -381,20 +405,15 @@ footer {
 /* ================================================================
    STORAGE TAB
    ================================================================ */
-
-/* ---------- Summary card ----------
-   Three read-only rows: writing-new-files-to, path, used-by-MedVix.
-   The row layout is shared by label + value, with .storage-path used
-   for the monospace path so it visually reads as data, not prose. */
-.storage-card {
+.profile-page .storage-card {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 1rem 1.25rem;
+    box-sizing: border-box;
     margin: 1rem 0 2rem;
 }
-
-.storage-row {
+.profile-page .storage-row {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
@@ -402,43 +421,40 @@ footer {
     padding: 0.5rem 0;
     border-bottom: 1px solid var(--border);
 }
-.storage-row:last-child {
+.profile-page .storage-row:last-child  {
     border-bottom: none;
     padding-bottom: 0;
 }
-.storage-row:first-child {
+.profile-page .storage-row:first-child {
     padding-top: 0;
 }
-
-.storage-label {
+.profile-page .storage-label {
     font-size: 0.85rem;
     color: var(--text-muted);
     font-weight: 500;
     flex-shrink: 0;
 }
-
-.storage-value {
+.profile-page .storage-value {
     font-size: 0.95rem;
     color: var(--text-primary);
     font-weight: 600;
     text-align: right;
     word-break: break-all;
 }
-
-.storage-path {
+.profile-page .storage-path {
     font-family: 'Courier New', Consolas, Monaco, monospace;
     font-size: 0.75rem;
     color: var(--text-secondary);
     background: var(--bg-card);
     padding: 0.25rem 0.5rem;
+    box-sizing: border-box;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border);
     text-align: right;
     word-break: break-all;
     max-width: 60%;
 }
-
-.storage-hint {
+.profile-page .storage-hint {
     font-size: 0.85rem;
     color: var(--text-muted);
     margin: 0.25rem 0 1rem;
@@ -446,59 +462,47 @@ footer {
     max-width: 600px;
 }
 
-/* ---------- Roots list ----------
-   One .storage-root card per available root, in the order the native
-   layer reports them: internal, external, sdcard. The current write
-   root gets .is-current (accent strip on the left, matching the
-   .device-item.current-device convention). Unavailable roots keep
-   their card so the user can see that an SD card is present-but-
-   ejected — they are dimmed, with action buttons hidden by CSS. */
-.storage-roots-list {
+.profile-page .storage-roots-list {
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
     margin: 0.75rem 0 1.5rem;
 }
-
-.storage-root {
+.profile-page .storage-root {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 1rem 1.25rem;
+    box-sizing: border-box;
     background: var(--bg-card);
     transition: border-color 0.15s ease;
 }
-.storage-root:hover {
+.profile-page .storage-root:hover {
     border-color: var(--accent);
 }
-
-.storage-root.is-unavailable {
+.profile-page .storage-root.is-unavailable {
     opacity: 0.55;
 }
-.storage-root.is-unavailable .storage-root-actions {
+.profile-page .storage-root.is-unavailable .storage-root-actions {
     display: none;
 }
-
-.storage-root.is-current {
+.profile-page .storage-root.is-current {
     border-left: 4px solid var(--success);
     padding-left: calc(1.25rem - 3px);
 }
-
-.storage-root-header {
+.profile-page .storage-root-header {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
     gap: 0.5rem;
     margin-bottom: 0.5rem;
 }
-
-.storage-root-name {
+.profile-page .storage-root-name {
     font-weight: 600;
     font-size: 1rem;
     color: var(--text-primary);
     line-height: 1.3;
 }
-
-.storage-root-badge {
+.profile-page .storage-root-badge {
     font-size: 0.7rem;
     padding: 0.15rem 0.5rem;
     border-radius: 999px;
@@ -508,81 +512,70 @@ footer {
     line-height: 1.4;
     white-space: nowrap;
 }
-.storage-root-badge-removable {
+.profile-page .storage-root-badge-removable {
     background: var(--accent);
     color: #fff;
 }
-.storage-root-badge-current {
+.profile-page .storage-root-badge-current {
     background: var(--success);
     color: #fff;
 }
-.storage-root-badge-unavailable {
+.profile-page .storage-root-badge-unavailable {
     background: var(--bg-secondary);
     color: var(--text-muted);
     border: 1px solid var(--border);
 }
-
-.storage-root-path {
+.profile-page .storage-root-path {
     display: block;
     font-family: 'Courier New', Consolas, Monaco, monospace;
     font-size: 0.75rem;
     color: var(--text-secondary);
     background: var(--bg-secondary);
     padding: 0.35rem 0.55rem;
+    box-sizing: border-box;
     border-radius: var(--radius-sm);
     border: 1px solid var(--border);
     word-break: break-all;
     margin-bottom: 0.5rem;
     line-height: 1.4;
 }
-
-.storage-root-meta {
+.profile-page .storage-root-meta {
     font-size: 0.85rem;
     color: var(--text-muted);
     margin-bottom: 0.75rem;
     line-height: 1.4;
 }
-
-.storage-root-actions {
+.profile-page .storage-root-actions {
     display: flex;
     gap: 0.5rem;
     flex-wrap: wrap;
     align-items: center;
 }
-
-/* Scoped button sizing inside root cards — the page-level pill
-   overrides are wide; inside a card the buttons should be tighter
-   so two of them fit on a single narrow-phone row. */
-.storage-root-actions .btn-secondary,
-.storage-root-actions .btn-text {
+.profile-page .storage-root-actions .btn-secondary,
+.profile-page .storage-root-actions .btn-text {
     font-size: 0.85rem;
     padding: 0.4rem 0.9rem;
     min-height: 36px;
 }
 
-/* ---------- Migration progress ----------
-   Shown only while a migration is running. The panel is hidden via
-   the [hidden] attribute on the container, which the browser maps to
-   display:none without needing a class. */
-.storage-migration-panel {
+.profile-page .storage-migration-panel {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 1rem 1.25rem;
+    box-sizing: border-box;
     background: var(--bg-secondary);
     margin: 1rem 0 1.5rem;
 }
-.storage-migration-panel[hidden] {
+.profile-page .storage-migration-panel[hidden] {
     display: none;
 }
-
-.storage-migration-panel h3 {
+.profile-page .storage-migration-panel h3 {
     font-size: 1rem;
     margin: 0 0 0.75rem;
     color: var(--text-primary);
     font-weight: 600;
 }
-
-.storage-migration-bar {
+.profile-page .storage-migration-bar {
     height: 6px;
     background: var(--bg-card);
     border-radius: 3px;
@@ -590,15 +583,13 @@ footer {
     margin: 0.5rem 0 0.75rem;
     border: 1px solid var(--border);
 }
-
-.storage-migration-fill {
+.profile-page .storage-migration-fill {
     height: 100%;
     background: var(--accent);
     width: 0%;
     transition: width 0.15s ease-out;
 }
-
-.storage-migration-status {
+.profile-page .storage-migration-status {
     font-size: 0.85rem;
     color: var(--text-secondary);
     word-break: break-all;
@@ -606,318 +597,359 @@ footer {
     min-height: 1.2em;
     line-height: 1.4;
 }
-
-.storage-migration-panel .btn-secondary {
+.profile-page .storage-migration-panel .btn-secondary {
     font-size: 0.85rem;
     padding: 0.4rem 0.9rem;
 }
-
-#deleteAllDataBtn {
+.profile-page #deleteAllDataBtn {
     margin-bottom: 1rem;
 }
 
-/* Small phones — the summary rows stack, values left-align, and the
-   root-card action buttons go full-width so the tap targets stay
-   comfortable. */
 @media (max-width: 400px) {
-    .storage-row {
+    .profile-page .storage-row {
         flex-direction: column;
         align-items: flex-start;
         gap: 0.25rem;
     }
-    .storage-path,
-    .storage-value {
+    .profile-page .storage-path,
+    .profile-page .storage-value {
         max-width: 100%;
         text-align: left;
     }
-    .storage-root {
+    .profile-page .storage-root {
         padding: 0.85rem 0.9rem;
     }
-    .storage-root.is-current {
+    .profile-page .storage-root.is-current {
         padding-left: calc(0.9rem - 3px);
     }
-    .storage-root-actions {
+    .profile-page .storage-root-actions {
         flex-direction: column;
         align-items: stretch;
     }
-    .storage-root-actions .btn-secondary,
-    .storage-root-actions .btn-text {
+    .profile-page .storage-root-actions .btn-secondary,
+    .profile-page .storage-root-actions .btn-text {
         width: 100%;
         text-align: center;
     }
-    .storage-migration-panel {
+    .profile-page .storage-migration-panel {
         padding: 0.85rem 0.9rem;
     }
 }
-
-/* Phones 401–640px — the two action buttons wrap naturally; nothing
-   else needs adjusting. */
 @media (min-width: 401px) and (max-width: 640px) {
-    .storage-root-actions {
+    .profile-page .storage-root-actions {
         flex-wrap: wrap;
     }
 }
 
 /* ================================================================
-   SHIMMER LOADER
+   SHIMMER LOADER — Rule 7 compliant
+   Consumes standard --shimmer-base / --shimmer-highlight tokens. Keyframe
+   namespaced profile-shimmer. Overlay background uses --bg-primary.
    ================================================================ */
-#shimmer-loader {
+.profile-page #shimmer-loader {
     position: fixed;
     inset: 0;
     z-index: 99999;
-    background: #0d1117;
+    background: var(--bg-primary);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: flex-start;
     padding: 0;
+    box-sizing: border-box;
     transition: opacity 0.35s ease-out;
     opacity: 1;
     pointer-events: all;
     overflow-y: auto;
 }
-/* Block common's `.hidden { display: none !important }` from
-   killing the fade-out transition. */
-#shimmer-loader.hidden {
+/* Override common's .hidden { display: none !important } so fade-out works */
+.profile-page #shimmer-loader.hidden {
     display: flex !important;
     opacity: 0;
     pointer-events: none;
 }
-#shimmer-loader.removed {
+.profile-page #shimmer-loader.removed {
     display: none;
 }
 
-/* Page-specific shimmer keyframe (different offsets from common's) */
-@keyframes shimmer {
+.profile-page .shimmer-skeleton {
+    background: linear-gradient(
+        90deg,
+        var(--shimmer-base)      0%,
+        var(--shimmer-highlight) 50%,
+        var(--shimmer-base)      100%
+    );
+    background-size: 600px 100%;
+    animation: profile-shimmer 1.6s ease-in-out infinite;
+    border-radius: 6px;
+}
+
+@keyframes profile-shimmer {
     0%   { background-position: -300px 0; }
     100% { background-position:  300px 0; }
 }
 
-.shimmer-skeleton {
-    background: linear-gradient(90deg, #1c1f2a 0%, #252836 40%, #2a2d3d 50%, #252836 60%, #1c1f2a 100%);
-    background-size: 600px 100%;
-    animation: shimmer 1.6s ease-in-out infinite;
-    border-radius: 6px;
+@media (prefers-reduced-motion: reduce) {
+    .profile-page .shimmer-skeleton {
+        animation: none;
+        background: var(--shimmer-base);
+    }
 }
-.shimmer-container {
+
+.profile-page .shimmer-container {
     width: 100%;
     max-width: 600px;
     padding: 0 1rem;
+    box-sizing: border-box;
     margin: 0 auto;
 }
-.shimmer-header {
+.profile-page .shimmer-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 0.75rem 1rem;
-    border-bottom: 1px solid #1e2230;
+    box-sizing: border-box;
+    border-bottom: 1px solid var(--border);
     width: 100%;
     position: sticky;
     top: 0;
-    background: #0d1117;
+    background: var(--bg-primary);
     z-index: 2;
 }
-.shimmer-header-left {
+.profile-page .shimmer-header-left {
     display: flex;
     align-items: center;
     gap: 0.75rem;
 }
-.shimmer-logo       { width: 32px; height: 32px; border-radius: 6px; flex-shrink: 0; }
-.shimmer-brand      { width: 60px; height: 18px; border-radius: 4px; }
-.shimmer-header-btn { width: 70px; height: 20px; border-radius: 4px; }
-.shimmer-header-right {
+.profile-page .shimmer-logo       { width: 32px; height: 32px; border-radius: 6px; flex-shrink: 0; }
+.profile-page .shimmer-brand      { width: 60px; height: 18px; border-radius: 4px; }
+.profile-page .shimmer-header-btn { width: 70px; height: 20px; border-radius: 4px; }
+.profile-page .shimmer-header-right {
     display: flex;
     align-items: center;
     gap: 0.5rem;
 }
-.shimmer-icon-btn { width: 36px; height: 36px; border-radius: 50%; }
+.profile-page .shimmer-icon-btn { width: 36px; height: 36px; border-radius: 50%; }
 
-.shimmer-subheader {
+.profile-page .shimmer-subheader {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 0.5rem 1rem;
-    border-bottom: 1px solid #1e2230;
+    box-sizing: border-box;
+    border-bottom: 1px solid var(--border);
     width: 100%;
-    background: #0d1117;
+    background: var(--bg-primary);
 }
-.shimmer-title  { width: 90px;  height: 22px; border-radius: 4px; }
-.shimmer-status { width: 140px; height: 16px; border-radius: 4px; }
+.profile-page .shimmer-title  { width: 90px;  height: 22px; border-radius: 4px; }
+.profile-page .shimmer-status { width: 140px; height: 16px; border-radius: 4px; }
 
-.shimmer-tabs {
+.profile-page .shimmer-tabs {
     display: flex;
     gap: 0.5rem;
     padding: 0.75rem 1rem;
-    border-bottom: 2px solid #1e2230;
+    box-sizing: border-box;
+    border-bottom: 2px solid var(--border);
     width: 100%;
     overflow: hidden;
 }
-.shimmer-tab {
+.profile-page .shimmer-tab {
     width: 80px;
     height: 36px;
     border-radius: 4px;
     flex-shrink: 0;
 }
 
-.shimmer-form {
+.profile-page .shimmer-form {
     padding: 1rem 1rem 0;
+    box-sizing: border-box;
     width: 100%;
     max-width: 600px;
     margin: 0 auto;
 }
-.shimmer-label { width: 90px; height: 14px; border-radius: 4px; margin-bottom: 0.5rem; }
-.shimmer-input { width: 100%; height: 42px; border-radius: 6px; margin-bottom: 1.25rem; }
-.shimmer-row   { display: flex; gap: 1rem; width: 100%; }
-.shimmer-row .shimmer-input-half {
+.profile-page .shimmer-label {
+    width: 90px;
+    height: 14px;
+    border-radius: 4px;
+    margin-bottom: 0.5rem;
+}
+.profile-page .shimmer-input {
+    width: 100%;
+    height: 42px;
+    border-radius: 6px;
+    margin-bottom: 1.25rem;
+    box-sizing: border-box;
+}
+.profile-page .shimmer-row {
+    display: flex;
+    gap: 1rem;
+    width: 100%;
+}
+.profile-page .shimmer-row .shimmer-input-half {
     flex: 1;
+    min-width: 0;
     height: 42px;
     border-radius: 6px;
     margin-bottom: 1.25rem;
 }
-.shimmer-btn {
+.profile-page .shimmer-btn {
     width: 140px;
     height: 40px;
     border-radius: 30px;
     margin-top: 0.5rem;
 }
 
-.shimmer-card {
+.profile-page .shimmer-card {
     width: 100%;
     max-width: 600px;
     margin: 1.5rem auto;
     padding: 1rem;
-    background: #111620;
+    box-sizing: border-box;
+    background: var(--bg-card);
     border-radius: 8px;
-    border: 1px solid #1e2230;
+    border: 1px solid var(--border);
 }
-.shimmer-card-title { width: 110px; height: 18px; border-radius: 4px; margin-bottom: 0.75rem; }
-.shimmer-card-line  { width: 100%; height: 14px; border-radius: 4px; margin-bottom: 0.5rem; }
-.shimmer-card-line.short { width: 60%; }
+.profile-page .shimmer-card-title {
+    width: 110px;
+    height: 18px;
+    border-radius: 4px;
+    margin-bottom: 0.75rem;
+}
+.profile-page .shimmer-card-line {
+    width: 100%;
+    height: 14px;
+    border-radius: 4px;
+    margin-bottom: 0.5rem;
+}
+.profile-page .shimmer-card-line.short {
+    width: 60%;
+}
 
-.shimmer-spinner {
+.profile-page .shimmer-spinner {
     width: 28px;
     height: 28px;
-    border: 3px solid #1e2230;
-    border-top-color: #4f8ef7;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
     border-radius: 50%;
-    animation: shimmer-spin 0.8s linear infinite;
+    /* Reuse common's @keyframes spin — identical rotation */
+    animation: spin 0.8s linear infinite;
     margin: 2rem auto 1rem;
 }
-@keyframes shimmer-spin { to { transform: rotate(360deg); } }
 
-.shimmer-loading-text {
+.profile-page .shimmer-loading-text {
     text-align: center;
-    color: #6b7280;
+    color: var(--text-muted);
     font-family: system-ui, -apple-system, sans-serif;
     font-size: 0.85rem;
     margin-top: 0.5rem;
     letter-spacing: 0.02em;
 }
 
-/* ---------- Responsive Shimmer ---------- */
 @media (max-width: 400px) {
-    .shimmer-header-btn { display: none; }
-    .shimmer-tab { width: 60px; height: 30px; }
-    .shimmer-tabs { gap: 0.35rem; padding: 0.5rem 0.6rem; }
-    .shimmer-form { padding: 0.75rem 0.6rem 0; }
-    .shimmer-row  { flex-direction: column; gap: 0; }
+    .profile-page .shimmer-header-btn { display: none; }
+    .profile-page .shimmer-tab { width: 60px; height: 30px; }
+    .profile-page .shimmer-tabs { gap: 0.35rem; padding: 0.5rem 0.6rem; }
+    .profile-page .shimmer-form { padding: 0.75rem 0.6rem 0; }
+    .profile-page .shimmer-row  { flex-direction: column; gap: 0; }
 }
 
 /* ================================================================
-   RESPONSIVE OVERHAUL
+   RESPONSIVE OVERHAUL — all scoped
    ================================================================ */
 
-/* ---------- Small phones (≤ 400px) ---------- */
+/* Small phones (≤ 400px) */
 @media (max-width: 400px) {
-    .fixed-header {
+    .profile-page .fixed-header {
         padding: 0.3rem 0.6rem;
     }
-    .header-row .left-group .brand { font-size: 1rem; }
-    .header-row .left-group img {
+    .profile-page .header-row .left-group .brand { font-size: 1rem; }
+    .profile-page .header-row .left-group img {
         width: 28px;
         height: 28px;
     }
-    .header-row .btn-outline {
+    .profile-page .header-row .btn-outline {
         font-size: 1rem;
         padding: 0.2rem 0.5rem;
     }
-    .header-row.bottom .title-area h1 { font-size: 1rem; }
-    .header-row .btn-text {
+    .profile-page .header-row.bottom .title-area h1 { font-size: 1rem; }
+    .profile-page .header-row .btn-text {
         font-size: 0.75rem;
         padding: 0.2rem 0.5rem;
     }
-    main h1 {
+    .profile-page main h1 {
         font-size: 1.4rem;
         margin: 0.5rem 0.25rem;
     }
-    .tab-button {
+    .profile-page .tab-button {
         padding: 0.4rem 0.6rem;
         font-size: 0.8rem;
         min-height: 36px;
     }
-    .profile-form .form-row .half { min-width: 100%; }
-    .stats-grid {
-        grid-template-columns: 1fr;
+    .profile-page .profile-form .form-row .half { min-width: 100%; }
+    .profile-page .stats-grid {
+        grid-template-columns: minmax(0, 1fr);
         gap: 0.75rem;
     }
-    .stat-value { font-size: 1.4rem; }
-    .device-item {
+    .profile-page .stat-value { font-size: 1.4rem; }
+    .profile-page .device-item {
         padding: 0.75rem;
         flex-direction: column;
         align-items: flex-start;
     }
-    .device-name { min-width: auto; }
-    .btn-primary,
-    .btn-secondary,
-    .btn-outline,
-    .btn-danger {
+    .profile-page .device-name { min-width: auto; }
+    .profile-page .btn-primary,
+    .profile-page .btn-secondary,
+    .profile-page .btn-outline,
+    .profile-page .btn-danger {
         padding: 0.4rem 0.8rem;
         font-size: 0.85rem;
     }
-    .subscription-card { padding: 1rem; }
-    .devices-header {
+    .profile-page .subscription-card { padding: 1rem; }
+    .profile-page .devices-header {
         flex-direction: column;
         align-items: flex-start;
     }
 }
 
-/* ---------- Phones (401px – 640px) ---------- */
+/* Phones (401px – 640px) */
 @media (min-width: 401px) and (max-width: 640px) {
-    .stats-grid { grid-template-columns: 1fr 1fr; }
-    .profile-form .form-row { flex-direction: column; }
-    .device-item {
+    .profile-page .stats-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .profile-page .profile-form .form-row { flex-direction: column; }
+    .profile-page .device-item {
         flex-direction: column;
         align-items: flex-start;
     }
-    .device-item .badge { margin-left: 0; }
-    .fixed-header { padding: 0.4rem 0.8rem; }
-    .header-row .left-group .brand { font-size: 1.1rem; }
-    .devices-header {
+    .profile-page .device-item .badge { margin-left: 0; }
+    .profile-page .fixed-header { padding: 0.4rem 0.8rem; }
+    .profile-page .header-row .left-group .brand { font-size: 1.1rem; }
+    .profile-page .devices-header {
         flex-direction: column;
         align-items: flex-start;
     }
 }
 
-/* ---------- Tablets (641px – 1024px) ---------- */
+/* Tablets (641px – 1024px) */
 @media (min-width: 641px) and (max-width: 1024px) {
-    .fixed-header { padding: 0.6rem 1.5rem; }
-    main { padding: 1rem 2rem; }
-    .profile-form { max-width: 100%; }
-    .stats-grid {
-        grid-template-columns: repeat(2, 1fr);
+    .profile-page .fixed-header { padding: 0.6rem 1.5rem; }
+    .profile-page main { padding: 1rem 2rem; }
+    .profile-page .profile-form { max-width: 100%; }
+    .profile-page .stats-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 1.5rem;
     }
-    .device-item { flex-wrap: nowrap; }
-    .devices-header { flex-direction: row; }
+    .profile-page .device-item { flex-wrap: nowrap; }
+    .profile-page .devices-header { flex-direction: row; }
 }
 
-/* ---------- Large screens (≥ 1025px) ---------- */
+/* Large screens (≥ 1025px) */
 @media (min-width: 1025px) {
-    .profile-form { max-width: 800px; }
-    .stats-grid {
-        grid-template-columns: repeat(4, 1fr);
+    .profile-page .profile-form { max-width: 800px; }
+    .profile-page .stats-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 2rem;
     }
-    .device-item { padding: 1.2rem; }
-    .devices-header { flex-direction: row; }
+    .profile-page .device-item { padding: 1.2rem; }
+    .profile-page .devices-header { flex-direction: row; }
 }

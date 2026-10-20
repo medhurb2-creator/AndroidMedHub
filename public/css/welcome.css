@@ -1,164 +1,626 @@
-/* public/css/welcome.css */
+/* ==========================================================================
+   MEDVIX WELCOME PAGE — page-specific styles
+   Root wrapper: .welcome-page (from <section class="page welcome-page">)
+
+   Lightweight, responsive, SPA-friendly styling.
+
+   7-RULE COMPLIANCE
+   Rule 1: every selector is .welcome-page .* — best-in-class scoping.
+   Rule 2: grid uses repeat(3, minmax(0, 1fr)) — no overflow.
+   Rule 3: scoped universal box-sizing reset.
+   Rule 4: 100vh has 100dvh fallback.
+   Rule 5: page tokens (--welcome-*) scoped on .welcome-page — no global
+           pollution. Dark theme overrides use .dark-theme ancestor (was
+           previously .dark / [data-theme] which don't exist in this app —
+           dark mode cosmetic overrides were dead code, now fixed).
+   Rule 6: .welcome-page overflow: hidden is intentional (radial glow
+           containment). See note about very short screens.
+   Rule 7: N/A (no loaders).
+   ========================================================================== */
+
+/* ===== PAGE FOUNDATION ===== */
+
+.welcome-page {
+    --welcome-accent: var(--accent, #2563eb);
+    --welcome-accent-dark: var(--accent-dark, #1d4ed8);
+    --welcome-bg: var(--bg-primary, #f8fafc);
+    --welcome-card: var(--bg-card, #ffffff);
+    --welcome-text: var(--text-primary, #0f172a);
+    --welcome-secondary: var(--text-secondary, #475569);
+    --welcome-muted: var(--text-muted, #94a3b8);
+    --welcome-border: var(--border, #e2e8f0);
+    --welcome-hover: var(--bg-hover, #f1f5f9);
+
+    position: relative;
+    isolation: isolate;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow: hidden;
+    background:
+        radial-gradient(
+            ellipse at 50% 35%,
+            rgba(37, 99, 235, 0.07),
+            transparent 58%
+        ),
+        var(--welcome-bg);
+    color: var(--welcome-text);
+    font-family:
+        system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+        Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+.welcome-page *,
+.welcome-page *::before,
+.welcome-page *::after {
+    box-sizing: border-box;
+}
+
+.welcome-page button {
+    font: inherit;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.welcome-page button:focus-visible {
+    outline: 3px solid var(--welcome-accent);
+    outline-offset: 4px;
+}
 
 /* ===== HEADER ===== */
-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1rem 2rem;
-  background: var(--bg-secondary, #fff);
-  border-bottom: 1px solid var(--border, #e2e8f0);
-}
-header .logo {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  font-weight: 700;
-  font-size: 1.25rem;
-  color: var(--text-primary, #0f172a);
-}
-header .logo img {
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
-}
-header .btn-outline {
-  background: transparent;
-  border: 1px solid var(--border, #e2e8f0);
-  border-radius: 9999px;
-  padding: 0.4rem 0.9rem;
-  font-size: 1.25rem;
-  cursor: pointer;
-  line-height: 1;
-  transition: background 0.2s, border-color 0.2s;
-  color: var(--text-primary, #0f172a);
-}
-header .btn-outline:hover {
-  background: var(--bg-hover, #f1f5f9);
-  border-color: var(--text-muted, #94a3b8);
+
+.welcome-page .welcome-header {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex: 0 0 auto;
+    width: 100%;
+    padding: 1rem clamp(1rem, 4vw, 2.5rem);
+    background: var(--bg-secondary, var(--welcome-bg));
+    border-bottom: 1px solid var(--welcome-border);
 }
 
-/* ===== PAGE CONTAINER ===== */
-.page-container {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-primary, #f8fafc);
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+.welcome-page .logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.7rem;
+    min-width: 0;
+    color: var(--welcome-text);
+    font-size: 1.25rem;
+    font-weight: 800;
+    letter-spacing: -0.045em;
 }
-main {
-  flex: 1 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
+
+.welcome-page .logo img {
+    display: block;
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
+    object-fit: contain;
+    border-radius: 10px;
+}
+
+.welcome-page .theme-toggle {
+    display: inline-grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    border: 1px solid var(--welcome-border);
+    border-radius: 50%;
+    background: transparent;
+    color: var(--welcome-text);
+    cursor: pointer;
+    transition:
+        background-color 160ms ease,
+        border-color 160ms ease,
+        transform 160ms ease;
+}
+
+.welcome-page .theme-toggle span {
+    font-size: 1.15rem;
+    line-height: 1;
+}
+
+.welcome-page .theme-toggle:hover {
+    background: var(--welcome-hover);
+    border-color: var(--welcome-muted);
+}
+
+.welcome-page .theme-toggle:active {
+    transform: scale(0.96);
+}
+
+/* ===== MAIN LAYOUT ===== */
+
+.welcome-page .welcome-main {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex: 1 0 auto;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.75rem;
+    width: 100%;
+    max-width: 900px;
+    margin-inline: auto;
+    padding: clamp(1.5rem, 4vh, 3rem) 1.25rem;
 }
 
 /* ===== WELCOME CARD ===== */
-.welcome-card {
-  max-width: 550px;
-  width: 100%;
-  padding: 2.5rem;
-  background: var(--bg-card, #ffffff);
-  border-radius: var(--radius-lg, 16px);
-  box-shadow: var(--shadow-lg, 0 10px 40px rgba(0, 0, 0, 0.08));
-  text-align: center;
+
+.welcome-page .welcome-card {
+    width: 100%;
+    max-width: 520px;
+    margin: 0 auto;
+    padding: clamp(1.5rem, 5vw, 2.5rem);
+    overflow: hidden;
+    text-align: center;
+    background: var(--welcome-card);
+    border: 1px solid var(--welcome-border);
+    border-radius: 26px;
+    box-shadow:
+        0 16px 45px rgba(15, 23, 42, 0.055),
+        0 2px 8px rgba(15, 23, 42, 0.025);
 }
-.welcome-card h2 {
-  font-size: 2rem;
-  margin-bottom: 1rem;
-  color: var(--text-primary, #0f172a);
+
+/* ===== BRAIN ILLUSTRATION ===== */
+
+.welcome-page .brain-container {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 100%;
+    min-height: 150px;
+    margin: 0 auto 0.75rem;
 }
-.welcome-card p {
-  color: var(--text-secondary, #475569);
-  margin-bottom: 2rem;
+
+.welcome-page .brain-container::before {
+    position: absolute;
+    width: 150px;
+    height: 130px;
+    content: "";
+    background: rgba(59, 130, 246, 0.10);
+    border-radius: 50%;
+    filter: blur(35px);
+    pointer-events: none;
+}
+
+.welcome-page .brain-image {
+    position: relative;
+    display: block;
+    width: min(190px, 65%);
+    height: 160px;
+    object-fit: contain;
+    object-position: center;
+    filter: drop-shadow(0 8px 16px rgba(37, 99, 235, 0.12));
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+/* ===== HEADING AND DESCRIPTION ===== */
+
+.welcome-page .welcome-intro h1 {
+    margin: 0;
+    color: var(--welcome-text);
+    font-size: clamp(1.8rem, 5vw, 2.5rem);
+    font-weight: 850;
+    line-height: 1.16;
+    letter-spacing: -0.065em;
+}
+
+.welcome-page .welcome-intro h1 > span:first-of-type {
+    color: var(--welcome-accent);
+}
+
+.welcome-page .welcome-wave {
+    display: inline-block;
+    transform-origin: 70% 70%;
+    animation: welcome-wave 2.5s ease-in-out 1;
+}
+
+.welcome-page .welcome-description {
+    max-width: 340px;
+    margin: 1rem auto 0;
+    color: var(--welcome-secondary);
+    font-size: 0.98rem;
+    line-height: 1.75;
+    text-wrap: pretty;
 }
 
 /* ===== ACTION BUTTONS ===== */
-.action-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  margin-top: 2rem;
-}
-.action-buttons .btn-primary,
-.action-buttons .btn-secondary,
-.action-buttons .btn-link {
-  padding: 0.75rem 1.5rem;
-  border-radius: 9999px;
-  font-weight: 600;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: background 0.2s, transform 0.1s;
-  border: none;
-  text-decoration: none;
-  display: inline-block;
-}
-.action-buttons .btn-primary {
-  background: var(--accent, #2563eb);
-  color: #fff;
-}
-.action-buttons .btn-primary:hover {
-  background: var(--accent-dark, #1d4ed8);
-  transform: scale(1.01);
-}
-.action-buttons .btn-secondary {
-  background: transparent;
-  color: var(--text-primary, #0f172a);
-  border: 1px solid var(--border, #e2e8f0);
-}
-.action-buttons .btn-secondary:hover {
-  background: var(--bg-hover, #f1f5f9);
-}
-.action-buttons .btn-link {
-  background: transparent;
-  color: var(--text-secondary, #475569);
-  font-weight: 500;
-}
-.action-buttons .btn-link:hover {
-  color: var(--accent, #2563eb);
-  text-decoration: underline;
+
+.welcome-page .action-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+    width: 100%;
+    margin-top: 1.8rem;
 }
 
-/* ===== GUEST NOTE ===== */
-.guest-note {
-  font-size: 0.875rem;
-  color: var(--text-muted, #94a3b8);
-  margin-top: 1.5rem;
+.welcome-page .action-buttons button {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    width: 100%;
+    min-height: 52px;
+    padding: 0.85rem 1.25rem;
+    border: 1px solid transparent;
+    border-radius: 15px;
+    font-size: 0.98rem;
+    font-weight: 700;
+    line-height: 1.25;
+    cursor: pointer;
+    transition:
+        background-color 160ms ease,
+        border-color 160ms ease,
+        box-shadow 160ms ease,
+        transform 160ms ease;
+}
+
+.welcome-page .btn-primary {
+    color: #ffffff;
+    background: var(--welcome-accent);
+    box-shadow: 0 6px 16px rgba(37, 99, 235, 0.19);
+}
+
+.welcome-page .btn-primary:hover {
+    background: var(--welcome-accent-dark);
+    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.24);
+    transform: translateY(-1px);
+}
+
+.welcome-page .btn-primary:active,
+.welcome-page .btn-secondary:active {
+    transform: scale(0.985);
+}
+
+.welcome-page .button-arrow {
+    position: absolute;
+    right: 1.25rem;
+    font-size: 1.25rem;
+    font-weight: 500;
+    transition: transform 160ms ease;
+}
+
+.welcome-page .btn-primary:hover .button-arrow {
+    transform: translateX(3px);
+}
+
+.welcome-page .btn-secondary {
+    color: var(--welcome-text);
+    background: transparent;
+    border-color: var(--welcome-border) !important;
+}
+
+.welcome-page .btn-secondary:hover {
+    background: var(--welcome-hover);
+    border-color: var(--welcome-muted) !important;
+}
+
+/* ===== FEATURE HIGHLIGHTS ===== */
+
+.welcome-page .welcome-features {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: clamp(0.5rem, 2vw, 1rem);
+    width: 100%;
+    max-width: 520px;
+}
+
+.welcome-page .welcome-feature {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.65rem;
+    min-width: 0;
+    padding: 1rem 0.5rem;
+    color: var(--welcome-secondary);
+    text-align: center;
+    font-size: 0.78rem;
+    font-weight: 650;
+    line-height: 1.4;
+}
+
+.welcome-page .feature-icon {
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 48px;
+    flex: 0 0 48px;
+    color: var(--welcome-accent);
+    background: rgba(37, 99, 235, 0.09);
+    border: 1px solid rgba(37, 99, 235, 0.08);
+    border-radius: 16px;
+}
+
+.welcome-page .feature-icon svg {
+    display: block;
+    width: 23px;
+    height: 23px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
 }
 
 /* ===== FOOTER ===== */
-footer {
-  flex-shrink: 0;
-  text-align: center;
-  padding: 1.5rem 1rem;
-}
-footer .btn-text {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary, #475569);
-  font-size: 0.95rem;
-  cursor: pointer;
-  padding: 0.5rem 1rem;
-  border-radius: 8px;
-  transition: background 0.2s;
-}
-footer .btn-text:hover {
-  background: var(--bg-hover, #f1f5f9);
+
+.welcome-page .welcome-footer {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+    width: 100%;
+    padding: 0.75rem 1rem max(1.25rem, env(safe-area-inset-bottom));
+    text-align: center;
 }
 
-/* ===== RESPONSIVE ===== */
+.welcome-page .btn-text {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    min-height: 40px;
+    padding: 0.5rem 0.8rem;
+    color: var(--welcome-secondary);
+    background: transparent;
+    border: none;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+        color 160ms ease,
+        background-color 160ms ease;
+}
+
+.welcome-page .btn-text:hover {
+    color: var(--welcome-accent);
+    background: var(--welcome-hover);
+}
+
+.welcome-page .welcome-tagline {
+    margin: 0;
+    color: var(--welcome-muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.035em;
+}
+
+/* ===== OPTIONAL GUEST NOTE ===== */
+
+.welcome-page .guest-note {
+    margin-top: 1rem;
+    color: var(--welcome-muted);
+    font-size: 0.82rem;
+    line-height: 1.5;
+}
+
+/* ===== DARK THEME =====
+   FIX: the original used `.dark` / `[data-theme="dark"]` — neither of
+   which exist in this app. Common.css applies `.dark-theme` to <html>.
+   The previous selectors were dead code (cosmetic overrides never fired).
+   Now uses .dark-theme ancestor — matches common.css's convention.
+   ================================================================ */
+
+.dark-theme .welcome-page {
+    --welcome-bg: var(--bg-primary, #0b1120);
+    --welcome-card: var(--bg-card, #111827);
+    --welcome-text: var(--text-primary, #f1f5f9);
+    --welcome-secondary: var(--text-secondary, #cbd5e1);
+    --welcome-muted: var(--text-muted, #94a3b8);
+    --welcome-border: var(--border, #263244);
+    --welcome-hover: var(--bg-hover, #1e293b);
+
+    background:
+        radial-gradient(
+            ellipse at 50% 35%,
+            rgba(59, 130, 246, 0.12),
+            transparent 58%
+        ),
+        var(--welcome-bg);
+}
+
+.dark-theme .welcome-page .welcome-header {
+    background: var(--bg-secondary, #0f172a);
+}
+
+.dark-theme .welcome-page .welcome-card {
+    box-shadow:
+        0 16px 45px rgba(0, 0, 0, 0.16),
+        0 2px 8px rgba(0, 0, 0, 0.10);
+}
+
+.dark-theme .welcome-page .feature-icon {
+    background: rgba(59, 130, 246, 0.14);
+    border-color: rgba(59, 130, 246, 0.12);
+}
+
+/* ===== TABLET AND MOBILE ===== */
+
 @media (max-width: 640px) {
-  header {
-    padding: 0.75rem 1rem;
-  }
-  header .logo span {
-    font-size: 1rem;
-  }
-  .welcome-card {
-    padding: 1.5rem;
-  }
-  .welcome-card h2 {
-    font-size: 1.5rem;
-  }
+    .welcome-page .welcome-header {
+        padding: 0.8rem 1rem;
+    }
+
+    .welcome-page .welcome-main {
+        gap: 1rem;
+        padding: 1.25rem 1rem 1rem;
+    }
+
+    .welcome-page .welcome-card {
+        max-width: 440px;
+        padding: 1.5rem 1.25rem;
+        border-radius: 22px;
+    }
+
+    .welcome-page .brain-container {
+        min-height: 125px;
+        margin-bottom: 0.5rem;
+    }
+
+    .welcome-page .brain-image {
+        width: min(165px, 62%);
+        height: 135px;
+    }
+
+    .welcome-page .welcome-intro h1 {
+        font-size: clamp(1.75rem, 7vw, 2.15rem);
+    }
+
+    .welcome-page .welcome-description {
+        margin-top: 0.8rem;
+        font-size: 0.92rem;
+    }
+
+    .welcome-page .action-buttons {
+        margin-top: 1.4rem;
+    }
+
+    .welcome-page .welcome-features {
+        max-width: 440px;
+        gap: 0.25rem;
+    }
+
+    .welcome-page .welcome-feature {
+        gap: 0.5rem;
+        padding: 0.65rem 0.15rem;
+        font-size: 0.72rem;
+    }
+
+    .welcome-page .feature-icon {
+        width: 43px;
+        height: 43px;
+        flex-basis: 43px;
+        border-radius: 14px;
+    }
+
+    .welcome-page .welcome-footer {
+        padding-top: 0.5rem;
+    }
+}
+
+/* ===== SHORT SCREENS ===== */
+
+@media (max-height: 720px) {
+    .welcome-page .welcome-main {
+        gap: 0.75rem;
+        padding-top: 0.75rem;
+        padding-bottom: 0.75rem;
+    }
+
+    .welcome-page .welcome-card {
+        padding-top: 1.25rem;
+        padding-bottom: 1.25rem;
+    }
+
+    .welcome-page .brain-container {
+        min-height: 95px;
+        margin-bottom: 0.4rem;
+    }
+
+    .welcome-page .brain-image {
+        height: 105px;
+    }
+
+    .welcome-page .welcome-intro h1 {
+        font-size: clamp(1.6rem, 4vw, 2rem);
+    }
+
+    .welcome-page .welcome-description {
+        margin-top: 0.6rem;
+    }
+
+    .welcome-page .action-buttons {
+        gap: 0.6rem;
+        margin-top: 1rem;
+    }
+
+    .welcome-page .action-buttons button {
+        min-height: 46px;
+    }
+
+    .welcome-page .welcome-features {
+        gap: 0.25rem;
+    }
+
+    .welcome-page .welcome-feature {
+        padding-top: 0.35rem;
+        padding-bottom: 0.35rem;
+    }
+
+    .welcome-page .feature-icon {
+        width: 38px;
+        height: 38px;
+        flex-basis: 38px;
+        border-radius: 12px;
+    }
+
+    .welcome-page .feature-icon svg {
+        width: 20px;
+        height: 20px;
+    }
+
+    .welcome-page .welcome-footer {
+        padding-top: 0.25rem;
+    }
+}
+
+/* ===== REDUCED MOTION / ACCESSIBILITY ===== */
+
+@keyframes welcome-wave {
+    0%, 100% {
+        transform: rotate(0deg);
+    }
+    15%, 35% {
+        transform: rotate(12deg);
+    }
+    25%, 45% {
+        transform: rotate(-8deg);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .welcome-page *,
+    .welcome-page *::before,
+    .welcome-page *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ===== VERY NARROW PHONES ===== */
+
+@media (max-width: 360px) {
+    .welcome-page .welcome-card {
+        padding: 1.25rem 1rem;
+        border-radius: 18px;
+    }
+
+    .welcome-page .welcome-feature {
+        font-size: 0.66rem;
+    }
+
+    .welcome-page .welcome-intro h1 {
+        font-size: 1.65rem;
+    }
+
+    .welcome-page .action-buttons button {
+        min-height: 48px;
+        font-size: 0.92rem;
+    }
 }

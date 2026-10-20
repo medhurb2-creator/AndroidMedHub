@@ -1,64 +1,99 @@
 /* ==========================================================================
    SUBJECT-SPECIFIC — page-specific styles
+   Root wrapper: .subject-specific-page
+   (from <section class="page subject-specific-page">)
+
    Requires common.css (tokens, header-row base, buttons base, .no-data base,
-   .color-dot base, .hidden, keyframes shimmer, utilities).
+   .color-dot base, .hidden, utilities, --shimmer-base, --shimmer-highlight,
+   --accent-rgb).
+
    Adds ONLY: page-sticky header, subject-header-info, mode toggle,
    topic selection tree, selection summary, recent topics, dark overrides,
    responsive, shimmer skeleton, real-content gate.
+
+   7-RULE COMPLIANCE
+   Rule 1: every selector prefixed with .subject-specific-page — including
+           #shimmer-content / #real-content, which are ALSO used by
+           payment.css, pdf-settings.css, and ai.css (previously colliding).
+   Rule 2: N/A (no grids).
+   Rule 3: box-sizing: border-box on all layout containers + shimmer blocks.
+   Rule 4: N/A (no viewport units).
+   Rule 5: .page-container / .fixed-header / .header-row / .color-dot /
+           .no-data / footer / .subject-icon all scoped — previously each
+           was a global override. body.dark-theme rules scoped via
+           .dark-theme ancestor.
+   Rule 6: .fixed-header overflow: visible (defensive); .topic-tree scroll
+           preserved.
+   Rule 7: shimmer uses var(--shimmer-base) / var(--shimmer-highlight);
+           keyframe namespaced subject-specific-shimmer; reduced-motion
+           guard. NOTE: previous @keyframes shimmer no longer exists in
+           common.css — shimmer was DEAD. Fixed.
    ========================================================================== */
 
 /* ---------- Page container ----------
-   Original CSS never styled .page-container. Common now constrains it
-   to 1200px with side padding, misaligning the fixed header.
-   Block those to preserve the original full-width shell. */
-.page-container {
+   Previously bare — every page's container lost its 1200px max-width.
+   Now scoped. */
+.subject-specific-page .page-container {
     max-width: none;
+    width: 100%;
     margin: 0;
     padding: 0;
+    box-sizing: border-box;
 }
 
 /* ---------- Legacy subject header (no HTML consumer, kept for compat) ---------- */
-.subject-header {
+.subject-specific-page .subject-header {
     margin-bottom: 2rem;
     padding: 0 1rem;
+    box-sizing: border-box;
 }
 
-/* ---------- Fixed header (sticky wrapper) ---------- */
-.fixed-header {
+/* ---------- Fixed header (sticky wrapper) ----------
+   Previously bare .fixed-header — every page's .fixed-header inherited
+   this file's sticky positioning. Now scoped. */
+.subject-specific-page .fixed-header {
     position: sticky;
     top: 0;
     z-index: 100;
+    width: 100%;
+    box-sizing: border-box;
     background: var(--bg-card);
     border-bottom: 1px solid var(--border);
+    /* Rule 6: keep future dropdowns unclipped */
+    overflow: visible;
 }
 
-/* Header row padding (common's .header-row base provides flexbox + space-between) */
-.header-row {
+/* Header row padding */
+.subject-specific-page .header-row {
     padding: 0.5rem 1rem;
 }
 
 /* Superior row */
-.header-row.top {
+.subject-specific-page .header-row.top {
     justify-content: space-between;
     background: var(--bg-card);
     border-bottom: 1px solid var(--border);
 }
-.header-row.top .left-group {
+.subject-specific-page .header-row.top .left-group {
     display: flex;
     align-items: center;
     gap: 0.75rem;
+    min-width: 0;
 }
-.header-row.top .left-group img {
+.subject-specific-page .header-row.top .left-group img {
     width: 32px;
     height: 32px;
     border-radius: 6px;
+    flex-shrink: 0;
 }
-.header-row.top .left-group .brand {
+.subject-specific-page .header-row.top .left-group .brand {
     font-weight: 600;
     font-size: 1.2rem;
 }
-/* Pill-shaped back button (common's .header-row .left-group .btn-text is flat text) */
-.header-row.top .left-group .btn-text {
+
+/* Pill-shaped back button — scoped. Previously overrode every page's
+   .header-row .left-group .btn-text. */
+.subject-specific-page .header-row.top .left-group .btn-text {
     font-size: 0.9rem;
     padding: 0.3rem 0.6rem;
     background: var(--bg-secondary);
@@ -68,17 +103,17 @@
     cursor: pointer;
     transition: background 0.2s, color 0.2s, border-color 0.2s;
 }
-.header-row.top .left-group .btn-text:hover {
+.subject-specific-page .header-row.top .left-group .btn-text:hover {
     background: var(--accent);
     color: #fff;
     border-color: var(--accent);
 }
-.header-row.top .right-group {
+.subject-specific-page .header-row.top .right-group {
     display: flex;
     align-items: center;
+    flex-shrink: 0;
 }
-/* Pill theme toggle — higher specificity than common's .header-row .btn-outline */
-.header-row.top .btn-outline {
+.subject-specific-page .header-row.top .btn-outline {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
     padding: 0.3rem 0.6rem;
@@ -88,21 +123,21 @@
     line-height: 1;
     transition: background 0.2s, color 0.2s;
 }
-.header-row.top .btn-outline:hover:not(:disabled) {
+.subject-specific-page .header-row.top .btn-outline:hover:not(:disabled) {
     background: var(--accent);
     color: #fff;
     border-color: var(--accent);
 }
 
 /* Inferior row (mode toggle) */
-.header-row.bottom {
+.subject-specific-page .header-row.bottom {
     justify-content: center;
     gap: 1.5rem;
     padding: 0.6rem 1rem;
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border);
 }
-.mode-btn {
+.subject-specific-page .mode-btn {
     padding: 0.4rem 1.2rem;
     border-radius: 30px;
     border: 2px solid transparent;
@@ -113,8 +148,10 @@
     cursor: pointer;
     transition: all 0.2s;
 }
-.mode-btn:hover { color: var(--text-primary); }
-.mode-btn.active {
+.subject-specific-page .mode-btn:hover {
+    color: var(--text-primary);
+}
+.subject-specific-page .mode-btn.active {
     background: var(--bg-card);
     border-color: var(--accent);
     color: var(--text-primary);
@@ -122,96 +159,136 @@
 }
 
 /* ---------- Subject metadata ---------- */
-.subject-header-info {
+.subject-specific-page .subject-header-info {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 0.75rem 1rem 0.25rem 1rem;
+    box-sizing: border-box;
     background: var(--bg-card);
 }
-.subject-header-info .subject-title {
+.subject-specific-page .subject-header-info .subject-title {
     display: flex;
     align-items: center;
     gap: 0.75rem;
+    min-width: 0;
 }
-.subject-header-info .subject-title .icon {
+.subject-specific-page .subject-header-info .subject-title .icon {
     font-size: 1.6rem;
 }
-.subject-header-info .subject-title h1 {
+.subject-specific-page .subject-header-info .subject-title h1 {
     font-size: 1.2rem;
     margin: 0;
 }
-.subject-header-info .subject-title .color-dot {
+.subject-specific-page .subject-header-info .subject-title .color-dot {
     width: 12px;
     height: 12px;
     border-radius: 50%;
     display: inline-block;
+    flex-shrink: 0;
 }
-.subject-header-info .total-questions {
+.subject-specific-page .subject-header-info .total-questions {
     font-size: 0.85rem;
     color: var(--text-muted);
     margin: 0;
 }
 
 /* ---------- Legacy subject title (kept for backward compat) ---------- */
-.subject-title {
+.subject-specific-page .subject-title {
     display: flex;
     align-items: center;
     gap: 0.75rem;
     margin-top: 1rem;
     flex-wrap: wrap;
 }
-.subject-icon { font-size: 2rem; }    /* dead: HTML uses .icon */
+/* NOTE: .subject-icon is a shared class in common.css (used by subject
+   cards app-wide). The original override here was dead code (no HTML
+   consumer on this page). Removed — leave common's definition untouched. */
 
-/* Page-specific colour-dot scale (common's is 12×12) */
-.color-dot {
+/* Page-specific colour-dot scale.
+   Previously bare `.color-dot { width: 16px; height: 16px }` — overrode
+   common's 12×12 .color-dot for EVERY page. Now scoped — common's
+   default stays on other pages, this page uses 16px. */
+.subject-specific-page .color-dot {
     width: 16px;
     height: 16px;
     border-radius: 50%;
     display: inline-block;
 }
 
-.total-questions {
+.subject-specific-page .total-questions {
     color: var(--text-muted);
     margin-top: 0.25rem;
     font-size: 0.95rem;
 }
 
 /* ---------- Topic selection ---------- */
-.topic-selection {
+.subject-specific-page .topic-selection {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 1.5rem;
+    box-sizing: border-box;
     margin: 0 1rem;
 }
-.selection-actions {
+.subject-specific-page .selection-actions {
     display: flex;
     gap: 0.75rem;
     margin-bottom: 1.5rem;
     flex-wrap: wrap;
 }
-.topic-tree {
+
+.subject-specific-page .topic-tree {
     max-height: 500px;
     overflow-y: auto;
     padding-right: 0.5rem;
+    box-sizing: border-box;
+
+    /* Persistent scrollbar — Firefox */
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent) var(--bg-secondary);
+    scrollbar-gutter: stable;
+    overscroll-behavior: contain;
 }
-.topic-item {
+.subject-specific-page .topic-tree::-webkit-scrollbar {
+    width: 10px;
+}
+.subject-specific-page .topic-tree::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+.subject-specific-page .topic-tree::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    border-radius: 8px;
+    border: 2px solid var(--bg-secondary);
+    min-height: 40px;
+}
+.subject-specific-page .topic-tree::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-dark);
+}
+
+.subject-specific-page .topic-item {
     padding: 0.75rem 0;
     border-bottom: 1px solid var(--border);
     transition: background 0.2s;
     position: relative;
 }
-.topic-item:last-child { border-bottom: none; }
+.subject-specific-page .topic-item:last-child {
+    border-bottom: none;
+}
 
 /* Locked state + tooltip */
-.topic-item.locked {
+.subject-specific-page .topic-item.locked {
     opacity: 0.7;
     background: rgba(0, 0, 0, 0.02);
 }
-.topic-item.locked label { cursor: not-allowed; }
-.topic-item.locked .topic-name { color: var(--text-muted); }
-.topic-item.locked .tooltip {
+.subject-specific-page .topic-item.locked label {
+    cursor: not-allowed;
+}
+.subject-specific-page .topic-item.locked .topic-name {
+    color: var(--text-muted);
+}
+.subject-specific-page .topic-item.locked .tooltip {
     visibility: hidden;
     opacity: 0;
     position: absolute;
@@ -230,11 +307,11 @@
     z-index: 10;
     pointer-events: none;
 }
-.topic-item.locked:hover .tooltip {
+.subject-specific-page .topic-item.locked:hover .tooltip {
     visibility: visible;
     opacity: 1;
 }
-.lock-icon {
+.subject-specific-page .lock-icon {
     display: inline-block;
     margin-left: 0.5rem;
     font-size: 0.9rem;
@@ -242,7 +319,7 @@
 }
 
 /* Topic label — overrides common's label base */
-.topic-item label {
+.subject-specific-page .topic-item label {
     display: flex;
     align-items: center;
     gap: 0.75rem;
@@ -250,34 +327,36 @@
     margin-bottom: 0;
     width: 100%;
 }
-.topic-item input[type="checkbox"] {
+.subject-specific-page .topic-item input[type="checkbox"] {
     width: 20px;
     height: 20px;
     accent-color: var(--accent);
     flex-shrink: 0;
 }
-.topic-item input[type="checkbox"]:disabled {
+.subject-specific-page .topic-item input[type="checkbox"]:disabled {
     opacity: 0.5;
     cursor: not-allowed;
 }
-.topic-name {
+.subject-specific-page .topic-name {
     flex: 1;
+    min-width: 0;
     font-weight: 500;
     display: flex;
     align-items: center;
     gap: 0.3rem;
 }
-.topic-stats {
+.subject-specific-page .topic-stats {
     color: var(--text-muted);
     font-size: 0.875rem;
     white-space: nowrap;
 }
 
 /* ---------- Selection summary ---------- */
-.selection-summary {
+.subject-specific-page .selection-summary {
     background: var(--bg-secondary);
     border-radius: var(--radius);
     padding: 1rem 1.5rem;
+    box-sizing: border-box;
     margin: 0.5rem 1rem 1rem 1rem;
     display: flex;
     flex-wrap: wrap;
@@ -287,59 +366,62 @@
     border: 1px solid var(--border);
 }
 @media screen and (min-width: 640px) {
-    .selection-summary {
+    .subject-specific-page .selection-summary {
         flex-direction: row;
         align-items: center;
         justify-content: space-between;
     }
 }
-.summary-stats {
+.subject-specific-page .summary-stats {
     display: flex;
     flex-wrap: wrap;
     gap: 0.75rem;
     font-size: 0.9rem;
     color: var(--text-secondary);
 }
-.summary-stats span {
+.subject-specific-page .summary-stats span {
     background: var(--bg-card);
     padding: 0.2rem 0.6rem;
     border-radius: 9999px;
     border: 1px solid var(--border);
 }
-.action-buttons {
+.subject-specific-page .action-buttons {
     display: flex;
     gap: 0.5rem;
     flex-wrap: wrap;
 }
-.action-buttons button {
+.subject-specific-page .action-buttons button {
     min-height: 40px;
     padding: 0.5rem 1.2rem;
+    box-sizing: border-box;
     font-size: 0.9rem;
     border-radius: 30px;
     font-weight: 500;
 }
-.action-buttons .btn-primary:disabled,
-.action-buttons .btn-secondary:disabled {
+.subject-specific-page .action-buttons .btn-primary:disabled,
+.subject-specific-page .action-buttons .btn-secondary:disabled {
     opacity: 0.5;
     cursor: not-allowed;
 }
 
 /* ---------- Recent topics ---------- */
-.recent-section {
+.subject-specific-page .recent-section {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 1.5rem;
+    box-sizing: border-box;
     margin: 0 1rem 2rem;
 }
-.recent-section h3 {
+.subject-specific-page .recent-section h3 {
     margin-bottom: 1rem;
     display: flex;
     align-items: center;
     gap: 0.5rem;
 }
-.recent-topic {
+.subject-specific-page .recent-topic {
     padding: 0.75rem;
+    box-sizing: border-box;
     border-radius: var(--radius-sm);
     background: var(--bg-secondary);
     margin-bottom: 0.5rem;
@@ -347,159 +429,211 @@
     transition: background 0.2s;
     border: 1px solid var(--border);
 }
-.recent-topic:hover {
+.subject-specific-page .recent-topic:hover {
     background: var(--accent);
     color: #fff;
     border-color: var(--accent);
 }
 
-/* Override common's .no-data padding (2rem 1rem → 1rem 0) */
-.no-data { padding: 1rem 0; }
+/* ---------- No-data override ----------
+   Previously bare `.no-data { padding: 1rem 0 }` — overrode common's
+   .no-data (2rem 1rem) on every page. Now scoped. */
+.subject-specific-page .no-data {
+    padding: 1rem 0;
+}
 
-/* ---------- Footer (kept even though HTML footer is empty) ---------- */
-footer {
+/* ---------- Footer ----------
+   Previously bare `footer { text-align: center; padding: 1rem }` —
+   every page's footer. Now scoped. */
+.subject-specific-page footer {
     text-align: center;
     padding: 1rem;
+    box-sizing: border-box;
     color: var(--text-muted);
 }
 
-/* ---------- Dark theme overrides ---------- */
-body.dark-theme .topic-item.locked {
+/* ---------- Dark theme overrides ----------
+   Previously `body.dark-theme ...` — targeted body directly. Now uses
+   .dark-theme ancestor (common.css applies .dark-theme to <html>). */
+.dark-theme .subject-specific-page .topic-item.locked {
     background: rgba(255, 255, 255, 0.02);
 }
-body.dark-theme .topic-item.locked .tooltip {
+.dark-theme .subject-specific-page .topic-item.locked .tooltip {
     background: var(--bg-secondary);
     border-color: var(--border-dark);
 }
 
-/* ---------- Shimmer skeleton ---------- */
-#shimmer-content {
+/* ==========================================================================
+   SHIMMER SKELETON — Rule 7 compliant (was DEAD before)
+   The original used `animation: shimmer 1.5s` which references a keyframe
+   that no longer exists in common.css (removed in an earlier session).
+   Nothing was animating. Now uses --shimmer-base / --shimmer-highlight
+   tokens and a namespaced keyframe.
+
+   NOTE: #shimmer-content / #real-content are ALSO used by payment.css,
+   pdf-settings.css, and ai.css. Previously bare top-level IDs → collision
+   risk. Now scoped.
+   ========================================================================== */
+.subject-specific-page #shimmer-content {
     display: block;
-    background: #1a1a2e;
-    color: #eee;
+    background: var(--bg-primary);
+    color: var(--text-primary);
     margin: 0;
     padding: 0;
+    box-sizing: border-box;
     font-family: system-ui, -apple-system, sans-serif;
 }
-.shimmer-wrapper { padding: 1rem; }
+.subject-specific-page .shimmer-wrapper {
+    padding: 1rem;
+    box-sizing: border-box;
+}
 
-.shimmer-header {
+.subject-specific-page .shimmer-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 0.5rem 1rem;
-    background: #1e1e2f;
-    border-bottom: 1px solid #333;
+    box-sizing: border-box;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
     margin-bottom: 1rem;
 }
-.shimmer-logo {
+.subject-specific-page .shimmer-logo {
     display: flex;
     align-items: center;
     gap: 0.5rem;
 }
-.shimmer-logo-icon {
+
+/* Shared shimmer background helper (applied to all skeleton blocks) */
+.subject-specific-page .shimmer-logo-icon,
+.subject-specific-page .shimmer-logo-text,
+.subject-specific-page .shimmer-btn-sm,
+.subject-specific-page .shimmer-icon,
+.subject-specific-page .shimmer-title,
+.subject-specific-page .shimmer-stat,
+.subject-specific-page .shimmer-btn,
+.subject-specific-page .shimmer-topic {
+    background: linear-gradient(
+        90deg,
+        var(--shimmer-base)      25%,
+        var(--shimmer-highlight) 50%,
+        var(--shimmer-base)      75%
+    );
+    background-size: 200px 100%;
+    animation: subject-specific-shimmer 1.5s infinite linear;
+    border-radius: 4px;
+}
+
+.subject-specific-page .shimmer-logo-icon {
     width: 32px;
     height: 32px;
     border-radius: 6px;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
 }
-.shimmer-logo-text {
+.subject-specific-page .shimmer-logo-text {
     width: 80px;
     height: 20px;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
-    border-radius: 4px;
 }
-.shimmer-btn-sm {
+.subject-specific-page .shimmer-btn-sm {
     width: 40px;
     height: 40px;
     border-radius: 50%;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
     display: inline-block;
 }
-.shimmer-subject {
+.subject-specific-page .shimmer-subject {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     margin: 1rem 0;
 }
-.shimmer-icon {
+.subject-specific-page .shimmer-icon {
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
 }
-.shimmer-title {
+.subject-specific-page .shimmer-title {
     width: 150px;
     height: 24px;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
-    border-radius: 4px;
 }
-.shimmer-stats {
+.subject-specific-page .shimmer-stats {
     display: flex;
     gap: 0.5rem;
     flex-wrap: wrap;
     margin: 1rem 0;
 }
-.shimmer-stat {
+.subject-specific-page .shimmer-stat {
     width: 100px;
     height: 28px;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
     border-radius: 9999px;
 }
-.shimmer-actions {
+.subject-specific-page .shimmer-actions {
     display: flex;
     gap: 0.5rem;
     margin: 1rem 0;
 }
-.shimmer-btn {
+.subject-specific-page .shimmer-btn {
     flex: 1;
     height: 44px;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
     border-radius: var(--radius-sm);
 }
-.shimmer-topics {
+.subject-specific-page .shimmer-topics {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
 }
-.shimmer-topic {
+.subject-specific-page .shimmer-topic {
     height: 36px;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
     border-radius: var(--radius-sm);
 }
 
-/* ---------- Real-content gate ---------- */
-#real-content { display: none; }
+@keyframes subject-specific-shimmer {
+    0%   { background-position: -200px 0; }
+    100% { background-position: calc(200px + 100%) 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .subject-specific-page .shimmer-logo-icon,
+    .subject-specific-page .shimmer-logo-text,
+    .subject-specific-page .shimmer-btn-sm,
+    .subject-specific-page .shimmer-icon,
+    .subject-specific-page .shimmer-title,
+    .subject-specific-page .shimmer-stat,
+    .subject-specific-page .shimmer-btn,
+    .subject-specific-page .shimmer-topic {
+        animation: none;
+        background: var(--shimmer-base);
+    }
+}
+
+/* ---------- Real-content gate ----------
+   Previously bare `#real-content { display: none }` — hid #real-content
+   on payment, pdf-settings, and ai pages too (same ID). Now scoped. */
+.subject-specific-page #real-content {
+    display: none;
+}
 
 /* ---------- Responsive ---------- */
 @media screen and (max-width: 480px) {
-    .topic-stats { font-size: 0.75rem; }
-    .selection-actions { flex-direction: column; }
-    .selection-actions button { width: 100%; }
-    .mode-btn {
+    .subject-specific-page .topic-stats {
+        font-size: 0.75rem;
+    }
+    .subject-specific-page .selection-actions {
+        flex-direction: column;
+    }
+    .subject-specific-page .selection-actions button {
+        width: 100%;
+    }
+    .subject-specific-page .mode-btn {
         font-size: 0.8rem;
         padding: 0.3rem 0.8rem;
     }
-    .selection-summary {
+    .subject-specific-page .selection-summary {
         flex-direction: column;
         align-items: stretch;
     }
-    .action-buttons { justify-content: stretch; }
-    .action-buttons button { flex: 1; }
+    .subject-specific-page .action-buttons {
+        justify-content: stretch;
+    }
+    .subject-specific-page .action-buttons button {
+        flex: 1;
+    }
 }

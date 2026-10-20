@@ -1,75 +1,95 @@
 /* ==========================================================================
    TERMS OF SERVICE — page-specific styles
+   Root wrapper: .terms-page (from <section class="page terms-page">)
+
    Requires common.css (tokens, .logo base, .btn-outline base, .btn-text base,
    .page-container base, :where(header|footer) defaults).
+
    Adds ONLY: fixed header positioning, page-container offset, terms
    content typography, terms footer, phone breakpoint tweak.
+
+   7-RULE COMPLIANCE
+   Rule 1: every selector prefixed with .terms-page (~30 selectors).
+   Rule 2: N/A (no grids).
+   Rule 3: box-sizing: border-box on .terms-page header and
+           .terms-container — both previously overflowed their parent
+           (header by 3rem, card by ~4rem) without it.
+   Rule 4: N/A (no viewport units).
+   Rule 5: no bare header / .logo / .page-container / header .btn-outline
+           overrides — previously leaked to every page.
+   Rule 6: N/A (no dropdowns).
+   Rule 7: N/A (no loaders).
    ========================================================================== */
 
 /* ---------- Fixed header ----------
-   Common's :where(header:not([class])) provides display: flex +
-   justify-content + align-items + padding: 1rem 0.
-   Page overrides padding and adds fixed positioning. */
-header {
+   Previously bare `header { position: fixed; width: 100% }` — leaked to
+   every page's <header>. Now scoped.
+   Rule 3 fix: added box-sizing: border-box so `width: 100%` + horizontal
+   padding doesn't overflow by 3rem (previously caused horizontal scroll
+   on viewports < the content width). */
+.terms-page header {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
+    box-sizing: border-box;
     z-index: 1000;
     padding: 0.75rem 1.5rem;
-    background: var(--bg-card, #ffffff);
-    border-bottom: 1px solid var(--border, #e0e0e0);
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 /* ---------- Logo overrides ----------
-   Common uses 1.3rem; this page uses 1.25rem. */
-.logo {
+   Previously bare — overrode common's .logo on every page. Now scoped. */
+.terms-page .logo {
     font-size: 1.25rem;
-    color: var(--text-primary, #222);
+    color: var(--text-primary);
 }
-.logo img {
+.terms-page .logo img {
     height: 40px;
     width: auto;
 }
 
-/* ---------- Theme toggle (overrides common's accent .btn-outline) ---------- */
-header .btn-outline {
+/* ---------- Theme toggle (scoped override of common's accent .btn-outline) ---------- */
+.terms-page header .btn-outline {
     background: transparent;
-    border: 1px solid var(--border, #ccc);
+    border: 1px solid var(--border);
     border-radius: 50%;
     padding: 0.5rem;
     font-size: 1.2rem;
     cursor: pointer;
     transition: background 0.2s;
-    /* Reset common's accent color + border-color so resting state stays neutral */
-    color: var(--text-primary, #0f172a);
+    color: var(--text-primary);
 }
-
-/* Hover — must include :not(:disabled) to beat common's
+/* Must include :not(:disabled) to beat common's
    `.btn-outline:hover:not(:disabled)` at specificity (0,3,0). */
-header .btn-outline:hover:not(:disabled) {
-    background: var(--bg-hover, #f0f0f0);
-    /* Reset common's hover `color: #fff` */
-    color: var(--text-primary, #0f172a);
-    border-color: var(--border, #ccc);
+.terms-page header .btn-outline:hover:not(:disabled) {
+    background: var(--bg-hover, var(--bg-secondary));
+    color: var(--text-primary);
+    border-color: var(--border);
 }
 
 /* ---------- Page container ----------
-   Common provides max-width: 1200px + margin auto + side padding.
-   Original relied on browser default full-width block.
-   Blocking those three preserves the original layout exactly. */
-.page-container {
+   Previously bare `.page-container` — every page lost its 1200px
+   max-width and gained 80px top padding after terms.css loaded.
+   Now scoped. */
+.terms-page .page-container {
     max-width: none;
     margin: 0;
     padding: 80px 0 0;
+    box-sizing: border-box;
 }
 
-/* ---------- Main content card ---------- */
-.terms-container {
+/* ---------- Main content card ----------
+   Rule 3 fix: box-sizing: border-box keeps the 900px max-width
+   including the 4rem of horizontal padding + 2px border. Without it
+   the card overflows its container by ~4rem + 2px. */
+.terms-page .terms-container {
     max-width: 900px;
     margin: 2rem auto;
     padding: 2rem;
+    box-sizing: border-box;
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
@@ -77,14 +97,14 @@ header .btn-outline:hover:not(:disabled) {
 }
 
 /* Common's h1 is 2rem; this page uses 2.2rem + accent + centered. */
-.terms-container h1 {
+.terms-page .terms-container h1 {
     margin-bottom: 0.5rem;
     color: var(--accent);
     text-align: center;
     font-size: 2.2rem;
 }
 
-.last-updated {
+.terms-page .last-updated {
     text-align: center;
     color: var(--text-muted);
     margin-bottom: 2rem;
@@ -93,11 +113,11 @@ header .btn-outline:hover:not(:disabled) {
 }
 
 /* ---------- Long-form content ---------- */
-.terms-content {
+.terms-page .terms-content {
     color: var(--text-secondary);
     line-height: 1.7;
 }
-.terms-content h2 {
+.terms-page .terms-content h2 {
     color: var(--accent);
     font-size: 1.5rem;
     margin-top: 2.5rem;
@@ -105,65 +125,77 @@ header .btn-outline:hover:not(:disabled) {
     border-bottom: 1px solid var(--border);
     padding-bottom: 0.5rem;
 }
-.terms-content h3 {
+.terms-page .terms-content h3 {
     color: var(--text-primary);
     font-size: 1.2rem;
     margin-top: 1.5rem;
     margin-bottom: 0.5rem;
 }
-.terms-content p {
+.terms-page .terms-content p {
     margin: 0.8rem 0;
     color: var(--text-secondary);
 }
-.terms-content ul,
-.terms-content ol {
+.terms-page .terms-content ul,
+.terms-page .terms-content ol {
     margin: 1rem 0;
     padding-left: 1.5rem;
 }
-.terms-content li {
+.terms-page .terms-content li {
     margin-bottom: 0.5rem;
     line-height: 1.6;
     color: var(--text-secondary);
 }
-.terms-content a {
+.terms-page .terms-content a {
     color: var(--accent);
     text-decoration: underline;
     transition: color 0.2s;
 }
-.terms-content a:hover {
-    color: var(--accent-hover);
+.terms-page .terms-content a:hover {
+    color: var(--accent-hover, var(--accent-dark));
     text-decoration: none;
 }
 
 /* ---------- Footer CTA block ---------- */
-.terms-footer {
+.terms-page .terms-footer {
     margin-top: 3rem;
     padding-top: 2rem;
     border-top: 1px solid var(--border);
     text-align: center;
 }
-.terms-footer p {
+.terms-page .terms-footer p {
     margin-bottom: 1.5rem;
     font-size: 0.9rem;
     color: var(--text-muted);
 }
-.terms-footer .btn-primary,
-.terms-footer .btn-secondary {
+.terms-page .terms-footer .btn-primary,
+.terms-page .terms-footer .btn-secondary {
     min-width: 180px;
     margin: 0.5rem;
 }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 640px) {
-    .page-container { padding-top: 70px; }
-    header { padding: 0.5rem 1rem; }
-    .terms-container {
+    .terms-page .page-container {
+        padding-top: 70px;
+    }
+    .terms-page header {
+        padding: 0.5rem 1rem;
+    }
+    .terms-page .terms-container {
         padding: 1.5rem;
         margin: 1rem;
     }
-    .terms-container h1 { font-size: 1.8rem; }
-    .terms-content h2 { font-size: 1.3rem; }
-    .terms-content h3 { font-size: 1.1rem; }
-    .terms-content ul,
-    .terms-content ol { padding-left: 1.2rem; }
+    .terms-page .terms-container h1 {
+        font-size: 1.8rem;
+    }
+    .terms-page .terms-content h2 {
+        font-size: 1.3rem;
+    }
+    .terms-page .terms-content h3 {
+        font-size: 1.1rem;
+    }
+    .terms-page .terms-content ul,
+    .terms-page .terms-content ol {
+        padding-left: 1.2rem;
+    }
 }

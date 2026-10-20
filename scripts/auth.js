@@ -188,6 +188,7 @@ function normalizeUser(data) {
             isAgent: data.isAgent,
             referralCode: data.referralCode,
             deviceId: data.deviceId,
+            picture: data.picture || null,
         };
     }
 
@@ -326,12 +327,13 @@ export async function login(identifier, password) {
     } = data;
 
     setToken(token);
-    await setUser({
-        _id: userId,
-        name,
-        email,
-        role,
+    await setUser({ 
+        _id: userId, 
+        name, 
+        email, 
+        role, 
         deviceId: serverDeviceId || deviceId,
+        picture: data.picture || null,
     });
 
     if (sessionId) utils.setLocalStorage('sessionId', sessionId);
@@ -374,10 +376,17 @@ export async function removeDeviceAndContinue(switchToken, deviceToRemoveId) {
     }
 
     const data = result.data || {};
-    const { token, userId, name, email, sessionId, role, deviceId } = data;
+    const { token, userId, name, email, sessionId, role, deviceId, picture } = data;
 
     setToken(token);
-    await setUser({ _id: userId, name, email, role, deviceId });
+    await setUser({ 
+        _id: userId, 
+        name, 
+        email, 
+        role, 
+        deviceId,
+        picture: picture || null 
+    });
 
     if (sessionId) utils.setLocalStorage('sessionId', sessionId);
 

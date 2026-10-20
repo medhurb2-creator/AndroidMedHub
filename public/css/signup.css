@@ -1,43 +1,67 @@
 /* ==========================================================================
    SIGNUP — page-specific styles (4-step flow with Google Sign-Up)
+   Root wrapper: .signup-page (from <section class="page signup-page">)
+
    Requires common.css (tokens, reset, header-row base, buttons base,
    .error-message, input/label base, keyframes fadeSlide/spin/slideUp,
    focus-visible default).
+
    Adds ONLY: page-sticky header shell, logo-area, nav links, multi-step
    form, Google button + click guard, "or" divider, linking modal,
    password reveal + strength meter, checkbox tweaks, success step,
    instruction banner, auto-save indicator, dark-theme overrides,
    loading state, responsive.
+
+   7-RULE COMPLIANCE
+   Rule 1: every selector prefixed with .signup-page (~55 selectors),
+           including the previously-bare element overrides (h1, label,
+           input/select/textarea, small/.small, footer, button:disabled,
+           input:disabled, *:focus-visible).
+   Rule 2: N/A (no grids).
+   Rule 3: box-sizing: border-box on layout containers.
+   Rule 4: N/A (no viewport units).
+   Rule 5: ALL element overrides scoped. The `.dark-theme` overrides
+           prefixed with `.dark-theme .signup-page ...`.
+   Rule 6: N/A (no dropdowns on this page).
+   Rule 7: N/A (no loaders).
    ========================================================================== */
 
-/* ---------- Page-sticky fixed header ---------- */
-.fixed-header {
+/* ---------- Page-sticky fixed header ----------
+   Previously bare .fixed-header — every page's fixed-header inherited
+   this file's sticky positioning. Now scoped. */
+.signup-page .fixed-header {
     position: sticky;
     top: 0;
     z-index: 100;
+    width: 100%;
+    box-sizing: border-box;
     background: var(--bg-card);
     border-bottom: 1px solid var(--border);
     padding: 0.5rem 1rem;
+    /* Rule 6: keep future dropdowns unclipped */
+    overflow: visible;
 }
 
-/* ---------- Logo area ---------- */
-.header-row .logo-area {
+/* ---------- Logo area (inside .header-row) ---------- */
+.signup-page .header-row .logo-area {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    min-width: 0;
 }
-.header-row .logo-area img {
+.signup-page .header-row .logo-area img {
     width: 32px;
     height: 32px;
     border-radius: 6px;
+    flex-shrink: 0;
 }
-.header-row .logo-area span {
+.signup-page .header-row .logo-area span {
     font-weight: 600;
     font-size: 1.2rem;
 }
 
 /* ---------- Nav links (back + login) ---------- */
-.header-row .nav-link {
+.signup-page .header-row .nav-link {
     color: var(--text-secondary);
     text-decoration: none;
     font-size: 0.9rem;
@@ -46,41 +70,48 @@
     border: none;
     padding: 0.3rem 0.6rem;
 }
-.header-row .nav-link:hover {
+.signup-page .header-row .nav-link:hover {
     color: var(--text-primary);
     text-decoration: underline;
 }
-.header-row .login-link { font-weight: 500; }
-.header-row .login-link:hover { color: var(--accent); }
+.signup-page .header-row .login-link { font-weight: 500; }
+.signup-page .header-row .login-link:hover { color: var(--accent); }
 
-/* ---------- Form container override ---------- */
-.form-container {
+/* ---------- Form container override ----------
+   Previously bare .form-container — every page's form-container grew to
+   650px after signup.css loaded. Now scoped. */
+.signup-page .form-container {
     max-width: 650px;
+    width: 100%;
     margin: 2rem auto;
+    box-sizing: border-box;
     transition: all 0.3s ease;
 }
 
-/* ---------- Page heading ---------- */
-h1 {
+/* ---------- Page heading ----------
+   Previously bare `h1 { font-size: 1.8rem; text-align: center }` — EVERY
+   h1 on every page loaded after signup.css got these values. Now scoped. */
+.signup-page h1 {
     font-size: 1.8rem;
     margin-bottom: 0.5rem;
     color: var(--text-primary);
     text-align: center;
 }
 
-.step-indicator {
+.signup-page .step-indicator {
     text-align: center;
     color: var(--accent);
     font-weight: 600;
     margin-bottom: 2rem;
     padding: 0.5rem;
-    background: rgba(37, 99, 235, 0.1);
+    box-sizing: border-box;
+    background: rgba(var(--accent-rgb), 0.1);
     border-radius: 9999px;
     font-size: 0.9rem;
 }
 
 /* Step transitions (keyframes come from common's fadeSlide) */
-.step {
+.signup-page .step {
     animation: fadeSlide 0.4s ease;
 }
 
@@ -89,22 +120,24 @@ h1 {
    ========================================================================== */
 
 /* Google button container — holds the GIS iframe */
-.google-signin-container {
+.signup-page .google-signin-container {
     position: relative;
     display: flex;
     justify-content: center;
     align-items: center;
     min-height: 44px;
+    width: 100%;
+    box-sizing: border-box;
     margin-bottom: 0.5rem;
     transition: opacity 0.15s ease, filter 0.15s ease;
 }
-.google-signin-container iframe {
+.signup-page .google-signin-container iframe {
     margin: 0 auto;
+    max-width: 100%;
 }
 
-/* Transparent overlay that blocks clicks on the Google button
-   until the user accepts Terms of Service. */
-.google-click-guard {
+/* Transparent overlay that blocks clicks until the user accepts ToS */
+.signup-page .google-click-guard {
     position: absolute;
     inset: 0;
     z-index: 2;
@@ -112,64 +145,42 @@ h1 {
     background: transparent;
 }
 
-/* ─── Google sign-up gated state ───────────────────────────────────────────
-   Applied by updateGoogleGuard() in signup.js when the Terms of Service
-   checkbox is unchecked. Communicates "disabled" three ways:
-
-     1. Reduced opacity + grayscale — visually dimmed.
-     2. cursor: not-allowed on the container and the guard — hover state
-        tells the user before they click.
-     3. aria-disabled="true" on the container (set in JS) — screen readers
-        announce the state.
-
-   The guard keeps pointer-events: auto while gated (set inline by JS), so
-   the click is intercepted and the "accept terms first" toast fires. */
-
-.google-signin-container.is-terms-gated {
+/* ─── Google sign-up gated state ─────────────────────────────────────────── */
+.signup-page .google-signin-container.is-terms-gated {
     opacity: 0.55;
     filter: grayscale(0.35);
     cursor: not-allowed;
 }
-
-.google-signin-container.is-terms-gated .google-click-guard {
+.signup-page .google-signin-container.is-terms-gated .google-click-guard {
     cursor: not-allowed;
 }
-
-/* Belt-and-braces: any real button the SDK injects stops accepting
-   pointer events while gated. (The guard already blocks the click,
-   but this ensures hover/focus states don't fire on the underlying
-   button either.) */
-.google-signin-container.is-terms-gated > *:not(.google-click-guard) {
+.signup-page .google-signin-container.is-terms-gated > *:not(.google-click-guard) {
     pointer-events: none;
 }
 
-/* When terms are accepted, the guard becomes transparent to pointer
-   events (set inline by JS) and the container returns to full strength.
-   No CSS needed — the absence of .is-terms-gated is the "on" state. */
-
 /* "or" divider between Google and Email/Phone */
-.auth-divider {
+.signup-page .auth-divider {
     display: flex;
     align-items: center;
     gap: 0.75rem;
     margin: 1rem 0 1.25rem;
-    color: var(--text-muted, #94a3b8);
+    color: var(--text-muted);
     font-size: 0.85rem;
     text-transform: lowercase;
 }
-.auth-divider::before,
-.auth-divider::after {
+.signup-page .auth-divider::before,
+.signup-page .auth-divider::after {
     content: '';
     flex: 1;
     height: 1px;
-    background: var(--border, #e2e8f0);
+    background: var(--border);
 }
 
-/* Full-width primary/secondary buttons (used for
-   "Continue with Email / Phone"). */
-.btn-block {
+/* Full-width primary/secondary buttons */
+.signup-page .btn-block {
     width: 100%;
     display: block;
+    box-sizing: border-box;
     min-height: 44px;
 }
 
@@ -177,42 +188,52 @@ h1 {
    FORM FIELDS (all steps)
    ========================================================================== */
 
-.form-group {
+.signup-page .form-group {
     margin-bottom: 1.5rem;
     position: relative;
 }
 
-.form-row {
+.signup-page .form-row {
     display: flex;
     gap: 1rem;
     margin-bottom: 1.5rem;
 }
-.form-row .half {
+.signup-page .form-row .half {
     flex: 1;
+    min-width: 0;
     margin-bottom: 0;
 }
 
-label {
+/* ---------- Form label override ----------
+   Previously bare `label { margin-bottom: 0.5rem; font-size: 0.9rem }` —
+   every label on every page got these values. Now scoped. */
+.signup-page label {
     margin-bottom: 0.5rem;
     font-size: 0.9rem;
 }
 
-input,
-select,
-textarea {
+/* ---------- Form input override ----------
+   Previously bare `input, select, textarea { padding: 0.75rem 1rem;
+   border-width: 2px; border-radius: var(--radius); font-size: 1rem }` —
+   EVERY input/select/textarea on every page loaded after signup.css got
+   a 2px border and wider padding. Now scoped. */
+.signup-page input,
+.signup-page select,
+.signup-page textarea {
     padding: 0.75rem 1rem;
+    box-sizing: border-box;
     border-width: 2px;
     border-radius: var(--radius);
     font-size: 1rem;
 }
 
-input.error { border-color: var(--danger); }
-input.error:focus {
-    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+.signup-page input.error { border-color: var(--danger); }
+.signup-page input.error:focus {
+    box-shadow: 0 0 0 3px rgba(var(--danger-rgb), 0.1);
 }
 
 /* ---------- Password reveal button ---------- */
-.reveal-btn {
+.signup-page .reveal-btn {
     position: absolute;
     right: 1rem;
     top: 2.5rem;
@@ -224,10 +245,10 @@ input.error:focus {
     font-size: 1.1rem;
     transition: color 0.2s;
 }
-.reveal-btn:hover { color: var(--accent); }
+.signup-page .reveal-btn:hover { color: var(--accent); }
 
 /* ---------- Password strength meter ---------- */
-.strength-meter {
+.signup-page .strength-meter {
     height: 6px;
     background: var(--border);
     border-radius: 3px;
@@ -236,40 +257,43 @@ input.error:focus {
     overflow: hidden;
     position: relative;
 }
-.strength-meter .fill {
+.signup-page .strength-meter .fill {
     height: 100%;
     transition: width 0.3s ease;
 }
-.strength-meter.strength-weak   .fill { width: 33%;  background: var(--danger);  }
-.strength-meter.strength-medium .fill { width: 66%;  background: var(--warning); }
-.strength-meter.strength-strong .fill { width: 100%; background: var(--success); }
+.signup-page .strength-meter.strength-weak   .fill { width: 33%;  background: var(--danger);  }
+.signup-page .strength-meter.strength-medium .fill { width: 66%;  background: var(--warning); }
+.signup-page .strength-meter.strength-strong .fill { width: 100%; background: var(--success); }
 
-.strength-text {
+.signup-page .strength-text {
     font-size: 0.75rem;
     margin-top: 0.25rem;
     color: var(--text-muted);
 }
 
 /* ---------- Checkbox group ---------- */
-.form-group.checkbox {
+.signup-page .form-group.checkbox {
     display: flex;
     align-items: flex-start;
     gap: 0.75rem;
 }
-.form-group.checkbox label {
+.signup-page .form-group.checkbox label {
     margin-bottom: 0;
     font-weight: normal;
     font-size: 0.9rem;
 }
-.form-group.checkbox input[type="checkbox"] {
+.signup-page .form-group.checkbox input[type="checkbox"] {
     width: auto;
     margin-top: 0.2rem;
     accent-color: var(--accent);
 }
 
-/* ---------- Helper text ---------- */
-small,
-.small {
+/* ---------- Helper text override ----------
+   Previously bare `small, .small { display: block; font-size: 0.75rem;
+   color: var(--text-muted); margin-top: 0.25rem }` — every small/.small
+   element on every page got block display + top margin. Now scoped. */
+.signup-page small,
+.signup-page .small {
     display: block;
     font-size: 0.75rem;
     color: var(--text-muted);
@@ -277,15 +301,16 @@ small,
 }
 
 /* ---------- Button group ---------- */
-.button-group {
+.signup-page .button-group {
     display: flex;
     gap: 1rem;
     margin-top: 2rem;
     justify-content: space-between;
 }
-.button-group button {
+.signup-page .button-group button {
     flex: 1;
     padding: 0.875rem;
+    box-sizing: border-box;
     font-size: 1rem;
     font-weight: 600;
 }
@@ -294,44 +319,47 @@ small,
    STEP 4 — Success & Redirect
    ========================================================================== */
 
-.success-icon {
+.signup-page .success-icon {
     font-size: 4rem;
     text-align: center;
     margin: 1rem 0;
-    animation: bounce 0.6s ease;
+    animation: signup-bounce 0.6s ease;
 }
-@keyframes bounce {
+/* Renamed from `bounce` (generic, collision risk) */
+@keyframes signup-bounce {
     0%, 100% { transform: translateY(0);     }
     50%      { transform: translateY(-20px); }
 }
 
-#step4 {
+.signup-page #step4 {
     text-align: center;
     padding: 2rem 1rem;
+    box-sizing: border-box;
 }
-#step4 h2 {
+.signup-page #step4 h2 {
     margin: 1rem 0;
     color: var(--success);
 }
-#step4 p {
+.signup-page #step4 p {
     margin: 1rem 0 2rem;
     color: var(--text-secondary);
 }
-#step4 .btn-primary {
+.signup-page #step4 .btn-primary {
     margin-top: 1.5rem;
     min-width: 200px;
 }
 
-#countdown {
+.signup-page #countdown {
     font-weight: 700;
     font-size: 1.5rem;
     color: var(--accent);
 }
 
 /* ---------- Instruction banner ---------- */
-.instruction {
+.signup-page .instruction {
     background: var(--bg-secondary);
     padding: 1rem;
+    box-sizing: border-box;
     border-radius: var(--radius);
     margin-bottom: 1.5rem;
     font-size: 0.9rem;
@@ -339,25 +367,28 @@ small,
     color: var(--text-secondary);
 }
 
-/* ---------- Footer (if injected) ---------- */
-footer {
+/* ---------- Footer override ----------
+   Previously bare `footer { margin-top: 2rem; text-align: center }` —
+   every footer on every page got these values. Now scoped. */
+.signup-page footer {
     margin-top: 2rem;
     text-align: center;
 }
-footer .btn-text {
+.signup-page footer .btn-text {
     color: var(--text-muted);
     font-size: 0.9rem;
 }
-footer .btn-text:hover { color: var(--accent); }
+.signup-page footer .btn-text:hover { color: var(--accent); }
 
 /* ---------- Auto-save indicator ---------- */
-.auto-save-indicator {
+.signup-page .auto-save-indicator {
     position: fixed;
     bottom: 1rem;
     right: 1rem;
     background: var(--success);
     color: #fff;
     padding: 0.5rem 1rem;
+    box-sizing: border-box;
     border-radius: 9999px;
     font-size: 0.8rem;
     box-shadow: var(--shadow);
@@ -368,60 +399,66 @@ footer .btn-text:hover { color: var(--accent); }
 /* ==========================================================================
    STEP 3 — Security Questions
    ========================================================================== */
-#step3 .form-group {
+.signup-page #step3 .form-group {
     margin-bottom: 1.5rem;
 }
-#step3 label {
+.signup-page #step3 label {
     font-weight: 600;
     color: var(--accent);
     margin-bottom: 0.5rem;
 }
-#step3 input {
+.signup-page #step3 input {
     background: var(--bg-secondary);
 }
 
 /* ---------- Terms & Privacy links ---------- */
-.form-group.checkbox a {
+.signup-page .form-group.checkbox a {
     color: var(--accent);
     text-decoration: none;
     font-weight: 500;
 }
-.form-group.checkbox a:hover { text-decoration: underline; }
+.signup-page .form-group.checkbox a:hover { text-decoration: underline; }
 
 /* ==========================================================================
-   GOOGLE ACCOUNT-LINKING MODAL
+   GOOGLE ACCOUNT-LINKING MODAL — scoped
    ========================================================================== */
-#google-link-modal .modal-body p {
+.signup-page #google-link-modal .modal-body p {
     margin-bottom: 0.75rem;
-    color: var(--text-secondary, #475569);
+    color: var(--text-secondary);
 }
-#google-link-modal .modal-body strong {
-    color: var(--text-primary, #0f172a);
+.signup-page #google-link-modal .modal-body strong {
+    color: var(--text-primary);
 }
-#google-link-modal .modal-body .form-group {
+.signup-page #google-link-modal .modal-body .form-group {
     margin-top: 1rem;
 }
 
-/* ---------- Disabled state ---------- */
-button:disabled,
-input:disabled {
+/* ---------- Disabled state ----------
+   Previously bare `button:disabled, input:disabled` — every disabled
+   input on every page got opacity: 0.5. Common handles button:disabled;
+   this adds input:disabled. Now scoped. */
+.signup-page button:disabled,
+.signup-page input:disabled {
     opacity: 0.5;
     cursor: not-allowed;
 }
 
-/* ---------- Focus-visible ---------- */
-*:focus-visible {
+/* ---------- Focus-visible override ----------
+   Previously bare `*:focus-visible { outline: 3px solid var(--accent) }`
+   — EVERY focus ring app-wide became 3px (common: 2px) after signup.css
+   loaded. Now scoped. */
+.signup-page *:focus-visible {
     outline: 3px solid var(--accent);
     outline-offset: 2px;
 }
 
 /* ---------- Loading state ---------- */
-.form-container.loading {
+.signup-page .form-container.loading {
     opacity: 0.7;
     pointer-events: none;
     position: relative;
 }
-.form-container.loading::after {
+.signup-page .form-container.loading::after {
     content: '';
     position: absolute;
     top: 50%;
@@ -436,32 +473,27 @@ input:disabled {
 }
 
 /* ==========================================================================
-   DARK THEME
+   DARK THEME — scoped
    ========================================================================== */
-.dark-theme input,
-.dark-theme select,
-.dark-theme textarea {
+.dark-theme .signup-page input,
+.dark-theme .signup-page select,
+.dark-theme .signup-page textarea {
     background-color: var(--bg-secondary);
     border-color: var(--border-dark);
 }
-.dark-theme .instruction {
-    background-color: rgba(37, 99, 235, 0.2);
+.dark-theme .signup-page .instruction {
+    background-color: rgba(var(--accent-rgb), 0.2);
 }
-.dark-theme .step-indicator {
-    background: rgba(37, 99, 235, 0.2);
+.dark-theme .signup-page .step-indicator {
+    background: rgba(var(--accent-rgb), 0.2);
 }
-.dark-theme #google-link-modal .modal-body p {
-    color: var(--text-secondary, #cbd5e1);
+.dark-theme .signup-page #google-link-modal .modal-body p {
+    color: var(--text-secondary);
 }
-.dark-theme #google-link-modal .modal-body strong {
-    color: var(--text-primary, #f1f5f9);
+.dark-theme .signup-page #google-link-modal .modal-body strong {
+    color: var(--text-primary);
 }
-
-/* Google sign-up gated state — dark theme.
-   The dimming is slightly less aggressive because dark surfaces
-   already carry less visual weight than light ones; the grayscale
-   filter carries the "disabled" signal. */
-.dark-theme .google-signin-container.is-terms-gated {
+.dark-theme .signup-page .google-signin-container.is-terms-gated {
     opacity: 0.6;
     filter: grayscale(0.45);
 }
@@ -470,17 +502,21 @@ input:disabled {
    RESPONSIVE
    ========================================================================== */
 @media (max-width: 640px) {
-    .form-container {
+    .signup-page .form-container {
         padding: 1.5rem;
         margin: 1rem;
+        box-sizing: border-box;
     }
-    .form-row {
+    .signup-page .form-row {
         flex-direction: column;
         gap: 1.5rem;
     }
-    .button-group { flex-direction: column; }
-    .button-group button { width: 100%; }
-    h1 { font-size: 1.5rem; }
-    .reveal-btn { top: 2.3rem; }
-    #step4 .btn-primary { min-width: unset; width: 100%; }
+    .signup-page .button-group { flex-direction: column; }
+    .signup-page .button-group button { width: 100%; }
+    .signup-page h1 { font-size: 1.5rem; }
+    .signup-page .reveal-btn { top: 2.3rem; }
+    .signup-page #step4 .btn-primary {
+        min-width: unset;
+        width: 100%;
+    }
 }

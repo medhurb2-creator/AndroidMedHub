@@ -1,19 +1,47 @@
 /* ==========================================================================
    LOGIN — page-specific styles
+   Root wrapper: .login-page (from <section class="page login-page">)
+
    Requires common.css (tokens, buttons, .logo, .form-container base, inputs,
    .error-message, .form-group, :where(header|footer) defaults).
+
    Adds ONLY: page layout shell, sticky header, footer overrides, form-row,
    reveal button, action button group, security note, Google Sign-In
    button + "or" divider + account-linking modal + device-limit modal,
    responsive.
+
+   7-RULE COMPLIANCE
+   Rule 1: every selector prefixed with .login-page.
+   Rule 2: N/A (no grids).
+   Rule 3: box-sizing: border-box on layout containers + inputs.
+   Rule 4: 100vh has 100dvh fallback.
+   Rule 5: --bg-input scoped to .login-page, not :root/.dark-theme bare;
+           redundant dark-theme overrides removed.
+   Rule 6: header is sticky (no dropdowns to protect).
+   Rule 7: N/A (no shimmer loaders on this page).
    ========================================================================== */
 
-/* ---------- Page container ---------- */
-.page-container {
+/* ---------- Page-scoped theme token ----------
+   Original set `--bg-input` inside a bare `.dark-theme { ... }` block,
+   which mutated the global theme scope. Now scoped to .login-page and
+   derived from standard tokens that already flip per theme. */
+.login-page {
+    --bg-input: var(--bg-primary);
+}
+.dark-theme .login-page {
+    --bg-input: var(--bg-secondary);
+}
+
+/* ---------- Page container ----------
+   Previously bare — hijacked every page's .page-container. Now scoped. */
+.login-page .page-container {
     max-width: none;
+    width: 100%;
     margin: 0;
     padding: 0;
     min-height: 100vh;
+    min-height: 100dvh;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
     background: var(--bg-primary, #f8fafc);
@@ -21,8 +49,11 @@
     overflow: visible;
 }
 
-/* ---------- Sticky header ---------- */
-header {
+/* ---------- Sticky header ----------
+   Previously bare `header { ... }` — made EVERY page's <header> sticky.
+   Now scoped. Still matches the common :where(header:not([class])) default
+   from common.css (higher specificity wins where they differ). */
+.login-page header {
     position: sticky;
     top: 0;
     z-index: 100;
@@ -30,18 +61,19 @@ header {
     align-items: center;
     justify-content: space-between;
     padding: 1rem 2rem;
+    box-sizing: border-box;
     background: var(--bg-secondary, #fff);
     border-bottom: 1px solid var(--border, #e2e8f0);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
     isolation: isolate;
 }
 
-header .logo {
+.login-page header .logo {
     gap: 0.75rem;
     font-size: 1.25rem;
 }
 
-header .btn-outline {
+.login-page header .btn-outline {
     background: transparent;
     border: 1px solid var(--border, #e2e8f0);
     border-radius: 9999px;
@@ -51,36 +83,42 @@ header .btn-outline {
     transition: background 0.2s, border-color 0.2s;
     color: var(--text-primary, #0f172a);
 }
-header .btn-outline:hover {
+.login-page header .btn-outline:hover {
     background: var(--bg-hover, #f1f5f9);
     border-color: var(--text-muted, #94a3b8);
     color: var(--text-primary, #0f172a);
 }
 
-.dark-theme header {
-    background: var(--bg-card, #1e293b);
-    border-bottom-color: var(--border, #334155);
+/* Dark theme only overrides the box-shadow here — bg/border already
+   flip via tokens in the base rule above. All other dark-theme overrides
+   in the original were redundant and have been removed. */
+.dark-theme .login-page header {
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
-/* ---------- Main ---------- */
-main {
+/* ---------- Main ----------
+   Previously bare — hijacked every <main>. Now scoped. */
+.login-page main {
     flex: 1 0 auto;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 1rem;
+    box-sizing: border-box;
 }
 
-/* ---------- Form container ---------- */
-.form-container {
+/* ---------- Form container ----------
+   Previously bare — overrode common's .form-container on every page.
+   Now scoped, keeps common's max-width: 450px / padding: 2rem. */
+.login-page .form-container {
     width: 100%;
+    box-sizing: border-box;
     margin: 0 auto;
     border-radius: var(--radius-lg, 16px);
 }
 
 /* ---------- Form row (remember + forgot) ---------- */
-.form-row {
+.login-page .form-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -89,7 +127,7 @@ main {
     gap: 0.5rem;
 }
 
-.form-row label {
+.login-page .form-row label {
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -99,7 +137,7 @@ main {
     margin-bottom: 0;
 }
 
-.form-row .btn-link {
+.login-page .form-row .btn-link {
     background: transparent;
     color: var(--accent, #2563eb);
     font-weight: 500;
@@ -109,46 +147,44 @@ main {
     transition: background 0.2s;
     text-decoration: none;
 }
-.form-row .btn-link:hover {
+.login-page .form-row .btn-link:hover {
     background: var(--bg-hover, #f1f5f9);
     text-decoration: underline;
     color: var(--accent, #2563eb);
 }
 
-/* ---------- Form groups ---------- */
-.form-group {
+/* ---------- Form groups ----------
+   Previously bare — added `position: relative` to every .form-group on
+   every page (not just this one). Now scoped. */
+.login-page .form-group {
     position: relative;
 }
 
-.form-group label {
+.login-page .form-group label {
     margin-bottom: 0.4rem;
     color: var(--text-primary, #0f172a);
     font-size: 0.95rem;
 }
 
-.form-group input[type="text"],
-.form-group input[type="password"] {
+.login-page .form-group input[type="text"],
+.login-page .form-group input[type="password"] {
     padding: 0.7rem 2.5rem 0.7rem 1rem;
+    box-sizing: border-box;
     border-radius: 8px;
     background: var(--bg-input, #f8fafc);
     font-size: 1rem;
 }
 
-.form-group input::placeholder {
+.login-page .form-group input::placeholder {
     color: var(--text-muted, #94a3b8);
 }
 
-.form-group input:focus {
+.login-page .form-group input:focus {
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
-/* ---------- Dark theme token ---------- */
-.dark-theme {
-    --bg-input: #1e293b;
-}
-
 /* ---------- Reveal button ---------- */
-.reveal-btn {
+.login-page .reveal-btn {
     position: absolute;
     right: 0.75rem;
     top: 70%;
@@ -161,36 +197,36 @@ main {
     font-size: 1.1rem;
     transition: color 0.2s;
 }
-.reveal-btn:hover {
+.login-page .reveal-btn:hover {
     color: var(--text-primary, #0f172a);
 }
 
 /* ---------- Error messages ---------- */
-.error-message {
+.login-page .error-message {
     font-size: 0.8rem;
     margin-top: 0.3rem;
 }
 
 /* ---------- Action buttons ---------- */
-.action-buttons {
+.login-page .action-buttons {
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
     margin-top: 0.5rem;
 }
 
-.action-buttons .btn-primary {
+.login-page .action-buttons .btn-primary {
     padding: 0.75rem 1.5rem;
     border-radius: 9999px;
     font-weight: 600;
     font-size: 1rem;
     transition: background 0.2s, transform 0.1s;
 }
-.action-buttons .btn-primary:hover:not(:disabled) {
+.login-page .action-buttons .btn-primary:hover:not(:disabled) {
     transform: scale(1.01);
 }
 
-.action-buttons .btn-secondary {
+.login-page .action-buttons .btn-secondary {
     padding: 0.75rem 1.5rem;
     border-radius: 9999px;
     font-weight: 600;
@@ -198,12 +234,12 @@ main {
     background: transparent;
     color: var(--text-primary, #0f172a);
 }
-.action-buttons .btn-secondary:hover:not(:disabled) {
+.login-page .action-buttons .btn-secondary:hover:not(:disabled) {
     background: var(--bg-hover, #f1f5f9);
 }
 
 /* ---------- Security note ---------- */
-.security-note {
+.login-page .security-note {
     margin-top: 2rem;
     padding-top: 1rem;
     border-top: 1px solid var(--border, #e2e8f0);
@@ -212,13 +248,15 @@ main {
     text-align: center;
 }
 
-/* ---------- Footer ---------- */
-footer {
+/* ---------- Footer ----------
+   Previously bare — hijacked every <footer>. Now scoped. */
+.login-page footer {
     flex-shrink: 0;
     padding: 1.5rem 1rem;
+    box-sizing: border-box;
 }
 
-footer .btn-text {
+.login-page footer .btn-text {
     background: transparent;
     border: 1.5px solid var(--border, #e2e8f0);
     border-radius: 9999px;
@@ -231,7 +269,7 @@ footer .btn-text {
     align-items: center;
     gap: 0.4rem;
 }
-footer .btn-text:hover {
+.login-page footer .btn-text:hover {
     background: var(--bg-hover, #f1f5f9);
     border-color: var(--text-muted, #94a3b8);
     transform: scale(1.02);
@@ -241,7 +279,7 @@ footer .btn-text:hover {
 /* ==========================================================================
    GOOGLE SIGN-IN
    ========================================================================== */
-.google-signin-container {
+.login-page .google-signin-container {
     position: relative;
     display: flex;
     justify-content: center;
@@ -250,11 +288,12 @@ footer .btn-text:hover {
     margin-bottom: 0.5rem;
     transition: opacity 0.15s ease;
 }
-.google-signin-container iframe {
+.login-page .google-signin-container iframe {
     margin: 0 auto;
+    max-width: 100%;
 }
 
-.auth-divider {
+.login-page .auth-divider {
     display: flex;
     align-items: center;
     gap: 0.75rem;
@@ -263,8 +302,8 @@ footer .btn-text:hover {
     font-size: 0.85rem;
     text-transform: lowercase;
 }
-.auth-divider::before,
-.auth-divider::after {
+.login-page .auth-divider::before,
+.login-page .auth-divider::after {
     content: '';
     flex: 1;
     height: 1px;
@@ -275,11 +314,11 @@ footer .btn-text:hover {
    SHARED MODAL SHELL
    Applies to both #google-link-modal and #device-limit-modal.
    ========================================================================== */
-#google-link-modal,
-#device-limit-modal {
+.login-page #google-link-modal,
+.login-page #device-limit-modal {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.55);
+    background: var(--overlay);
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
     z-index: 10000;
@@ -287,25 +326,28 @@ footer .btn-text:hover {
     align-items: center;
     justify-content: center;
     padding: 1rem;
+    box-sizing: border-box;
 }
-#google-link-modal[style*="flex"],
-#device-limit-modal[style*="flex"] {
+.login-page #google-link-modal[style*="flex"],
+.login-page #device-limit-modal[style*="flex"] {
     display: flex !important;
 }
 
-#google-link-modal .modal,
-#device-limit-modal .modal {
+.login-page #google-link-modal .modal,
+.login-page #device-limit-modal .modal {
     background: var(--bg-card, #fff);
     border-radius: var(--radius, 12px);
     max-width: 460px;
     width: 100%;
+    box-sizing: border-box;
     padding: 1.5rem;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-    animation: loginModalFade 0.25s ease;
+    animation: login-modal-fade 0.25s ease;
     max-height: calc(100vh - 2rem);
+    max-height: calc(100dvh - 2rem);
     overflow-y: auto;
 }
-@keyframes loginModalFade {
+@keyframes login-modal-fade {
     0%   { opacity: 0; transform: scale(0.95) translateY(10px); }
     100% { opacity: 1; transform: scale(1)    translateY(0);    }
 }
@@ -313,18 +355,18 @@ footer .btn-text:hover {
 /* ==========================================================================
    GOOGLE ACCOUNT-LINKING MODAL
    ========================================================================== */
-#google-link-modal .modal-header {
+.login-page #google-link-modal .modal-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 0.75rem;
 }
-#google-link-modal .modal-header h3 {
+.login-page #google-link-modal .modal-header h3 {
     margin: 0;
     font-size: 1.15rem;
     font-weight: 700;
 }
-#google-link-modal .modal-close {
+.login-page #google-link-modal .modal-close {
     background: none;
     border: none;
     font-size: 1.5rem;
@@ -334,51 +376,52 @@ footer .btn-text:hover {
     line-height: 1;
     transition: color 0.2s;
 }
-#google-link-modal .modal-close:hover {
+.login-page #google-link-modal .modal-close:hover {
     color: var(--text-primary, #0f172a);
 }
 
-#google-link-modal .modal-body p {
+.login-page #google-link-modal .modal-body p {
     margin-bottom: 0.75rem;
     color: var(--text-secondary, #475569);
     font-size: 0.92rem;
     line-height: 1.5;
 }
-#google-link-modal .modal-body strong {
+.login-page #google-link-modal .modal-body strong {
     color: var(--text-primary, #0f172a);
 }
-#google-link-modal .modal-body .form-group {
+.login-page #google-link-modal .modal-body .form-group {
     margin-top: 1rem;
 }
-#google-link-modal .modal-body .form-group label {
+.login-page #google-link-modal .modal-body .form-group label {
     display: block;
     margin-bottom: 0.4rem;
     font-weight: 500;
     font-size: 0.9rem;
     color: var(--text-primary, #0f172a);
 }
-#google-link-modal .modal-body .form-group input {
+.login-page #google-link-modal .modal-body .form-group input {
     width: 100%;
     padding: 0.7rem 1rem;
+    box-sizing: border-box;
     border-radius: 8px;
     border: 1px solid var(--border, #e2e8f0);
-    background: var(--bg-input, #f8fafc);
+    background: var(--bg-input);
     color: var(--text-primary, #0f172a);
     font-size: 1rem;
 }
-#google-link-modal .modal-body .form-group input:focus {
+.login-page #google-link-modal .modal-body .form-group input:focus {
     outline: none;
     border-color: var(--accent, #2563eb);
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
-#google-link-modal .error-message {
+.login-page #google-link-modal .error-message {
     font-size: 0.78rem;
     margin-top: 0.25rem;
     color: var(--danger, #ef4444);
 }
 
-#google-link-modal .modal-footer {
+.login-page #google-link-modal .modal-footer {
     display: flex;
     justify-content: flex-end;
     gap: 0.5rem;
@@ -388,66 +431,65 @@ footer .btn-text:hover {
 /* ==========================================================================
    DEVICE LIMIT MODAL
    ========================================================================== */
-
-#device-limit-title {
+.login-page #device-limit-title {
     margin: 0 0 0.75rem 0;
     font-size: 1.15rem;
     font-weight: 700;
     color: var(--text-primary, #0f172a);
 }
 
-#device-limit-message {
+.login-page #device-limit-message {
     color: var(--text-secondary, #475569);
     font-size: 0.92rem;
     line-height: 1.55;
     margin-bottom: 1rem;
 }
-#device-limit-message p {
+.login-page #device-limit-message p {
     margin-bottom: 0.5rem;
 }
-#device-limit-message p:last-child {
+.login-page #device-limit-message p:last-child {
     margin-bottom: 0;
 }
-#device-limit-message strong {
+.login-page #device-limit-message strong {
     color: var(--text-primary, #0f172a);
 }
 
-/* Optional bullet list of the two paths (used in the 1-device variant) */
-.device-limit-options {
+.login-page .device-limit-options {
     list-style: none;
     padding: 0;
     margin: 0.5rem 0 0 0;
 }
-.device-limit-options li {
+.login-page .device-limit-options li {
     position: relative;
     padding-left: 1.25rem;
     margin-bottom: 0.35rem;
     font-size: 0.92rem;
     color: var(--text-secondary, #475569);
 }
-.device-limit-options li::before {
+.login-page .device-limit-options li::before {
     content: '•';
     position: absolute;
     left: 0.25rem;
     color: var(--accent, #2563eb);
     font-weight: 700;
 }
-.device-limit-options strong {
+.login-page .device-limit-options strong {
     color: var(--text-primary, #0f172a);
 }
 
 /* ---------- Device list ---------- */
-.device-limit-list {
+.login-page .device-limit-list {
     list-style: none;
     padding: 0;
     margin: 0 0 1rem 0;
     border: 1px solid var(--border, #e2e8f0);
     border-radius: 10px;
     overflow: hidden;
-    background: var(--bg-input, #f8fafc);
+    background: var(--bg-input);
+    box-sizing: border-box;
 }
 
-.device-limit-item {
+.login-page .device-limit-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -455,16 +497,16 @@ footer .btn-text:hover {
     gap: 0.75rem;
     border-bottom: 1px solid var(--border, #e2e8f0);
 }
-.device-limit-item:last-child {
+.login-page .device-limit-item:last-child {
     border-bottom: none;
 }
 
-.device-limit-info {
+.login-page .device-limit-info {
     flex: 1 1 auto;
     min-width: 0;
 }
 
-.device-limit-name {
+.login-page .device-limit-name {
     font-weight: 600;
     font-size: 0.95rem;
     color: var(--text-primary, #0f172a);
@@ -475,18 +517,18 @@ footer .btn-text:hover {
     word-break: break-word;
 }
 
-.device-limit-meta {
+.login-page .device-limit-meta {
     font-size: 0.78rem;
     color: var(--text-muted, #94a3b8);
     margin-top: 0.15rem;
     word-break: break-word;
 }
 
-.device-limit-actions {
+.login-page .device-limit-actions {
     flex-shrink: 0;
 }
 
-.device-current {
+.login-page .device-current {
     display: inline-block;
     font-size: 0.7rem;
     font-weight: 600;
@@ -494,17 +536,17 @@ footer .btn-text:hover {
     letter-spacing: 0.03em;
     padding: 0.15rem 0.5rem;
     border-radius: 9999px;
-    background: rgba(37, 99, 235, 0.12);
+    background: rgba(var(--accent-rgb), 0.12);
     color: var(--accent, #2563eb);
 }
 
-.device-current-note {
+.login-page .device-current-note {
     font-size: 0.75rem;
     color: var(--text-muted, #94a3b8);
     font-style: italic;
 }
 
-.btn-remove-device {
+.login-page .btn-remove-device {
     background: transparent;
     border: 1.5px solid var(--danger, #ef4444);
     color: var(--danger, #ef4444);
@@ -515,21 +557,21 @@ footer .btn-text:hover {
     cursor: pointer;
     transition: background 0.2s, color 0.2s;
 }
-.btn-remove-device:hover:not(:disabled) {
+.login-page .btn-remove-device:hover:not(:disabled) {
     background: var(--danger, #ef4444);
     color: #fff;
 }
-.btn-remove-device:disabled {
+.login-page .btn-remove-device:disabled {
     opacity: 0.6;
     cursor: not-allowed;
 }
 
 /* ---------- Upgrade path section ---------- */
-.device-limit-upgrade-section {
+.login-page .device-limit-upgrade-section {
     margin-top: 0.5rem;
 }
 
-.device-limit-divider {
+.login-page .device-limit-divider {
     display: flex;
     align-items: center;
     gap: 0.75rem;
@@ -539,15 +581,15 @@ footer .btn-text:hover {
     text-transform: uppercase;
     letter-spacing: 0.06em;
 }
-.device-limit-divider::before,
-.device-limit-divider::after {
+.login-page .device-limit-divider::before,
+.login-page .device-limit-divider::after {
     content: '';
     flex: 1;
     height: 1px;
     background: var(--border, #e2e8f0);
 }
 
-.device-limit-upgrade-note {
+.login-page .device-limit-upgrade-note {
     margin: 0 0 0.75rem 0;
     font-size: 0.88rem;
     color: var(--text-secondary, #475569);
@@ -555,9 +597,10 @@ footer .btn-text:hover {
     text-align: center;
 }
 
-#device-limit-upgrade {
+.login-page #device-limit-upgrade {
     display: block;
     width: 100%;
+    box-sizing: border-box;
     padding: 0.7rem 1.2rem;
     border-radius: 9999px;
     font-weight: 600;
@@ -568,16 +611,16 @@ footer .btn-text:hover {
     cursor: pointer;
     transition: background 0.2s, transform 0.1s;
 }
-#device-limit-upgrade:hover {
+.login-page #device-limit-upgrade:hover {
     background: var(--accent-dark, #1d4ed8);
     transform: scale(1.01);
 }
 
-/* ---------- Shared modal buttons (used in both modals) ---------- */
-#google-link-modal .modal-footer .btn-primary,
-#google-link-modal .modal-footer .btn-secondary,
-#device-limit-modal .modal-actions .btn-primary,
-#device-limit-modal .modal-actions .btn-secondary {
+/* ---------- Shared modal buttons ---------- */
+.login-page #google-link-modal .modal-footer .btn-primary,
+.login-page #google-link-modal .modal-footer .btn-secondary,
+.login-page #device-limit-modal .modal-actions .btn-primary,
+.login-page #device-limit-modal .modal-actions .btn-secondary {
     padding: 0.6rem 1.2rem;
     border-radius: 8px;
     font-weight: 600;
@@ -586,34 +629,34 @@ footer .btn-text:hover {
     transition: background 0.2s;
 }
 
-#google-link-modal .modal-footer .btn-primary,
-#device-limit-modal .modal-actions .btn-primary {
+.login-page #google-link-modal .modal-footer .btn-primary,
+.login-page #device-limit-modal .modal-actions .btn-primary {
     background: var(--accent, #2563eb);
     color: #fff;
     border: none;
 }
-#google-link-modal .modal-footer .btn-primary:hover:not(:disabled),
-#device-limit-modal .modal-actions .btn-primary:hover:not(:disabled) {
+.login-page #google-link-modal .modal-footer .btn-primary:hover:not(:disabled),
+.login-page #device-limit-modal .modal-actions .btn-primary:hover:not(:disabled) {
     background: var(--accent-dark, #1d4ed8);
 }
-#google-link-modal .modal-footer .btn-primary:disabled,
-#device-limit-modal .modal-actions .btn-primary:disabled {
+.login-page #google-link-modal .modal-footer .btn-primary:disabled,
+.login-page #device-limit-modal .modal-actions .btn-primary:disabled {
     opacity: 0.6;
     cursor: not-allowed;
 }
 
-#google-link-modal .modal-footer .btn-secondary,
-#device-limit-modal .modal-actions .btn-secondary {
+.login-page #google-link-modal .modal-footer .btn-secondary,
+.login-page #device-limit-modal .modal-actions .btn-secondary {
     background: var(--bg-secondary, #f1f5f9);
     color: var(--text-primary, #0f172a);
     border: 1px solid var(--border, #e2e8f0);
 }
-#google-link-modal .modal-footer .btn-secondary:hover,
-#device-limit-modal .modal-actions .btn-secondary:hover {
+.login-page #google-link-modal .modal-footer .btn-secondary:hover,
+.login-page #device-limit-modal .modal-actions .btn-secondary:hover {
     background: var(--border, #e2e8f0);
 }
 
-#device-limit-modal .modal-actions {
+.login-page #device-limit-modal .modal-actions {
     display: flex;
     justify-content: flex-end;
     gap: 0.5rem;
@@ -621,88 +664,45 @@ footer .btn-text:hover {
 }
 
 /* ==========================================================================
-   DARK THEME OVERRIDES FOR BOTH MODALS
+   DARK-THEME OVERRIDES
+   The original file had ~90% redundant dark-theme overrides because every
+   base rule already uses tokens that flip in dark mode. Only the modal
+   box-shadow genuinely differs and would need an override — but since
+   box-shadow in the base rule is theme-agnostic for these modals, no
+   dark-specific overrides are needed at all here.
+   (Kept as a documented comment so future maintainers know this was
+   audited, not missed.)
    ========================================================================== */
-.dark-theme #google-link-modal .modal,
-.dark-theme #device-limit-modal .modal {
-    background: var(--bg-card, #1e293b);
-}
-.dark-theme #google-link-modal .modal-body p,
-.dark-theme #device-limit-message,
-.dark-theme .device-limit-upgrade-note {
-    color: var(--text-secondary, #cbd5e1);
-}
-.dark-theme #google-link-modal .modal-body strong,
-.dark-theme #device-limit-message strong,
-.dark-theme #device-limit-title,
-.dark-theme .device-limit-name {
-    color: var(--text-primary, #f1f5f9);
-}
-.dark-theme #google-link-modal .modal-body .form-group label {
-    color: var(--text-primary, #f1f5f9);
-}
-.dark-theme #google-link-modal .modal-body .form-group input {
-    background: var(--bg-input, #1e293b);
-    border-color: var(--border, #334155);
-    color: var(--text-primary, #f1f5f9);
-}
-.dark-theme #google-link-modal .modal-close {
-    color: var(--text-muted, #94a3b8);
-}
-.dark-theme #google-link-modal .modal-close:hover {
-    color: var(--text-primary, #f1f5f9);
-}
-
-.dark-theme .device-limit-list {
-    background: var(--bg-input, #1e293b);
-    border-color: var(--border, #334155);
-}
-.dark-theme .device-limit-item {
-    border-bottom-color: var(--border, #334155);
-}
-.dark-theme .device-limit-meta {
-    color: var(--text-muted, #94a3b8);
-}
-
-.dark-theme #google-link-modal .modal-footer .btn-secondary,
-.dark-theme #device-limit-modal .modal-actions .btn-secondary {
-    background: var(--bg-secondary, #334155);
-    color: var(--text-primary, #f1f5f9);
-    border-color: var(--border, #475569);
-}
-.dark-theme #google-link-modal .modal-footer .btn-secondary:hover,
-.dark-theme #device-limit-modal .modal-actions .btn-secondary:hover {
-    background: var(--border, #475569);
-}
 
 /* ---------- Responsive ---------- */
 @media (max-width: 640px) {
-    header {
+    .login-page header {
         padding: 0.75rem 1rem;
     }
-    header .logo span {
+    .login-page header .logo span {
         font-size: 1rem;
     }
-    .form-container {
+    .login-page .form-container {
         margin: 1.5rem 1rem;
         padding: 1.5rem;
+        box-sizing: border-box;
     }
-    .form-row {
+    .login-page .form-row {
         flex-direction: column;
         align-items: flex-start;
     }
-    #google-link-modal .modal,
-    #device-limit-modal .modal {
+    .login-page #google-link-modal .modal,
+    .login-page #device-limit-modal .modal {
         padding: 1.25rem;
     }
-    .device-limit-item {
+    .login-page .device-limit-item {
         flex-direction: column;
         align-items: flex-start;
     }
-    .device-limit-actions {
+    .login-page .device-limit-actions {
         width: 100%;
     }
-    .btn-remove-device {
+    .login-page .btn-remove-device {
         width: 100%;
         text-align: center;
     }
