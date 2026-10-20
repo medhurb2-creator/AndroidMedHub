@@ -709,6 +709,28 @@ export async function getAllQuestions() {
     }
 }
 
+export async function deleteQuestionsBySubjectAndTopic(subject, topic) {
+  if (!subject || !topic) return;
+  try {
+    const store = await getStore('questions', 'readwrite');
+    const index = store.index('by_topic');
+    return new Promise((resolve, reject) => {
+      const req = index.openCursor(IDBKeyRange.only(topic));
+      req.onsuccess = (event) => {
+        const cursor = event.target.result;
+        if (!cursor) return resolve();
+        // Topic IDs can repeat across subjects (e.g. "introduction"),
+        // so gate on subject too.
+        if (cursor.value.subject === subject) cursor.delete();
+        cursor.continue();
+      };
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) {
+    console.warn('[DB] deleteQuestionsBySubjectAndTopic failed', e);
+  }
+}
+
 // ==================== DOWNLOADED EXAMS ====================
 export async function getDownloadedExams() {
     try {

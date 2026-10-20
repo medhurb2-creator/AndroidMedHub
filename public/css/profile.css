@@ -60,26 +60,83 @@ main h1 {
     margin: 1rem 0.5rem;
 }
 
-/* ---------- Tabs (page overrides) ---------- */
-.tabs {
-    padding: 0 0.5rem 0.5rem;
-    margin-bottom: 1rem;           /* common: 1.5rem */
-    scrollbar-width: thin;
-    scrollbar-color: var(--border) transparent;
-    position: relative;
-}
-.tabs::-webkit-scrollbar        { height: 6px; width: 6px; }
-.tabs::-webkit-scrollbar-track  { background: transparent; }
-.tabs::-webkit-scrollbar-thumb  { background: var(--border); border-radius: 4px; }
+/* ---------- Tabs — visible scrollbar on mouse, hidden on touch ---------- */
 
-/* Mobile: hide scrollbar, add fade hint */
-@media (max-width: 640px) {
+.tabs {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+
+    padding: 0 0.5rem 0.5rem;
+    margin-bottom: 1rem;
+    position: relative;
+
+    /* Firefox: full-size scrollbar, high-contrast thumb.
+       `auto` (not `thin`) keeps the bar thick enough to grab. */
+    scrollbar-width: auto;
+    scrollbar-color: var(--accent) var(--bg-secondary);
+}
+
+.tab-button {
+    flex: 0 0 auto;          /* don't squash — overflow and scroll */
+    padding: 0.75rem 1.2rem;
+    font-size: 1rem;
+    min-height: 48px;
+    margin-bottom: 0;
+    white-space: nowrap;
+}
+
+/* WebKit (Chrome, Edge, Brave, Safari, Android WebView):
+   thick, high-contrast scrollbar visible whenever content overflows.
+   Defining ::-webkit-scrollbar at all overrides macOS "when scrolling"
+   auto-hide — the bar shows as soon as the tab bar overflows. */
+.tabs::-webkit-scrollbar {
+    height: 10px;
+}
+
+.tabs::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+    border-radius: 5px;
+    margin: 0 0.5rem;
+}
+
+.tabs::-webkit-scrollbar-thumb {
+    background: var(--accent);
+    border-radius: 5px;
+    /* Inset look — thumb has a 2px gap from the track edges
+       so it reads as a grab handle, not a flat stripe. */
+    border: 2px solid var(--bg-secondary);
+    /* Minimum grab width so a barely-overflowing bar is still usable */
+    min-width: 40px;
+}
+
+.tabs::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-dark);
+}
+
+.tabs::-webkit-scrollbar-thumb:active {
+    background: var(--accent-dark);
+}
+
+/* Touch devices (phones, tablets): swipe is the interaction,
+   so the scrollbar is visual noise. Hide it and use a right-edge
+   fade to hint that more tabs exist. */
+@media (hover: none) and (pointer: coarse) {
     .tabs {
         scrollbar-width: none;
+        -ms-overflow-style: none;
         -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
         mask-image: linear-gradient(to right, black 85%, transparent 100%);
     }
-    .tabs::-webkit-scrollbar { display: none; }
+
+    .tabs::-webkit-scrollbar {
+        display: none;
+    }
 }
 
 .tab-button {

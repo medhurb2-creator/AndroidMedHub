@@ -2,6 +2,7 @@
 import * as auth from '../auth.js';
 import * as ui from '../ui.js';
 import * as router from '../router.js';
+import * as redirect from '../redirect.js';
 import * as utils from '../utils.js';
 import * as questions from '../questions.js';
 import * as analytics from '../analytics.js';
@@ -19,6 +20,10 @@ let currentMode = 'internal';
 // DOM helper
 let $;
 
+// ── SLIDE: cached clone template for dynamically-built subject sections.
+//    Populated on first dynamic subject; reused for subsequent ones.
+let _sectionTemplate = null;
+
 export async function init(context) {
   $ = (sel) => context.root.querySelector(sel);
 
@@ -30,34 +35,117 @@ export async function init(context) {
   realContent.style.display = 'none';
   shimmer.style.display = 'block';
 
+  // ── State adapter ────────────────────────────────────────────────
+  // Registered before any redirect can fire. The topic selection
+  // already lives in sessionStorage (topicSelection_<subjectId>), so
+  // it survives a teardown without help. This adapter's job is to
+  // capture the pieces of module-scoped state that do NOT have a
+  // persistence layer:
+  //
+  //   • currentMode  — set by setMode(), reflected only as a CSS
+  //                    class on .mode-btn; the automatic UI snapshot
+  //                    does not capture class-based state.
+  //   • currentSubject — redundant with the URL, but captured as a
+  //                    safety net in case a caller ever pushes this
+  //                    page without preserving the query string.
+  //
+  // The page currently has no gating redirects of its own — the
+  // adapter is primarily insurance for future gates and for
+  // downstream flows that might push this page.
+  redirect.registerStateAdapter('subject-specific', {
+    capture: () => ({
+      currentMode,
+      currentSubject,
+    }),
+    restore: (data) => {
+      if (!data) return;
+
+      // Defensive: only adopt the restored subject if the URL did
+      // not already provide one. The URL is the source of truth.
+      if (!currentSubject && data.currentSubject) {
+        currentSubject = data.currentSubject;
+      }
+
+      if (typeof data.currentMode === 'string') {
+        try { setMode(data.currentMode); }
+        catch (err) { console.warn('[SubjectSpecific] mode restore failed:', err); }
+      }
+    },
+  });
+
   // 1. Check auth (app is already initialized)
   currentUser = auth.getUser();
   hasActiveSub = await subscription.hasActiveSubscription();
 
   const subjectId = utils.getQueryParam('subject');
   if (!subjectId) {
+    // Terminal: no subject in the URL, page cannot render. Clear
+    // any dangling redirect chain — a stale returnTo would just
+    // loop the user back here on every successful auth resolution.
     ui.showToast('No subject specified', 'error');
+    try { redirect.clearReturns(); }   catch { /* ignore */ }
+    try { redirect.clearSnapshots(); } catch { /* ignore */ }
     router.navigateTo('subjects');
     return;
   }
   currentSubject = subjectId;
 
   // 2. Show the correct subject section
+  //
+  // ── SLIDE: static HTML ships one section per *core* subject.
+  //    Slide-delivered subjects (histology-prac, …) aren't in the HTML
+  //    at build time — they're invented at runtime by the zip's
+  //    subject.json — so for any subject whose section is missing, we
+  //    build one on the fly by cloning an existing static section and
+  //    renaming its IDs. That keeps the DOM shape identical to the
+  //    static sections, which is what the rest of this file
+  //    (renderTopicTree, select/clear buttons, shared selection
+  //    summary) relies on.
   document.querySelectorAll('.subject-section').forEach(el => el.style.display = 'none');
-  const targetDiv = $(`#${subjectId}-topics`);
+
+  let targetDiv = $(`#${subjectId}-topics`);
   if (!targetDiv) {
-    ui.showToast('Subject not found', 'error');
-    router.navigateTo('subjects');
-    return;
+    targetDiv = _buildDynamicSubjectSection(context, subjectId);
+    if (!targetDiv) {
+      // No template section to clone — genuinely unrecoverable.
+      ui.showToast('Subject not found', 'error');
+      try { redirect.clearReturns(); }   catch { /* ignore */ }
+      try { redirect.clearSnapshots(); } catch { /* ignore */ }
+      router.navigateTo('subjects');
+      return;
+    }
   }
   targetDiv.style.display = 'block';
 
   // 3. Load subject metadata and update header
+  //
+  // ── SLIDE: subjectMeta.icon is a Font Awesome class string
+  //    ("fa-solid fa-microscope") — either from the static
+  //    SUBJECT_META in questions.js or from the slide manifest's
+  //    SUBJECT_META. Setting .textContent would paint the literal
+  //    class string into the DOM instead of the icon. Rendering an
+  //    <i> wrapper keeps the header consistent with the subject cards
+  //    on the Subjects grid.
   const subjectMeta = await questions.getSubjectMeta(subjectId);
-  $('#header-subject-icon').textContent = subjectMeta.icon;
-  $('#header-subject-name').textContent = subjectMeta.name;
-  $('#header-subject-color').style.backgroundColor = subjectMeta.color;
-  $('#header-total-questions').textContent = `${subjectMeta.questions} questions`;
+
+  const iconEl = $('#header-subject-icon');
+  if (iconEl) {
+    const iconClass =
+      typeof subjectMeta.icon === 'string' &&
+      (/^fa[srb]?\s/.test(subjectMeta.icon) || subjectMeta.icon.startsWith('fa-'))
+        ? subjectMeta.icon
+        : 'fa-solid fa-book';
+    iconEl.innerHTML = `<i class="${iconClass}" aria-hidden="true"></i>`;
+  }
+
+  const nameEl = $('#header-subject-name');
+  if (nameEl) nameEl.textContent = subjectMeta.name;
+
+  const colorEl = $('#header-subject-color');
+  if (colorEl) colorEl.style.backgroundColor = subjectMeta.color;
+
+  const totalEl = $('#header-total-questions');
+  if (totalEl) totalEl.textContent = `${subjectMeta.questions} questions`;
 
   // 4. Load topics
   topicsData = await questions.getTopicsBySubject(subjectId);
@@ -80,13 +168,135 @@ export async function init(context) {
   setMode('internal');
 
   // 8. Attach all event listeners
+  //
+  // ── SLIDE: this is *after* step 2, so the .select-all-btn /
+  //    .clear-all-btn elements inside a dynamically-built section are
+  //    already in the DOM and get their listeners here.
   attachEventListeners(context);
 
   // 9. Hide shimmer, show real content
   shimmer.style.display = 'none';
   realContent.style.display = 'block';
 
+  // ── Self-consume of the return stack ─────────────────────────────
+  // If a snapshot exists for this page AND the top of the return
+  // stack points here, we are the target of a completed round trip.
+  // Pop so the stack doesn't grow on subsequent redirects. Covers
+  // the case where the returning page used history.back().
+  try {
+    const hasSnap = redirect.hasSnapshot();
+    if (hasSnap) {
+      const myUrl =
+        window.location.pathname +
+        (window.location.search || '') +
+        (window.location.hash || '');
+      const top = redirect.peekReturn();
+      if (top && top.url === myUrl) redirect.popReturn();
+    }
+  } catch (err) {
+    console.warn('[SubjectSpecific] Return-stack cleanup failed:', err);
+  }
+
+  // ── Resume snapshot ──────────────────────────────────────────────
+  // Restores currentMode (via the adapter above) and any auto-
+  // captured form state. Topic selection is not affected — it is
+  // restored from sessionStorage further up in this function, so
+  // it survives regardless of the redirect path.
+  const snap = redirect.consumeSnapshot();
+  if (snap && (snap.ui || snap.page)) {
+    ui.showToast('Continuing where you left off', 'info', 1800);
+    console.log('[SubjectSpecific] Resumed from redirect:', {
+      fields: Object.keys(snap.ui?.fields || {}).length,
+      pageState: snap.page,
+    });
+  }
+
   console.log('[SubjectSpecific] Initialized');
+}
+
+// ==================== DYNAMIC SUBJECT SECTION (SLIDE) ====================
+//
+// Builds a .subject-section block for a subject that isn't in the
+// static HTML — every slide-delivered subject, and any future subject
+// added without an HTML change. The template is any existing
+// .subject-section from the static HTML, cloned and re-IDed so the
+// new subject's tree, buttons, and any wrapper elements have the
+// expected `${subjectId}-…` IDs and `data-subject="${subjectId}"`
+// attributes.
+//
+// Returns the new section element (already appended to the DOM), or
+// null if no template exists to clone from.
+
+function _buildDynamicSubjectSection(context, subjectId) {
+  // First-call template extraction. The template is any static
+  // .subject-section. If none exists, the static HTML is broken and
+  // there's nothing to mimic — bail with a warning.
+  if (!_sectionTemplate) {
+    const firstStatic = context.root.querySelector('.subject-section');
+    if (!firstStatic) {
+      console.warn('[SubjectSpecific] No .subject-section template found; cannot build dynamic section');
+      return null;
+    }
+    _sectionTemplate = firstStatic;
+  }
+
+  const template = _sectionTemplate;
+  const clone    = template.cloneNode(true);
+
+  // Work out the template's subject prefix. The convention is
+  // `${subjectId}-topics`, so strip the suffix to get the old ID.
+  const oldSectionId = template.id || '';
+  const oldSubjectId = oldSectionId.endsWith('-topics')
+    ? oldSectionId.slice(0, -'-topics'.length)
+    : null;
+  if (!oldSubjectId) {
+    console.warn('[SubjectSpecific] Template section has no recognizable ID; cannot rename');
+    return null;
+  }
+
+  // Rewrite every id="oldSubject-…" → id="newSubject-…" and every
+  // data-subject="oldSubject" → data-subject="newSubject".
+  const oldPrefix = oldSubjectId + '-';
+  const newPrefix = subjectId + '-';
+  clone.querySelectorAll('[id]').forEach(el => {
+    if (el.id.startsWith(oldPrefix)) {
+      el.id = newPrefix + el.id.slice(oldPrefix.length);
+    }
+  });
+  if (clone.id.startsWith(oldPrefix)) {
+    clone.id = newPrefix + clone.id.slice(oldPrefix.length);
+  }
+  clone.querySelectorAll('[data-subject]').forEach(el => {
+    if (el.dataset.subject === oldSubjectId) el.dataset.subject = subjectId;
+  });
+  if (clone.dataset.subject === oldSubjectId) {
+    clone.dataset.subject = subjectId;
+  }
+
+  // Clear any static content inside the tree so renderTopicTree()
+  // can rebuild it against the slide manifest. Any inline onclick
+  // handlers that referenced the old subject by name would now be
+  // stale — removing them here prevents accidental navigation to
+  // the template's subject. Listeners are re-attached via
+  // attachEventListeners() in init step 8.
+  const tree = clone.querySelector(`#${subjectId}-topics-tree`);
+  if (tree) tree.innerHTML = '';
+
+  clone.querySelectorAll('[onclick]').forEach(el => {
+    el.removeAttribute('onclick');
+  });
+
+  // Insert next to the existing static sections so any styles that
+  // depend on sibling context (.subject-section + .subject-section,
+  // :first-of-type selectors, etc.) still match.
+  if (template.parentElement) {
+    template.parentElement.appendChild(clone);
+  } else {
+    context.root.appendChild(clone);
+  }
+
+  console.log(`[SubjectSpecific] Built dynamic section for "${subjectId}"`);
+  return clone;
 }
 
 // ==================== RENDER TOPICS ====================
@@ -252,7 +462,8 @@ function setMode(mode) {
 
 // ==================== EVENT LISTENERS ====================
 function attachEventListeners(context) {
-  // Back button
+  // Back button — plain navigation. The user is explicitly
+  // abandoning the subject-specific flow.
   const backBtn = $('#backBtn');
   if (backBtn) {
     backBtn.addEventListener('click', () => router.navigateTo('subjects'));
@@ -329,6 +540,10 @@ function studySelectedTopics(subjectId) {
     totalQuestions: selected.reduce((sum, t) => sum + t.questions, 0),
     mode: 'study'
   });
+  // Plain navigation — exam-settings and its downstream pages own
+  // their own gates. If auth/subscription is required, they push
+  // the return chain, and on success the user lands back on
+  // whichever page gated them (typically exam-room).
   router.navigateTo('exam-settings');
 }
 
@@ -372,6 +587,12 @@ function createPDF(subjectId) {
     return;
   }
   if (!hasActiveSub) {
+    // The button is disabled in the UI when there is no active
+    // subscription, but this is a belt-and-braces check for the
+    // case where the mode got switched programmatically. Since
+    // pdf-settings itself has a subscription gate, we could route
+    // through subscription here — but the UI already prevents
+    // reaching this point, so a toast is sufficient.
     ui.showToast('An active subscription is required to export PDF', 'error');
     return;
   }
@@ -381,6 +602,7 @@ function createPDF(subjectId) {
     totalQuestions: selected.reduce((sum, t) => sum + t.questions, 0),
     mode: 'pdf'
   });
+  // pdf-settings has its own auth + subscription gates. Plain nav.
   router.navigateTo('pdf-settings');
 }
 
@@ -406,5 +628,11 @@ window.quickStudyTopic = quickStudyTopic;
 window.setMode = setMode;
 
 export function destroy() {
-  // Cleanup if needed
+  // Unregister the state adapter so a subsequent page load does not
+  // inherit a stale closure over this page's module state.
+  try { redirect.unregisterStateAdapter('subject-specific'); } catch { /* ignore */ }
+
+  // ── SLIDE: drop the cached template reference so it doesn't keep a
+  //    detached DOM tree alive across visits.
+  _sectionTemplate = null;
 }

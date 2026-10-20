@@ -396,3 +396,28 @@
     .review-answers { grid-template-columns: 1fr; }
     .review-question { font-size: 0.9rem; }
 }
+
+/* ---------- Question image in review list ---------- */
+.review-image {
+  display: flex;
+  justify-content: center;
+  margin: 0.75rem 0;
+}
+
+.review-image img {
+  max-width: 100%;
+  max-height: 400px;
+  width: auto;
+  height: auto;
+  border-radius: var(--radius-sm, 8px);
+  object-fit: contain;
+  background: var(--bg-secondary, #f5f5f5);
+  border: 1px solid var(--border, #e5e5e5);
+  padding: 4px;
+}
+
+/* Narrow phones: reduce max-height so a tall image doesn't dominate
+   the scroll for the whole review list. */
+@media (max-width: 480px) {
+  .review-image img { max-height: 260px; }
+}

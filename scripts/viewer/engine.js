@@ -323,9 +323,19 @@ export class PdfJsAdapter extends EngineAdapter {
       ? options.onProgress
       : undefined;
 
-    let pdfDoc;
+       let pdfDoc;
     try {
-      const params = { data };
+      let params;
+      // PDF.js expects a URL string, an ArrayBuffer, or an object with a URL
+      if (typeof data === 'string') {
+        params = { url: data };
+      } else if (data && typeof data === 'object' && data.url) {
+        // This handles the { url, rangeChunkSize, disableAutoFetch } object from core.js
+        params = { ...data }; 
+      } else {
+        params = { data };
+      }
+      
       if (onProgress) params.onProgress = onProgress;
       pdfDoc = await window.pdfjsLib.getDocument(params).promise;
     } catch (err) {

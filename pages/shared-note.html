@@ -9,30 +9,46 @@
   data-transition="fade"
 >
   <div class="page-container">
-    <header>
+
+    <!-- ═══════════ FIXED HEADER ═══════════ -->
+    <header class="shared-note-header" id="sharedNoteHeader">
       <div class="logo">
-        <img src="/assets/images/logo.png" alt="Logo" width="40" height="40">
+        <img src="/assets/images/logo.png" alt="MedVix logo" width="36" height="36">
         <span>MedVix</span>
       </div>
-      <nav class="main-nav">
-        <a id="subjectsNav" href="#">Subjects</a>
-        <a id="performanceNav" href="#">Performance</a>
-        <a id="aiNav" href="#">AI Tutor</a>
-        <a id="notesNav" href="#">Notes</a>
-      </nav>
       <div class="header-right">
-        <button id="themeToggle" class="btn-outline">🌓</button>
+        <button
+          id="themeToggle"
+          class="btn-outline"
+          type="button"
+          aria-label="Toggle dark or light theme"
+          title="Toggle theme"
+        >🌓</button>
       </div>
     </header>
 
-    <main>
+    <!-- ═══════════ SCROLLABLE CONTENT ═══════════ -->
+    <main class="shared-note-main">
       <div id="shared-note-container" class="shared-note-container">
         <div class="loading">Loading note...</div>
       </div>
     </main>
 
-    <footer>
-      <p>&copy; Medical Exam Room Pro. All rights reserved.</p>
+    <!-- ═══════════ FIXED FOOTER NAV (performance-page style) ═══════════ -->
+    <footer class="app-footer" id="sharedNoteFooter">
+      <button class="footer-btn" data-route="subjects" title="Subjects" type="button">
+        📚<span>Subjects</span>
+      </button>
+      <button class="footer-btn" data-route="performance" title="Performance" type="button">
+        📊<span>Performance</span>
+      </button>
+      <button class="footer-btn" data-route="ai" title="AI Tutor" type="button">
+        🤖<span>AI Tutor</span>
+      </button>
+      <button class="footer-btn" data-route="notes" title="Notes" type="button">
+        📝<span>Notes</span>
+      </button>
     </footer>
+
   </div>
 </section>

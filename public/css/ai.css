@@ -3,7 +3,8 @@
    Requires common.css. This page uses a separate theme (green accent, dark
    default) that overrides common's tokens via :root / body.light-mode.
    All chat layout, message renderer, rich-data cards, shimmer skeleton,
-   and modal styling live here.
+   footer navigation, modal styling, notes selection UI, and retry/toast
+   affordances live here.
    ========================================================================== */
 
 /* ---------- AI palette — overrides common's :root for this page ---------- */
@@ -15,6 +16,7 @@
     --bubble-assistant: #444654;
     --input-bg: #40414f;
     --accent: #10a37f;
+    --accent-dark: #0d8c6f;
     --border: #444;
     --text-primary: #fff;
     --text-muted: #aaa;
@@ -25,7 +27,9 @@
     --voice-wave: #10a37f;
     --attachment-preview-bg: #2a2b32;
 
-    --header-height: 90px;
+    /* Used only by floating UI (selection bar, note-saved toast). NOT
+       used by layout any more — the footer is a flow child. */
+    --footer-height: 64px;
 
     --bg-code: #1a1a2e;
     --text-code: #e0e0e0;
@@ -86,86 +90,42 @@ body {
     color: var(--text-primary);
 }
 
-/* ---------- Fixed top bar ---------- */
-.fixed-top-bar {
+/* FIXED: Page shell. Anchored to the viewport regardless of what any
+   parent wrapper does (padding, margin, transform). This is what
+   guarantees #app's bottom edge lands on the footer's top edge. */
+.page.ai-page {
     position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 1000;
-    background: var(--bg-card, #2a2b32);
-    border-bottom: 1px solid var(--border);
-    padding: 0.5rem 1rem;
+    inset: 0;
+    padding: 0;
+    margin: 0;
+    overflow: hidden;
+    background: var(--bg-main);
 }
 
-/* Header overrides — only what differs from common.css */
-.header-row .left-group { flex-wrap: wrap; }
-
-.header-row .left-group img {
-    width: 36px;
-    height: 36px;
+/* FIXED: #real-content is the flex column that stacks #app on top of
+   the footer. Footer is a flow child, so #app doesn't need any
+   padding to "reserve space" — flex does it. */
+#real-content {
+    display: none;
+    height: 100%;
+    overflow: hidden;
+    padding: 0;
+    margin: 0;
 }
-
-.header-row .left-group .btn-text {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    padding: 0.3rem 0.8rem;
-    border-radius: 20px;
-    color: var(--text-primary);
-    font-size: 0.85rem;
-    transition: background 0.2s;
-    white-space: nowrap;
-}
-.header-row .left-group .btn-text:hover {
-    background: var(--accent);
-    color: #fff;
-    border-color: var(--accent);
-}
-
-/* Theme toggle lives in .right-group; no .btn-outline class in markup,
-   but keep the selector so JS-added classes still style correctly. */
-.header-row .right-group .btn-outline {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border);
-    padding: 0.3rem 0.6rem;
-    border-radius: 20px;
-    font-size: 1.2rem;
-    cursor: pointer;
-    transition: background 0.2s;
-}
-.header-row .right-group .btn-outline:hover {
-    background: var(--accent);
-    color: #fff;
-    border-color: var(--accent);
-}
-
-#header-status {
+#real-content.visible {
     display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.9rem;
+    flex-direction: column;
 }
-#header-status .status-text { color: var(--text-secondary); }
-#header-status .trial-btn {
-    background: var(--accent);
-    color: #fff;
-    border: none;
-    padding: 0.2rem 0.7rem;
-    border-radius: 30px;
-    font-weight: 600;
-    cursor: pointer;
-}
-#header-status .trial-btn:hover { background: var(--accent-dark); }
 
-/* ---------- App shell (offset for fixed header) ---------- */
+/* FIXED: #app fills the space above the footer. No padding-bottom,
+   no --footer-height dependency, no transition. */
 #app {
+    flex: 1;
+    min-height: 0;
     display: flex;
-    height: var(--app-height, calc(100vh - var(--header-height)));
     width: 100%;
-    transition: height 0.15s ease;
     position: relative;
     background: var(--bg-main);
-    margin-top: var(--header-height);
 }
 
 /* ---------- Sidebar ---------- */
@@ -232,6 +192,7 @@ body {
     outline: none;
     box-shadow: none;
 }
+body.light-mode .search-chats { background: #e5e5e5; }
 
 .chat-history {
     flex: 1;
@@ -245,6 +206,18 @@ body {
 .history-item.pinned {
     background: rgba(16, 163, 127, 0.15);
     border-left: 3px solid var(--accent);
+}
+
+/* Active chat — currently-open conversation in the sidebar */
+.history-item.active {
+    background: rgba(16, 163, 127, 0.22);
+    border-left: 3px solid var(--accent);
+    color: var(--text-primary);
+    font-weight: 500;
+}
+.history-item.active .chat-title {
+    color: var(--accent);
+    font-weight: 600;
 }
 
 .chat-title {
@@ -317,7 +290,7 @@ body {
     flex: 1;
     display: flex;
     flex-direction: column;
-    height: 100%;
+    min-height: 0;      /* allows .chat-container to scroll inside flex */
     background: var(--bg-main);
     min-width: 0;
 }
@@ -364,6 +337,7 @@ body {
     font-size: 0.95rem;
     border: 0.5px solid var(--border);
 }
+body.light-mode .model-selector { background: rgba(0, 0, 0, 0.05); }
 
 .performance-btn {
     background: rgba(0, 0, 0, 0.2);
@@ -378,6 +352,7 @@ body {
     color: var(--text-primary);
     text-decoration: none;
 }
+body.light-mode .performance-btn { background: rgba(0, 0, 0, 0.05); }
 .performance-btn i { color: var(--accent); }
 .performance-btn:hover { background: rgba(255, 255, 255, 0.1); }
 
@@ -394,9 +369,14 @@ body {
 /* ---------- Messages ---------- */
 .message { display: flex; }
 
+/* User messages: bubble on top, action row underneath, right-aligned */
 .message.user {
     max-width: 88%;
     align-self: flex-end;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
 }
 
 .message.assistant {
@@ -410,6 +390,7 @@ body {
     border-radius: 0;
     display: flex;
     flex-direction: column;
+    position: relative;
 }
 .message.assistant .bubble {
     background: transparent;
@@ -423,6 +404,8 @@ body {
     border-bottom-right-radius: 6px;
     border-radius: 22px;
     padding: 14px 18px;
+    max-width: 100%;
+    word-wrap: break-word;
 }
 
 .assistant-content {
@@ -475,6 +458,66 @@ body {
 .message-actions span:hover { color: var(--accent); }
 .message-actions .thumbs-up.active { color: #2ecc71; }
 .message-actions .thumbs-down.active { color: #e74c3c; }
+.message-actions .notes-action:hover { color: var(--accent); }
+
+/* ---------- User message action row (Edit / Copy) ---------- */
+.user-actions {
+    display: flex;
+    gap: 10px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    padding: 0 4px;
+}
+.message.user:hover .user-actions,
+.message.user.editing .user-actions {
+    opacity: 1;
+}
+.user-actions span {
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    transition: color 0.15s, background 0.15s;
+}
+.user-actions span:hover {
+    color: var(--accent);
+    background: rgba(16, 163, 127, 0.1);
+}
+.user-actions i { font-size: 0.7rem; }
+
+/* Visual cue while the message is being edited */
+.message.user.editing .bubble {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    background: rgba(16, 163, 127, 0.12);
+}
+
+/* ---------- Retry button on failed user messages ---------- */
+.retry-btn {
+    margin-top: 4px;
+    padding: 4px 10px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: all 0.15s;
+    align-self: flex-end;
+}
+.retry-btn:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: rgba(16, 163, 127, 0.1);
+}
+.retry-btn i { font-size: 0.7rem; }
 
 /* ---------- Typing indicator ---------- */
 .typing-indicator {
@@ -613,6 +656,10 @@ body {
     padding: 8px 0;
     font-family: inherit;
 }
+.input-wrapper textarea:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
 /* Block common's textarea:focus ring */
 .input-wrapper textarea:focus {
     outline: none;
@@ -633,10 +680,16 @@ body {
     font-size: 1.4rem;
     cursor: pointer;
     flex-shrink: 0;
+    transition: background 0.15s, opacity 0.15s;
 }
 .action-btn:hover { background: rgba(255, 255, 255, 0.1); }
+.action-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+.action-btn:disabled:hover { background: transparent; }
 .action-btn.send { color: var(--accent); }
-.action-btn.send:hover { background: rgba(16, 163, 127, 0.2); }
+.action-btn.send:hover:not(:disabled) { background: rgba(16, 163, 127, 0.2); }
 
 .voice-recording-bar {
     display: none;
@@ -727,6 +780,62 @@ body {
     border: 1px solid var(--border);
 }
 
+/* ==================================================================
+   FIXED: FOOTER NAVIGATION — now a FLOW child of #real-content.
+   It sits directly below #app in the flex column, so its top edge is
+   always #app's bottom edge (i.e. the input area's bottom edge).
+   No position: fixed. No --footer-height dependency for layout.
+   No feedback loop possible.
+   ================================================================== */
+.app-footer {
+    position: static;
+    flex-shrink: 0;              /* never squashed by #app */
+    height: auto;                /* intrinsic height — no loop */
+    min-height: 56px;
+    box-sizing: border-box;
+    background: var(--topbar-bg);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 0.25rem 0.5rem;
+    padding-bottom: max(0.25rem, env(safe-area-inset-bottom));
+    z-index: 100;
+}
+
+.footer-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 0.4rem;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1.2rem;
+    transition: color 0.2s, background 0.2s;
+    border-radius: 10px;
+    -webkit-tap-highlight-color: transparent;
+}
+.footer-btn span {
+    font-size: 0.7rem;
+    letter-spacing: 0.02em;
+}
+.footer-btn:hover,
+.footer-btn:active,
+.footer-btn:focus-visible {
+    color: var(--accent);
+    background: rgba(16, 163, 127, 0.08);
+    outline: none;
+}
+
+/* The dynamic Subscribe button uses accent color to stand out */
+.footer-btn.footer-subscribe { color: var(--accent); }
+.footer-btn.footer-subscribe:hover { color: var(--accent-dark); }
+
 /* ---------- Modal (overrides common) ---------- */
 .modal-overlay {
     position: fixed;
@@ -739,9 +848,9 @@ body {
     align-items: center;
     justify-content: center;
     z-index: 100;
-    padding: 0;                               /* block common's 1rem */
+    padding: 0;
     backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);       /* match for WebKit */
+    -webkit-backdrop-filter: blur(2px);
 }
 
 .modal {
@@ -753,7 +862,7 @@ body {
     color: var(--text-primary);
     box-shadow: 0 20px 30px rgba(0, 0, 0, 0.5);
     border: 1px solid var(--border);
-    animation: none;                          /* block common's modalSlideUp */
+    animation: none;
 }
 .modal h3 {
     margin-bottom: 22px;
@@ -778,7 +887,6 @@ body {
     font-size: 0.9rem;
 }
 .modal-item select { padding: 6px 20px 6px 10px; }
-/* Block common's select:focus ring */
 .modal-item select:focus {
     outline: none;
     box-shadow: none;
@@ -793,6 +901,540 @@ body {
     margin-top: 16px;
     width: 100%;
     cursor: pointer;
+}
+
+/* ---------- Share modal chrome ---------- */
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+.modal-header h3 { margin: 0; }
+.modal-close {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.8rem;
+    cursor: pointer;
+    line-height: 1;
+    padding: 0 0 0 8px;
+}
+.modal-close:hover { color: var(--text-primary); }
+
+.modal-body p {
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    line-height: 1.4;
+}
+
+.btn-secondary {
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    transition: all 0.15s;
+}
+.btn-secondary:hover {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+/* ==================================================================
+   SHARED CONVERSATION VIEW
+   The banner sits directly above the input area (same slot as the
+   subscription gate). Read-only mode disables every send-related
+   control — nothing in this block affects normal operation.
+   ================================================================== */
+.ai-shared-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: linear-gradient(135deg, rgba(16, 163, 127, 0.14), rgba(16, 163, 127, 0.05));
+    border: 1px solid var(--accent);
+    border-radius: 16px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    animation: subGateSlide 0.25s ease-out;
+}
+
+.share-banner-icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.share-banner-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.share-banner-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+    margin-bottom: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.share-banner-sub {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    line-height: 1.3;
+}
+
+.share-banner-close {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.6rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 4px;
+    border-radius: 6px;
+    flex-shrink: 0;
+    transition: color 0.15s, background 0.15s;
+}
+.share-banner-close:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+/* Error state — shown when the share token is invalid, expired, or the
+   backend request failed. Sits in the chat area with a clear "back"
+   action so the user is never stuck. */
+.shared-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 48px 24px;
+    text-align: center;
+    color: var(--text-muted);
+    height: 100%;
+}
+
+.shared-error-icon {
+    font-size: 3rem;
+    margin-bottom: 4px;
+}
+
+.shared-error-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.shared-error-message {
+    font-size: 0.9rem;
+    max-width: 420px;
+    line-height: 1.45;
+    color: var(--text-muted);
+}
+
+.shared-error-btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 0.55rem 1.4rem;
+    border-radius: 22px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    margin-top: 10px;
+    transition: background 0.15s;
+}
+.shared-error-btn:hover { background: var(--accent-dark); }
+
+/* On narrow screens the banner stacks vertically like the gate does */
+@media (max-width: 768px) {
+    .ai-shared-banner {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .share-banner-body { flex-basis: calc(100% - 44px); }
+    .share-banner-close { margin-left: auto; }
+}
+/* ==================================================================
+   SUBSCRIPTION GATE
+   ================================================================== */
+.ai-subscription-gate {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: linear-gradient(135deg, rgba(16, 163, 127, 0.12), rgba(16, 163, 127, 0.05));
+    border: 1px solid var(--accent);
+    border-radius: 16px;
+    padding: 12px 16px;
+    margin-bottom: 10px;
+    animation: subGateSlide 0.25s ease-out;
+}
+@keyframes subGateSlide {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.sub-gate-icon {
+    font-size: 1.6rem;
+    flex-shrink: 0;
+}
+
+.sub-gate-body {
+    flex: 1;
+    min-width: 0;
+}
+.sub-gate-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+    margin-bottom: 2px;
+}
+.sub-gate-desc {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    line-height: 1.3;
+}
+
+.sub-gate-btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 0.5rem 1.1rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: background 0.15s;
+}
+.sub-gate-btn:hover { background: var(--accent-dark); }
+
+/* ==================== CHAT LOADING / EMPTY / ERROR ==================== */
+
+.chat-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 48px 24px;
+    color: var(--text-muted);
+    min-height: 200px;
+}
+
+.chat-loading-spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid rgba(255, 255, 255, 0.15);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: chat-loading-spin 0.8s linear infinite;
+}
+
+@keyframes chat-loading-spin {
+    to { transform: rotate(360deg); }
+}
+
+.chat-loading-text {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+.chat-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 48px 24px;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.chat-empty-icon {
+    font-size: 2.4rem;
+    margin-bottom: 4px;
+}
+
+.chat-empty-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.chat-empty-desc {
+    font-size: 0.85rem;
+    max-width: 320px;
+    line-height: 1.45;
+}
+
+.chat-error-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 48px 24px;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.chat-error-icon {
+    font-size: 2.6rem;
+    margin-bottom: 4px;
+}
+
+.chat-error-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.chat-error-message {
+    font-size: 0.9rem;
+    max-width: 420px;
+    line-height: 1.45;
+    color: var(--text-muted);
+}
+
+.chat-error-retry {
+    margin-top: 10px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 0.5rem 1.2rem;
+    border-radius: 22px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.15s;
+}
+.chat-error-retry:hover { background: var(--accent-dark); }
+
+
+/* ==================================================================
+   NOTES: MULTI-SELECT MODE
+   ================================================================== */
+.message.assistant.selectable {
+    cursor: pointer;
+    padding: 10px 14px 10px 42px;
+    margin-left: -14px;
+    margin-right: -14px;
+    border-radius: 12px;
+    position: relative;
+    transition: background 0.15s;
+}
+.message.assistant.selectable:hover {
+    background: rgba(16, 163, 127, 0.06);
+}
+.message.assistant.selectable .message-actions { display: none; }
+
+.message.assistant.selected {
+    background: rgba(16, 163, 127, 0.12);
+    border-left: 3px solid var(--accent);
+    padding-left: 42px;
+}
+.message.assistant.selected:hover {
+    background: rgba(16, 163, 127, 0.16);
+}
+
+.message-select-checkbox {
+    position: absolute;
+    left: 12px;
+    top: 14px;
+    font-size: 1.25rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+    z-index: 2;
+    line-height: 1;
+    transition: color 0.15s;
+}
+.message.assistant.selected .message-select-checkbox { color: var(--accent); }
+
+.ai-selection-bar {
+    position: fixed;
+    left: 50%;
+    bottom: calc(var(--footer-height, 64px) + 12px);
+    transform: translateX(-50%);
+    background: var(--dropdown-bg);
+    border: 1px solid var(--border);
+    border-radius: 30px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.6rem 0.4rem 0.4rem;
+    z-index: 1200;
+    animation: selectionSlideUp 0.2s ease-out;
+    max-width: calc(100vw - 24px);
+}
+@keyframes selectionSlideUp {
+    from { transform: translateX(-50%) translateY(20px); opacity: 0; }
+    to   { transform: translateX(-50%) translateY(0);    opacity: 1; }
+}
+
+.ai-sel-info {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    padding: 0 0.5rem;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    white-space: nowrap;
+}
+.ai-sel-count {
+    font-weight: 700;
+    color: var(--accent);
+}
+.ai-sel-label {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.ai-sel-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 0.4rem 0.9rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+    transition: all 0.15s;
+}
+.ai-sel-btn:hover { background: rgba(255, 255, 255, 0.06); }
+.ai-sel-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.ai-sel-cancel {
+    padding: 0.4rem;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.ai-sel-save {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 500;
+}
+.ai-sel-save:hover:not(:disabled) { background: var(--accent-dark); border-color: var(--accent-dark); }
+.ai-sel-save:disabled {
+    background: rgba(16, 163, 127, 0.3);
+    border-color: transparent;
+}
+
+/* ==================================================================
+   NOTE-SAVED TOAST
+   ================================================================== */
+.note-saved-toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(var(--footer-height, 64px) + 12px);
+    transform: translateX(-50%);
+    background: var(--dropdown-bg);
+    border: 1px solid var(--accent);
+    border-radius: 16px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    z-index: 1300;
+    max-width: calc(100vw - 24px);
+    animation: noteToastIn 0.25s ease-out;
+    transition: opacity 0.3s, transform 0.3s;
+}
+.note-saved-toast.fade-out {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+}
+@keyframes noteToastIn {
+    from { transform: translateX(-50%) translateY(20px); opacity: 0; }
+    to   { transform: translateX(-50%) translateY(0);    opacity: 1; }
+}
+
+.note-saved-toast-body {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    min-width: 0;
+    flex: 1;
+}
+.note-saved-toast-body i {
+    color: var(--accent);
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+.note-saved-toast-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.note-saved-toast-text strong {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.note-saved-toast-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.note-saved-open {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 0.4rem 0.9rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+    transition: background 0.15s;
+}
+.note-saved-open:hover { background: var(--accent-dark); }
+
+.note-saved-dismiss {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0.3rem;
+    font-size: 0.9rem;
+    line-height: 1;
+    border-radius: 50%;
+    transition: color 0.15s, background 0.15s;
+}
+.note-saved-dismiss:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.08);
 }
 
 /* ---------- Rich data cards ---------- */
@@ -813,6 +1455,7 @@ body {
     margin: 10px 0;
     border-radius: 6px;
 }
+body.light-mode .formula-card { background: rgba(16, 163, 127, 0.06); }
 .formula-desc {
     font-style: italic;
     color: var(--text-muted);
@@ -1220,17 +1863,19 @@ kbd {
     overflow-x: auto;
 }
 
-/* ---------- Shimmer skeleton ---------- */
+/* ==================================================================
+   SHIMMER SKELETON
+   ================================================================== */
 #shimmer-content {
     position: fixed;
     top: 0; left: 0;
     width: 100%;
     height: 100%;
-    background: var(--bg-primary, #1a1a2e);
+    background: var(--bg-main);
     z-index: 9999;
     display: flex;
     flex-direction: column;
-    transition: opacity 0.4s ease;
+    transition: opacity 0.15s ease;
 }
 /* Override common's .hidden { display: none !important } so fade-out works */
 #shimmer-content.hidden {
@@ -1241,57 +1886,57 @@ kbd {
 
 .shimmer-header {
     padding: 0.5rem 1rem;
-    background: var(--bg-secondary, #1e1e2f);
-    border-bottom: 1px solid var(--border, #333);
+    background: var(--topbar-bg);
+    border-bottom: 1px solid var(--border);
 }
 .shimmer-header-top {
     display: flex;
     justify-content: space-between;
     align-items: center;
 }
-.shimmer-header-bottom {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 0.5rem;
-}
 .shimmer-logo {
     display: flex;
     align-items: center;
     gap: 0.5rem;
 }
-.shimmer-logo-icon {
-    width: 40px; height: 40px;
-    border-radius: 6px;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
+
+/* Shared shimmer background — theme-driven via CSS variables */
+.shimmer-logo-icon,
+.shimmer-logo-text,
+.shimmer-btn-sm,
+.shimmer-sidebar-item,
+.shimmer-bubble,
+.shimmer-welcome,
+.shimmer-input {
+    background: linear-gradient(
+        90deg,
+        var(--bg-secondary, #2e2f3a) 25%,
+        var(--bubble-assistant, #444654) 50%,
+        var(--bg-secondary, #2e2f3a) 75%
+    );
     background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
+    animation: shimmer 1s infinite;
+    border-radius: 4px;
+}
+
+.shimmer-logo-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
 }
 .shimmer-logo-text {
-    width: 80px; height: 20px;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
-    border-radius: 4px;
+    width: 80px;
+    height: 20px;
 }
 .shimmer-btn-sm {
-    width: 40px; height: 40px;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
     display: inline-block;
-}
-.shimmer-status {
-    height: 28px; width: 140px;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
-    border-radius: 4px;
 }
 .shimmer-sidebar {
     width: 260px;
-    background: var(--bg-secondary, #1e1e2f);
+    background: var(--sidebar-bg);
     padding: 1rem;
     display: flex;
     flex-direction: column;
@@ -1299,9 +1944,6 @@ kbd {
 }
 .shimmer-sidebar-item {
     height: 40px;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
     border-radius: 30px;
 }
 .shimmer-chat {
@@ -1321,10 +1963,8 @@ kbd {
     flex-direction: row-reverse;
 }
 .shimmer-bubble {
-    height: 60px; width: 200px;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
+    height: 60px;
+    width: 200px;
     border-radius: 22px;
 }
 .shimmer-bubble.short { width: 120px; }
@@ -1332,31 +1972,26 @@ kbd {
 .shimmer-welcome {
     height: 80px;
     width: 60%;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
     border-radius: 28px;
     margin-bottom: 1rem;
 }
 .shimmer-input {
     height: 50px;
     width: 100%;
-    background: linear-gradient(90deg, #3a3a4e 25%, #555 50%, #3a3a4e 75%);
-    background-size: 200px 100%;
-    animation: shimmer 1.5s infinite;
     border-radius: 28px;
     margin-top: 1rem;
 }
+/* FIXED: was calc(100vh - 60px) sized for the old two-row header that
+   no longer exists. Shimmer now has only one header row (~50px). */
 .shimmer-layout {
     display: flex;
-    height: calc(100vh - 110px);
+    flex: 1;
+    min-height: 0;
 }
 
-/* ---------- Real content gate ---------- */
-#real-content { display: none; }
-#real-content.visible { display: block; }
-
-/* ---------- Responsive ---------- */
+/* ==================================================================
+   RESPONSIVE
+   ================================================================== */
 @media (max-width: 768px) {
     .footnotes-list { padding-left: 16px; }
     li.task-list-item { gap: 4px; }
@@ -1368,4 +2003,80 @@ kbd {
     table.md-table td { padding: 8px 10px; }
     .admonition-header { font-size: 13px; }
     .admonition-content { font-size: 13px; }
+
+    /* Keep user-actions visible on touch (no hover) */
+    .user-actions { opacity: 1; }
+
+    .ai-selection-bar {
+        gap: 0.35rem;
+        padding: 0.35rem;
+        bottom: calc(var(--footer-height, 64px) + 8px);
+    }
+    .ai-sel-btn {
+        padding: 0.35rem 0.7rem;
+        font-size: 0.8rem;
+    }
+    .ai-sel-label { display: none; }
+    .ai-sel-info { padding: 0 0.3rem; }
+
+    .note-saved-toast {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.5rem;
+        bottom: calc(var(--footer-height, 64px) + 8px);
+    }
+    .note-saved-toast-actions { justify-content: flex-end; }
+
+    .ai-subscription-gate {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .sub-gate-body { flex-basis: calc(100% - 44px); }
+    .sub-gate-btn {
+        flex-basis: 100%;
+        text-align: center;
+    }
+}
+
+@media (max-width: 400px) {
+    .ai-selection-bar { max-width: calc(100vw - 16px); }
+    .ai-sel-toggle { display: none; }
+}
+
+/* ==================================================================
+   INLINE CITATION LINKS
+   Bare [N] references in assistant responses become clickable
+   pill-style links that jump to the corresponding source URL.
+   Styled to look like a footnote marker, not a button — small,
+   superscript-positioned, tints to the accent colour on hover.
+   ================================================================== */
+.assistant-content a.cite-ref {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    font-size: 0.72em;
+    font-weight: 600;
+    color: var(--accent);
+    background: rgba(16, 163, 127, 0.12);
+    border-radius: 4px;
+    text-decoration: none;
+    vertical-align: 0.15em;
+    line-height: 1;
+    margin: 0 1px;
+    transition: background 0.15s, color 0.15s;
+    white-space: nowrap;
+}
+
+.assistant-content a.cite-ref:hover {
+    background: var(--accent);
+    color: #fff;
+}
+
+/* Slightly adjust for light mode — the tinted background can feel
+   weak against a white surface, so bump the contrast a touch. */
+body.light-mode .assistant-content a.cite-ref {
+    background: rgba(16, 163, 127, 0.15);
 }

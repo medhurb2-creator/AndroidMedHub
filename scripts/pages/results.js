@@ -1,24 +1,48 @@
 // scripts/pages/results.js
 import * as ui from '../ui.js';
 import * as router from '../router.js';
+import * as redirect from '../redirect.js';
 import * as auth from '../auth.js';
 import * as utils from '../utils.js';
 import * as db from '../db.js';
 import * as sync from '../sync.js';
+// ── IMAGES: needed to resolve slide images from IndexedDB and to
+//    distinguish slide from static subjects for URL construction.
+import * as questions from '../questions.js';
+import * as slideData from '../slide-data.js';
 
 let $;
 let currentExamId = null;
 let currentExamData = null;
+
+// ── IMAGES: object-URL lifecycle ──
+// Slide images are loaded as Blobs and mounted via object-URL. Track
+// every URL we create so destroy() can revoke them and let the blobs
+// be GC'd. Static images use plain URLs and don't need tracking.
+const _createdObjectUrls = new Set();
 
 export async function init(context) {
   $ = (sel) => context.root.querySelector(sel);
 
   ui.applyTheme();
 
-  // Check auth
+  // ── State adapter ────────────────────────────────────────────────
+  redirect.registerStateAdapter('results', {
+    capture: () => ({
+      examId: currentExamId,
+    }),
+    restore: (data) => {
+      if (!data) return;
+      if (!currentExamId && data.examId) {
+        currentExamId = data.examId;
+      }
+    },
+  });
+
+  // ── Auth gate ────────────────────────────────────────────────────
   if (!auth.checkAuth()) {
-    ui.showToast('Please log in to view results', 'warning');
-    router.navigateTo('login');
+    ui.showToast('Please log in to view your results', 'warning');
+    redirect.navigateWithReturn('login', 'auth_required');
     return;
   }
 
@@ -29,7 +53,17 @@ export async function init(context) {
   }
 
   if (!examId) {
+    const snap = redirect.peekSnapshot();
+    if (snap && snap.page && snap.page.examId) {
+      examId = snap.page.examId;
+      console.log('[Results] Recovered examId from redirect snapshot');
+    }
+  }
+
+  if (!examId) {
     ui.showToast('No exam ID provided', 'error');
+    try { redirect.clearReturns(); }   catch { /* ignore */ }
+    try { redirect.clearSnapshots(); } catch { /* ignore */ }
     setTimeout(() => router.navigateTo('subjects'), 2000);
     return;
   }
@@ -76,7 +110,10 @@ export async function init(context) {
       $('#recommendations').style.display = 'block';
     }
     if (results.questions && results.questions.length > 0) {
-      renderReviewList(results.questions);
+      // ── IMAGES: pass results.subject so the review-list image
+      //    hydrator knows which subject's folder / slide namespace
+      //    to look in. All questions in an exam share this subject.
+      renderReviewList(results.questions, results.subject);
       $('#reviewSection').style.display = 'block';
     }
 
@@ -87,32 +124,50 @@ export async function init(context) {
     ui.hideLoading();
   }
 
-  // Attach event listeners
   attachEventListeners(context);
+
+  try {
+    const hasSnap = redirect.hasSnapshot();
+    if (hasSnap) {
+      const myUrl =
+        window.location.pathname +
+        (window.location.search || '') +
+        (window.location.hash || '');
+      const top = redirect.peekReturn();
+      if (top && top.url === myUrl) redirect.popReturn();
+    }
+  } catch (err) {
+    console.warn('[Results] Return-stack cleanup failed:', err);
+  }
+
+  const snap = redirect.consumeSnapshot();
+  if (snap && (snap.ui || snap.page)) {
+    ui.showToast('Continuing where you left off', 'info', 1800);
+    console.log('[Results] Resumed from redirect:', {
+      fields: Object.keys(snap.ui?.fields || {}).length,
+      pageState: snap.page,
+    });
+  }
 
   console.log('[Results] Initialized');
 }
 
 function attachEventListeners(context) {
-  // Subjects button
   const subjectsBtn = $('#subjectsBtn');
   if (subjectsBtn) {
     subjectsBtn.addEventListener('click', () => router.navigateTo('subjects'));
   }
 
-  // Theme toggle
   const themeToggle = $('#themeToggle');
   if (themeToggle) {
     themeToggle.addEventListener('click', ui.toggleTheme);
   }
 
-  // Download button
   const downloadBtn = $('#downloadBtn');
   if (downloadBtn) {
     downloadBtn.addEventListener('click', downloadExam);
   }
 
-  // Analytics button
   const analyticsBtn = $('#analyticsBtn');
   if (analyticsBtn) {
     analyticsBtn.addEventListener('click', () => router.navigateTo('performance'));
@@ -154,14 +209,14 @@ function updatePieChart(percentage) {
     `conic-gradient(var(--accent) 0deg, var(--accent) ${angle}deg, var(--border) ${angle}deg, var(--border) 360deg)`;
 }
 
-function renderReviewList(questions) {
+function renderReviewList(questionsList, subject) {
   const container = $('#review-list');
-  if (!questions || questions.length === 0) {
+  if (!questionsList || questionsList.length === 0) {
     container.innerHTML = '<p class="no-data">No questions to review.</p>';
     return;
   }
 
-  container.innerHTML = questions.map((q, idx) => {
+  container.innerHTML = questionsList.map((q, idx) => {
     const isCorrect = q.correct;
     const statusClass = isCorrect ? 'correct' : 'incorrect';
     const statusIcon = isCorrect ? '✅' : '❌';
@@ -190,6 +245,14 @@ function renderReviewList(questions) {
       }
     }
 
+    // ── IMAGES: emit an empty slot keyed by question index (not by
+    //    the raw filename) so no zip-controlled string enters the
+    //    HTML. The hydrator below reads the filename from the
+    //    questionsList[idx] object directly.
+    const imageHtml = q.image
+      ? `<div class="review-image" data-q-idx="${idx}"></div>`
+      : '';
+
     return `
       <div class="review-item ${statusClass}">
         <div class="review-header">
@@ -199,6 +262,7 @@ function renderReviewList(questions) {
           <span class="time-spent">⏱️ ${q.timeSpent || 0}s</span>
         </div>
         <div class="review-question">${q.question}</div>
+        ${imageHtml}
         <div class="review-answers">
           <div><strong>Your answer:</strong> ${userAnswerText}</div>
           <div><strong>Correct answer:</strong> ${correctAnswerText}</div>
@@ -210,6 +274,64 @@ function renderReviewList(questions) {
       </div>
     `;
   }).join('');
+
+  // ── IMAGES: progressive enhancement. The text of every review item
+  //    is already in the DOM; images pop in as their Blobs resolve.
+  hydrateReviewImages(container, subject, questionsList);
+}
+
+// ── IMAGES: hydrate the empty .review-image slots in the review list.
+//
+// Mirrors exam-room.js's renderQuestionImage: static subjects use the
+// conventional /data/images/{subject}/{filename} URL; slide subjects
+// load the Blob from IndexedDB (written by slide-data.js at download
+// time) and mount an object-URL. Object-URLs are tracked in
+// _createdObjectUrls so destroy() can revoke them.
+async function hydrateReviewImages(container, subject, questionsList) {
+  if (!subject) return;
+
+  const slots = container.querySelectorAll('.review-image[data-q-idx]');
+  if (slots.length === 0) return;
+
+  const meta = questions.getSubjectMeta(subject);
+  const isSlide = meta.source === 'slide';
+
+  for (const slot of slots) {
+    const idx = parseInt(slot.dataset.qIdx, 10);
+    const q = questionsList[idx];
+    if (!q || !q.image) continue;
+
+    const filename = q.image;
+
+    try {
+      if (isSlide) {
+        const blob = await slideData.getSlideImage(subject, filename);
+        if (!blob) {
+          console.warn(`[Results] Slide image missing: ${subject}/${filename}`);
+          continue;
+        }
+        const url = URL.createObjectURL(blob);
+        _createdObjectUrls.add(url);
+        const img = document.createElement('img');
+        img.src = url;
+        img.alt = 'Question diagram';
+        img.loading = 'lazy';
+        slot.appendChild(img);
+      } else {
+        // Static subject — plain URL, same convention as exam-room.js.
+        // onerror removes the element so a 404 doesn't leave a broken
+        // <img> icon in the review list.
+        const img = document.createElement('img');
+        img.src = `/data/images/${encodeURIComponent(subject)}/${encodeURIComponent(filename)}`;
+        img.alt = 'Question diagram';
+        img.loading = 'lazy';
+        img.onerror = () => img.remove();
+        slot.appendChild(img);
+      }
+    } catch (e) {
+      console.warn(`[Results] Failed to load image for ${subject}/${filename}:`, e);
+    }
+  }
 }
 
 function renderTopicPerformance(topicData) {
@@ -305,5 +427,15 @@ async function saveDownloadedExam(exam) {
 
 // ==================== DESTROY ====================
 export function destroy() {
-  // Cleanup if needed
+  // Unregister the state adapter so a subsequent page load does not
+  // inherit a stale closure over this page's module state.
+  try { redirect.unregisterStateAdapter('results'); } catch { /* ignore */ }
+
+  // ── IMAGES: revoke every object-URL we created so the blobs can
+  //    be GC'd. Without this, each visit to the results page for a
+  //    slide exam leaks one blob per image-bearing question.
+  for (const url of _createdObjectUrls) {
+    try { URL.revokeObjectURL(url); } catch { /* ignore */ }
+  }
+  _createdObjectUrls.clear();
 }

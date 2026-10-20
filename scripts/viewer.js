@@ -555,7 +555,7 @@ export function showEmbeddedViewer(docId, title = 'Document', fileType = null, o
   if (els.progress) els.progress.style.display = 'none';
   if (els.title) els.title.textContent = title || 'Document';
 
-  const loadPromise = _loadDocumentIntoEmbedded(docId, fileType, opts);
+  const loadPromise = _loadDocumentIntoEmbedded(docId, fileType, title, opts);
 
   // Silence unhandled-rejection warnings for callers that ignore the
   // returned Promise. The rejection is still delivered to anyone who
@@ -582,8 +582,10 @@ export function showEmbeddedViewer(docId, title = 'Document', fileType = null, o
  * @param {{ previewMode?: boolean }|null} [opts=null]
  * @returns {Promise<void>}
  */
-async function _loadDocumentIntoEmbedded(docId, fileType, opts = null) {
+async function _loadDocumentIntoEmbedded(docId, fileType, title = 'Document', opts = null) {
   const els = refreshElementCache();
+  const loadSessionId = Symbol();
+  window._activeLoadSession = loadSessionId;
 
   try {
     let blob = await content.getLocalFile(docId);
@@ -597,22 +599,24 @@ async function _loadDocumentIntoEmbedded(docId, fileType, opts = null) {
     }
 
     const core = await _ensureCore();
-    await core.loadDocument(blob, fileType, 'Document', opts);
+    await core.loadDocument(blob, fileType, title, opts);
   } catch (err) {
-    // Render the error into the viewer chrome so the failure is visible
-    // even if the caller ignores the rejection.
-    if (els && els.main) {
-      const message = err && err.message ? err.message : 'Failed to load document';
-      const safe = escapeHtml(String(message));
-      els.main.innerHTML =
-        `<div class="error-container" role="alert"><p>${safe}</p></div>`;
-    }
-    // Re-throw so awaiting callers (the Open button handler) can restore
-    // their state and surface their own feedback.
+    // Only render the error if this load session is still current and after a brief grace period
+    setTimeout(() => {
+      if (window._activeLoadSession === loadSessionId && els && els.main) {
+        const message = err && err.message ? err.message : 'Failed to load document';
+        const safe = escapeHtml(String(message));
+        els.main.innerHTML =
+          `<div class="error-container" role="alert"><p>${safe}</p></div>`;
+      }
+    }, 2500);
+    
     throw err;
   } finally {
-    if (els && els.loading) els.loading.style.display = 'none';
-    if (els && els.progress) els.progress.style.display = 'none';
+    if (window._activeLoadSession === loadSessionId) {
+      if (els && els.loading) els.loading.style.display = 'none';
+      if (els && els.progress) els.progress.style.display = 'none';
+    }
   }
 }
 

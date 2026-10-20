@@ -2,8 +2,25 @@
 
 /**
  * Question Bank Manager
- * Loads questions from per‑topic JSON files (data/questions/[subject]/[topic].json).
- * Tries multiple common paths to work on local, GitHub Pages, and Android WebView.
+ *
+ * Loads questions from per‑topic JSON files (data/questions/[subject]/[topic].json)
+ * and merges subjects/topics delivered by the slide-data zip (subject.json).
+ * All public getters are slide-aware — callers never branch on "is this
+ * slide or static?"; the merge is internal.
+ *
+ * Public API (uniform, no getSlideX):
+ *   getSubjectMeta(id)               → { name, icon, color, questions, source }
+ *   getTopicsBySubject(id)           → [{ id, name, questions }, ...]
+ *   getTopicById(subjectId, topicId) → topic | null
+ *   getAllSubjectIds()               → string[]   (static + slide)
+ *   getAllStaticSubjectIds()         → string[]   (static only)
+ *   getAllSlideSubjectIds()          → string[]   (slide only)
+ *   getAllSubjects()                 → [{ id, ...meta, topics }]
+ *   getQuestionsForExam(config)      → Promise<Question[]>
+ *   getQuestionsByIds(ids)           → Promise<Question[]>
+ *
+ * Internal (only slide-data.js should call):
+ *   invalidateSlideManifestCache()
  */
 
 import * as utils from './utils.js';
@@ -199,6 +216,47 @@ const TOPICS = {
 
 };
 
+// Pseudo-subject representing the "Slide View" card itself. It has no
+// topics and is never studiable — it exists only so a caller who happens
+// to ask getSubjectMeta('slide-view') gets something sensible instead of
+// the generic { name: 'slide-view' } fallback. Not included in any of the
+// getAll*() enumerations, since it isn't a real subject.
+const SLIDE_VIEW_META = {
+    name: 'Slide View',
+    icon: 'fa-solid fa-images',
+    color: '#6C5CE7',
+    questions: 0,
+};
+
+// ==================== SLIDE MANIFEST CACHE (private) ====================
+// `undefined` = not yet read. `null` = read, but no manifest on disk.
+// Every mutation path in slide-data.js must call
+// invalidateSlideManifestCache() **before** emitting status, so the
+// Subjects-card subscriber never sees a stale manifest.
+let _slideManifestCache = undefined;
+
+function _readSlideManifest() {
+    if (_slideManifestCache !== undefined) return _slideManifestCache;
+    try {
+        _slideManifestCache = utils.getLocalStorage('slideDataManifest', null);
+    } catch {
+        _slideManifestCache = null;
+    }
+    return _slideManifestCache;
+}
+
+/**
+ * Drop the in-memory manifest copy so the next read picks up the latest
+ * subject.json from localStorage.
+ *
+ * INTERNAL: only slide-data.js should call this. Any other caller
+ * referencing this function means the abstraction is leaking — route the
+ * need through one of the public getters instead.
+ */
+export function invalidateSlideManifestCache() {
+    _slideManifestCache = undefined;
+}
+
 
 // ==================== PATH DETECTION ====================
 function getPossibleUrls(subject, topicId) {
@@ -283,14 +341,140 @@ async function loadTopicQuestions(subject, topicId) {
 }
 
 // ==================== PUBLIC API ====================
+
+/**
+ * Return metadata for a subject, merging in any subject contributed by
+ * the slide zip. Precedence: slide manifest > static bank > generic
+ * fallback, so a zip can rebrand or recolour an existing subject without
+ * an app release.
+ *
+ * `source` tells callers where the record came from — the only field
+ * downstream ever needs to distinguish slide from static:
+ *   'slide'   — declared by the slide zip's subject.json
+ *   'static'  — one of the built-in SUBJECT_META entries
+ *   'special' — the "slide-view" pseudo-subject (the card itself)
+ *   'unknown' — no match anywhere (subjectId echoed back as name)
+ *
+ * @param   {string} subjectId
+ * @returns {{ name: string, icon: string, color: string,
+ *             questions: number,
+ *             source: 'slide'|'static'|'special'|'unknown' }}
+ */
 export function getSubjectMeta(subjectId) {
-    return SUBJECT_META[subjectId] || { name: subjectId, icon: '📚', color: '#888', questions: 0 };
+    if (subjectId === 'slide-view') {
+        return { ...SLIDE_VIEW_META, source: 'special' };
+    }
+
+    const m = _readSlideManifest();
+    if (m?.SUBJECT_META?.[subjectId]) {
+        return { ...m.SUBJECT_META[subjectId], source: 'slide' };
+    }
+
+    if (SUBJECT_META[subjectId]) {
+        return { ...SUBJECT_META[subjectId], source: 'static' };
+    }
+
+    return { name: subjectId, icon: '📚', color: '#888', questions: 0, source: 'unknown' };
 }
 
+/**
+ * Return the topic list for a subject, merging in any topics delivered
+ * by the slide zip. Same precedence rule as getSubjectMeta.
+ *
+ * `'slide-view'` returns [] — it is the card, not a studiable subject.
+ *
+ * @param   {string} subjectId
+ * @returns {Array<{ id: string, name: string, questions: number }>}
+ */
 export function getTopicsBySubject(subjectId) {
+    if (subjectId === 'slide-view') return [];
+
+    const m = _readSlideManifest();
+    if (m?.TOPICS?.[subjectId]) return m.TOPICS[subjectId];
+
     return TOPICS[subjectId] || [];
 }
 
+/**
+ * Single topic by id, or null. Uniform across slide and static subjects.
+ *
+ * @param   {string} subjectId
+ * @param   {string} topicId
+ * @returns {{ id: string, name: string, questions: number } | null}
+ */
+export function getTopicById(subjectId, topicId) {
+    return getTopicsBySubject(subjectId).find(t => t.id === topicId) || null;
+}
+
+/**
+ * Every subject id — static + slide — in a stable order (static first,
+ * then slide-only subjects). Deduped: a subject appearing in both banks
+ * is listed once. Excludes the 'slide-view' pseudo-subject.
+ *
+ * @returns {string[]}
+ */
+export function getAllSubjectIds() {
+    const ids = new Set(Object.keys(SUBJECT_META));
+    const m = _readSlideManifest();
+    if (m?.SUBJECT_META) {
+        for (const id of Object.keys(m.SUBJECT_META)) ids.add(id);
+    }
+    return [...ids];
+}
+
+/**
+ * Static subject ids only (the built-in SUBJECT_META bank).
+ * @returns {string[]}
+ */
+export function getAllStaticSubjectIds() {
+    return Object.keys(SUBJECT_META);
+}
+
+/**
+ * Slide-delivered subject ids only. Empty array until a zip has been
+ * downloaded. Excludes the 'slide-view' pseudo-subject.
+ * @returns {string[]}
+ */
+export function getAllSlideSubjectIds() {
+    const m = _readSlideManifest();
+    return m?.SUBJECT_META ? Object.keys(m.SUBJECT_META) : [];
+}
+
+/**
+ * Full list of subjects as flat objects, with topics nested. The
+ * subject's raw metadata (including any custom fields the zip's author
+ * added to subject.json) is spread onto each entry, plus `id`,
+ * `source`, and `topics`.
+ *
+ * Use this for list views (performance, results, subject choosers) so
+ * they never need to know whether a subject came from the static bank
+ * or the slide zip.
+ *
+ * @returns {Array<Object>}
+ */
+export function getAllSubjects() {
+    return getAllSubjectIds().map(id => {
+        const meta = getSubjectMeta(id);
+        return {
+            id,
+            ...meta,
+            topics: getTopicsBySubject(id),
+        };
+    });
+}
+
+/**
+ * Load the questions for an exam.
+ *
+ * Slide subjects have no network source — their questions live only in
+ * IndexedDB, populated by slide-data.js at download time. If any
+ * requested topic of a slide subject isn't cached, this throws rather
+ * than generating placeholder questions (which would silently pollute
+ * the user's analytics with fake attempts).
+ *
+ * @param   {{ subject: string, topics: Array<string|{id:string}>, questionCount: number }}
+ * @returns {Promise<Array<Object>>}
+ */
 export async function getQuestionsForExam(config) {
     const { subject, topics: selectedTopics, questionCount } = config;
 
@@ -299,7 +483,7 @@ export async function getQuestionsForExam(config) {
     if (!questionCount || questionCount < 1) throw new Error('Invalid question count');
 
     // Normalize to array of topic IDs (strings)
-    const topicIds = selectedTopics.map(t => 
+    const topicIds = selectedTopics.map(t =>
         (typeof t === 'object' && t.id) ? t.id : (typeof t === 'string' ? t : String(t))
     );
 
@@ -312,7 +496,23 @@ export async function getQuestionsForExam(config) {
         }
     }
 
-    // Load missing topics
+    // Slide subjects have no network source. Guard: if any requested
+    // topic of a slide subject isn't cached, throw a clear error rather
+    // than letting loadTopicQuestions generate placeholder questions
+    // that would poison the user's analytics.
+    const m = _readSlideManifest();
+    if (m?.TOPICS?.[subject]) {
+        const missing = topicIds.filter(id => !cachedTopics[id]);
+        if (missing.length > 0) {
+            throw new Error(
+                `Slide data not downloaded (missing topics: ${missing.join(', ')}). ` +
+                `Open Subjects → Slide View and download it first.`
+            );
+        }
+    }
+
+    // Load missing topics (non-slide subjects only — the guard above
+    // ensures every slide topic is already cached by this point).
     const loadPromises = topicIds.map(async (topicId) => {
         if (cachedTopics[topicId]) return cachedTopics[topicId];
         const questions = await loadTopicQuestions(subject, topicId);
@@ -327,11 +527,17 @@ export async function getQuestionsForExam(config) {
         throw new Error('No questions available for the selected topics');
     }
 
-    // Optional seen‑question management (you can keep your existing logic)
     const shuffled = utils.shuffleArray(allQuestions);
     return shuffled.slice(0, questionCount);
 }
 
+/**
+ * Fetch a specific set of questions by id, from whatever's in IndexedDB.
+ * Works for both static and slide subjects (both save to the same store).
+ *
+ * @param   {string[]} ids
+ * @returns {Promise<Array<Object>>}
+ */
 export async function getQuestionsByIds(ids) {
     const all = await db.getAllQuestions();
     return all.filter(q => ids.includes(q.id));

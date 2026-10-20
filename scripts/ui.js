@@ -349,11 +349,17 @@ export function syncStatusBar() {
         let mode = (css.getPropertyValue('--status-bar-icons') || '').trim();
 
         // Fallbacks in case the tokens aren't declared yet (early boot,
-        // partial CSS load). These match common.css defaults.
-        if (!bg)   bg   = document.body.classList.contains('dark-theme')
+        // partial CSS load). Read the class from the same element the
+        // computed-style query above targeted — documentElement — so
+        // the fallback can never disagree with the primary path. If
+        // this read used document.body instead, it would always miss
+        // the .dark-theme class (which setTheme() writes to <html>)
+        // and silently pin the fallback to the light-theme values.
+        // Values match common.css defaults.
+        if (!bg)   bg   = root.classList.contains('dark-theme')
                             ? '#0b1120'
                             : '#f8fafc';
-        if (!mode) mode = document.body.classList.contains('dark-theme')
+        if (!mode) mode = root.classList.contains('dark-theme')
                             ? 'light'
                             : 'dark';
 
@@ -379,12 +385,32 @@ export function syncStatusBar() {
 // ==================== THEME MANAGEMENT ====================
 
 export function setTheme(theme) {
+    // Apply .dark-theme to <html> (documentElement), NOT <body>.
+    //
+    // common.css declares the dark-theme token overrides on the
+    // `.dark-theme` selector, a descendant selector — it matches
+    // <html class="dark-theme"> and every element below it. Rules
+    // like `.dark-theme .history-item:hover { … }` continue to work
+    // unchanged.
+    //
+    // Why <html> and not <body>: syncStatusBar() reads computed CSS
+    // values via getComputedStyle(document.documentElement). CSS
+    // custom properties are resolved against the element they are
+    // queried on. A .dark-theme class that only lands on <body>
+    // never affects the value read back from <html>, so
+    // --status-bar-icons stayed pinned to its :root default "dark"
+    // in both themes. That is what produced dark-on-dark status bar
+    // icons. Keeping the class on <html> makes the write and the
+    // read agree on one element.
+    const root = document.documentElement;
+
     if (theme === 'auto') {
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        document.body.classList.toggle('dark-theme', prefersDark);
+        root.classList.toggle('dark-theme', prefersDark);
     } else {
-        document.body.classList.toggle('dark-theme', theme === 'dark');
+        root.classList.toggle('dark-theme', theme === 'dark');
     }
+
     utils.setLocalStorage('theme', theme);
     // Update appSettings as well
     appSettings.theme = theme;
@@ -408,14 +434,20 @@ export function applyTheme() {
 export function toggleTheme() {
     const current = getTheme();
     let next;
+
     if (current === 'auto') {
-        const isDark = document.body.classList.contains('dark-theme');
+        // Read the class from <html>, the same element setTheme()
+        // writes to. Reading from <body> here would always return
+        // false (the class never lands on <body>), pinning the toggle
+        // to 'dark' — a second symptom of the same scope mismatch.
+        const isDark = document.documentElement.classList.contains('dark-theme');
         next = isDark ? 'light' : 'dark';
     } else if (current === 'dark') {
         next = 'light';
     } else {
         next = 'dark';
     }
+
     setTheme(next);
     showToast(`Switched to ${next} mode`, 'info', 1500);
 }

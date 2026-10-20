@@ -9,13 +9,14 @@ import android.os.Looper;
 import android.util.Log;
 
 import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.android.installreferrer.api.InstallReferrerClient;
 import com.android.installreferrer.api.InstallReferrerStateListener;
 import com.android.installreferrer.api.ReferrerDetails;
 import com.getcapacitor.BridgeActivity;
 
-import ee.forgr.capacitor.social.login.ModifiedMainActivityForSocialLoginPlugin;
+import ee.forg.capacitor.social.login.ModifiedMainActivityForSocialLoginPlugin;
 
 public class MainActivity extends BridgeActivity implements ModifiedMainActivityForSocialLoginPlugin {
 
@@ -80,6 +81,7 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
         registerPlugin(MedvixKeepAwakePlugin.class);
         registerPlugin(MedvixSharePlugin.class);
         registerPlugin(MedvixHapticsPlugin.class);
+        registerPlugin(MedvixReviewPlugin.class);
 
         super.onCreate(savedInstanceState);
 
@@ -101,45 +103,69 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
         // warm starts (onCreate runs once per Activity instance).
         retrieveInstallReferrer();
 
-        // ── Window layout — reserve the system bars ─────────────────────
+        // ── Window layout — edge-to-edge with CSS-controlled insets ─────
         //
-        // Android 15 (API 35) forces every app to draw edge-to-edge:
-        // the WebView fills the whole screen, including the area under
-        // the status bar (battery, time, network) and the navigation
-        // bar. On older Android versions the theme's
-        // windowTranslucentStatus controlled this; on 15+ the OS
-        // overrides it and the flag is ignored.
+        // We now draw edge-to-edge (setDecorFitsSystemWindows = false).
+        // The WebView extends under both the status bar and the
+        // navigation bar. Android 15+ enforces this layout anyway and
+        // ignores the old theme attribute, so this line is what makes
+        // behaviour identical on every supported API level.
         //
-        // setDecorFitsSystemWindows(getWindow(), true) tells the OS to
-        // lay out this Activity's content inside the safe area — below
-        // the status bar, above the navigation bar. The WebView viewport
-        // starts at the bottom edge of the status bar, so no page-level
-        // content can overlap the system icons.
+        // Why we no longer rely on setDecorFitsSystemWindows(true):
         //
-        // This is the correct place to fix the overlap:
+        //   • On Android 15 the OS forces edge-to-edge regardless of
+        //     what we ask for. Keeping the old value only "worked" on
+        //     Android 14 and below, which produced device-specific
+        //     layouts.
         //
-        //   • It runs once at startup and applies to the whole WebView,
-        //     so every page, every route, every transition is covered
-        //     without any CSS or per-page coordination.
+        //   • With edge-to-edge on, the status bar is transparent on
+        //     every modern device. The colour the user sees behind the
+        //     battery/time/network icons is whatever the app paints
+        //     there. Window.setStatusBarColor is deprecated on API 35+
+        //     and silently ignored, so the only reliable way to control
+        //     that colour is to paint it ourselves.
         //
-        //   • It applies before the first paint, so the splash and the
-        //     initial render are already inside the safe area — no
-        //     moment of overlap, no layout shift.
+        //   • We paint it via the WebView. common.css sets
+        //     html { background-color: var(--bg-primary) } and adds
+        //     body { padding-top: env(safe-area-inset-top) }. The
+        //     background-color follows the current theme automatically;
+        //     the padding keeps page content clear of the system icons.
+        //     No per-page coordination, no runtime call.
         //
-        //   • It also covers native UI (system dialogs the app opens,
-        //     the WebView's own error pages, etc.) which CSS cannot
-        //     reach.
+        //   • Non-WebView native UI (system dialogs, WebView error
+        //     pages) still respects the theme's windowBackground, which
+        //     is set to @color/window_background in styles.xml.
         //
-        // This must go AFTER super.onCreate(). Before that call the
-        // Activity has no window yet, and setDecorFitsSystemWindows
+        // Must run AFTER super.onCreate(). Before that call the Activity
+        // has no window, and both this and the icon-tint call below
         // would throw.
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+
+        // ── Launch-time icon tint ───────────────────────────────────────
         //
-        // WindowCompat.setDecorFitsSystemWindows works on every Android
-        // version from API 21 through the current release. On API 30+
-        // it maps to Window.setDecorFitsSystemWindows; below that it
-        // maps to the corresponding system UI flags. Same effect on
-        // every version.
-        WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
+        // Between this onCreate and the moment the WebView finishes
+        // booting, the pixels behind the status bar icons are painted
+        // by the window background — currently @color/window_background
+        // (#0b1120). White icons are the only legible choice on that
+        // dark background.
+        //
+        // The instant JavaScript boots, ui.js syncStatusBar() reads
+        // --status-bar-icons from the resolved CSS tokens and calls
+        // MedvixStatusBar.setLightIcons() with the correct value for
+        // the user's chosen theme. From that point on, this initial
+        // setting is overridden and stays in sync.
+        //
+        // Passing a mask of 0 for "enable" and the single flag for
+        // "change" means: clear LIGHT_STATUS_BARS, leave everything
+        // else as-is. Clearing that flag tells the system to draw
+        // light (white) icons. The opposite call — passing the flag in
+        // both positions — would draw dark icons for a light theme.
+        WindowInsetsControllerCompat insetsController =
+                WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        insetsController.setSystemBarsAppearance(
+                0,
+                WindowInsetsControllerCompat.APPEARANCE_LIGHT_STATUS_BARS
+        );
 
         // ── Storage bridge ──────────────────────────────────────────────
         //

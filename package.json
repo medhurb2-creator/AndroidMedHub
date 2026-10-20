@@ -23,6 +23,7 @@
     "@myriaddreamin/typst.ts": "^0.7.0",
     "convex": "^1.32.0",
     "css-tree": "^3.2.1",
+    "jszip": "^3.10.2",
     "parse5": "^8.0.1",
     "pdf-lib": "^1.17.1",
     "qrcode": "^1.5.4"

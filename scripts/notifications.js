@@ -2,12 +2,31 @@
 
 /**
  * MedVix Notification Engine – Fully Dynamic, Extensible
- * 
+ *
  * - Loads notifications from IndexedDB (fast) and Convex (backend).
  * - Renders notifications with HTML bodies directly (if they contain HTML).
  * - Uses event delegation on the container to handle all [data-action] buttons.
  * - Generic action handler: navigate, call API, or run registered custom action.
- * - No hard‑coded action cases; actions are resolved dynamically.
+ * - No hard-coded action cases; actions are resolved dynamically.
+ *
+ * FILTERING (as of the category-removal pass):
+ *   Five filter tabs:  all / unread / pinned / archived / important
+ *   Free-text search across title, body, subtitle.
+ *   Three sort modes:  newest / oldest / priority.
+ *
+ *   The category dimension (Study / Exams / Community / … chips) has
+ *   been removed. The `type` field on each notification is still used
+ *   internally for the icon, priority, and type-specific CSS classes,
+ *   but it is no longer a user-facing filter and there is no chip row.
+ *
+ * GLOBAL EXPOSURE:
+ *   At module load this file installs a rich `window.notifications`
+ *   object with convenience methods (refresh, registerAction, etc.).
+ *   Pages that import this module must NOT overwrite `window.notifications`
+ *   with the module namespace — the namespace has fewer methods than the
+ *   object installed here. If a page does `window.notifications = notifModule`,
+ *   `window.notifications.refresh` and `window.notifications.registerAction`
+ *   will disappear.
  */
 
 import * as ui from './ui.js';
@@ -54,7 +73,6 @@ function isNotificationFetchAllowed() {
 let notifications = [];
 let filteredNotifications = [];
 let currentFilter = 'all';
-let currentCategory = 'all';
 let currentSort = 'newest';
 let searchQuery = '';
 let isLoaded = false;
@@ -71,7 +89,6 @@ let searchInput;
 let clearSearch;
 let filterBtns;
 let sortSelect;
-let chips;
 let stats;
 
 // ==================== DOM REFS ====================
@@ -86,13 +103,11 @@ function getDomRefs() {
         clearSearch: document.getElementById('clearSearch'),
         filterBtns: document.querySelectorAll('.filter-btn'),
         sortSelect: document.getElementById('sortSelect'),
-        chips: document.querySelectorAll('.chip'),
         stats: {
             unread: document.getElementById('statUnread'),
             read: document.getElementById('statRead'),
             pinned: document.getElementById('statPinned'),
             archived: document.getElementById('statArchived'),
-            critical: document.getElementById('statCritical'),
             today: document.getElementById('statToday')
         }
     };
@@ -107,7 +122,7 @@ function mapBackendToFrontend(backendNotif) {
         body: backendNotif.message || backendNotif.body || '',
         timestamp: backendNotif.createdAt || backendNotif.timestamp || Date.now(),
         read: backendNotif.read || false,
-        category: type,
+        category: type,  // kept internally for icons/priority; not used as a filter
         data: backendNotif.data || null,
         senderId: backendNotif.senderId || null,
         pinned: backendNotif.pinned || false,
@@ -116,7 +131,6 @@ function mapBackendToFrontend(backendNotif) {
         priority: getPriority(type),
         icon: getIconForType(type),
         subtitle: getSubtitleForType(type, backendNotif.data),
-        // Actions are NOT precomputed – they are embedded in the HTML body.
         actions: [],
         media: backendNotif.media || null,
         progress: backendNotif.progress || null,
@@ -208,7 +222,6 @@ export async function loadNotifications(force = false) {
     clearSearch = refs.clearSearch;
     filterBtns = refs.filterBtns;
     sortSelect = refs.sortSelect;
-    chips = refs.chips;
     stats = refs.stats;
 
     showLoading();
@@ -365,7 +378,6 @@ function showNotificationToast(notif) {
         } catch (e) { /* ignore */ }
     }
 
-    // Generic message to avoid distraction
     const message = 'You have a new notification';
     if (ui && typeof ui.showToast === 'function') {
         ui.showToast(message, 'info', 5000);
@@ -416,7 +428,7 @@ export function render() {
     container.innerHTML = '';
 
     if (filteredNotifications.length === 0) {
-        if (searchQuery || currentFilter !== 'all' || currentCategory !== 'all') {
+        if (searchQuery || currentFilter !== 'all') {
             const empty = document.createElement('div');
             empty.className = 'state-message empty';
             empty.innerHTML = `
@@ -491,7 +503,7 @@ function createCard(notif) {
         const div = document.createElement('div');
         div.className = 'notif-card';
         div.dataset.id = notif.id;
-        // Add type class for styling
+        // Add type class for styling (still used by CSS for icon/colour hints)
         div.classList.add(`type-${notif.category}`);
         const bodyContent = notif.body || '';
         if (bodyContent.trim().startsWith('<')) {
@@ -516,7 +528,6 @@ function createCard(notif) {
 
     const card = template.content.cloneNode(true).firstElementChild;
     card.dataset.id = notif.id;
-    // Add type class for styling
     card.classList.add(`type-${notif.category}`);
 
     if (!notif.read) card.classList.add('unread');
@@ -669,12 +680,10 @@ function callBackendAction(apiName, data, notif) {
         return;
     }
 
-    // Convert dataset to snake_case? We'll just pass the data object.
     const params = { token, ...data };
     delete params.action;
     delete params.api;
 
-    // Show loading indicator (optional)
     ui.showLoading('Processing...');
 
     convexHttpClient.action(apiName, params)
@@ -682,7 +691,6 @@ function callBackendAction(apiName, data, notif) {
             ui.hideLoading();
             ui.showToast('Action completed', 'success');
             if (notif && !notif.read) markRead(notif.id);
-            // Optionally dismiss the notification
             if (notif && data.dismiss !== undefined) {
                 deleteNotification(notif.id);
             }
@@ -774,10 +782,6 @@ export function deleteNotification(id) {
 export function applyFilters() {
     let filtered = [...notifications];
 
-    if (currentCategory !== 'all') {
-        filtered = filtered.filter(n => n.category === currentCategory);
-    }
-
     if (currentFilter === 'unread') {
         filtered = filtered.filter(n => !n.read);
     } else if (currentFilter === 'pinned') {
@@ -793,8 +797,7 @@ export function applyFilters() {
         filtered = filtered.filter(n =>
             n.title.toLowerCase().includes(q) ||
             (n.body && n.body.toLowerCase().includes(q)) ||
-            (n.subtitle && n.subtitle.toLowerCase().includes(q)) ||
-            n.category.includes(q)
+            (n.subtitle && n.subtitle.toLowerCase().includes(q))
         );
     }
 
@@ -814,18 +817,11 @@ export function applyFilters() {
 
 export function setFilter(filter) {
     currentFilter = filter;
-    filterBtns.forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.filter === filter);
-    });
-    applyFilters();
-    render();
-}
-
-export function setCategory(category) {
-    currentCategory = category;
-    chips.forEach(chip => {
-        chip.classList.toggle('active', chip.dataset.category === category);
-    });
+    if (filterBtns) {
+        filterBtns.forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.filter === filter);
+        });
+    }
     applyFilters();
     render();
 }
@@ -838,23 +834,38 @@ export function setSort(sort) {
 
 export function setSearch(query) {
     searchQuery = query;
-    clearSearch.classList.toggle('visible', query.length > 0);
+    if (clearSearch) {
+        clearSearch.classList.toggle('visible', query.length > 0);
+    }
     applyFilters();
     render();
 }
 
 export function resetFilters() {
     currentFilter = 'all';
-    currentCategory = 'all';
     searchQuery = '';
-    searchInput.value = '';
-    clearSearch.classList.remove('visible');
-    filterBtns.forEach(btn => btn.classList.remove('active'));
-    document.querySelector('.filter-btn[data-filter="all"]').classList.add('active');
-    chips.forEach(chip => chip.classList.remove('active'));
-    document.querySelector('.chip[data-category="all"]').classList.add('active');
+    if (searchInput) searchInput.value = '';
+    if (clearSearch) clearSearch.classList.remove('visible');
+    if (filterBtns) {
+        filterBtns.forEach(btn => btn.classList.remove('active'));
+        const allBtn = document.querySelector('.filter-btn[data-filter="all"]');
+        if (allBtn) allBtn.classList.add('active');
+    }
     applyFilters();
     render();
+}
+
+// ==================== GETTERS (for state adapters) ====================
+export function getFilter() {
+    return currentFilter;
+}
+
+export function getSort() {
+    return currentSort;
+}
+
+export function getSearch() {
+    return searchQuery;
 }
 
 // ==================== STATISTICS ====================
@@ -869,7 +880,6 @@ function updateStats() {
     const read = notifications.filter(n => n.read && !n.archived).length;
     const pinned = notifications.filter(n => n.pinned).length;
     const archived = notifications.filter(n => n.archived).length;
-    const critical = notifications.filter(n => n.priority === 'critical').length;
     const today = notifications.filter(n => {
         const d = new Date(n.timestamp);
         return d.toDateString() === new Date().toDateString();
@@ -879,7 +889,6 @@ function updateStats() {
     if (stats.read) stats.read.textContent = read;
     if (stats.pinned) stats.pinned.textContent = pinned;
     if (stats.archived) stats.archived.textContent = archived;
-    if (stats.critical) stats.critical.textContent = critical;
     if (stats.today) stats.today.textContent = today;
 }
 
@@ -960,7 +969,6 @@ async function setupEventListeners() {
     clearSearch = refs.clearSearch;
     filterBtns = refs.filterBtns;
     sortSelect = refs.sortSelect;
-    chips = refs.chips;
     stats = refs.stats;
 
     if (filterBtns && filterBtns.length > 0) {
@@ -984,16 +992,8 @@ async function setupEventListeners() {
     }
     if (clearSearch) {
         clearSearch.addEventListener('click', () => {
-            searchInput.value = '';
+            if (searchInput) searchInput.value = '';
             setSearch('');
-        });
-    }
-
-    if (chips && chips.length > 0) {
-        chips.forEach(chip => {
-            chip.addEventListener('click', () => {
-                setCategory(chip.dataset.category);
-            });
         });
     }
 
@@ -1033,6 +1033,10 @@ async function setupEventListeners() {
 }
 
 // ==================== EXPOSE GLOBALLY ====================
+// This object is intentionally richer than the module namespace — it
+// adds `refresh` (a force-reload shortcut) and `_processAction` (debug).
+// Callers that import this module should NOT overwrite window.notifications
+// with their own import binding; doing so removes those extras.
 window.notifications = {
     load: loadNotifications,
     render,
@@ -1042,7 +1046,6 @@ window.notifications = {
     toggleArchive,
     deleteNotification,
     setFilter,
-    setCategory,
     setSort,
     setSearch,
     resetFilters,
@@ -1053,8 +1056,7 @@ window.notifications = {
     getUnreadCount,
     startPolling,
     stopPolling,
-    registerAction, // NEW: register custom actions
-    // Expose internal for debugging
+    registerAction,
     _processAction: processAction
 };
 
@@ -1075,10 +1077,12 @@ export default {
     deleteNotification,
     applyFilters,
     setFilter,
-    setCategory,
     setSort,
     setSearch,
     resetFilters,
+    getFilter,
+    getSort,
+    getSearch,
     openHelp,
     init,
     addNotifications,

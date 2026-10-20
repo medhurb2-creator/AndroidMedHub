@@ -22,10 +22,6 @@
           <span class="shimmer-btn-sm"></span>
         </div>
       </div>
-      <div class="shimmer-header-bottom">
-        <div class="shimmer-logo-text" style="width:100px;"></div>
-        <div class="shimmer-status"></div>
-      </div>
     </div>
     <div class="shimmer-layout">
       <div class="shimmer-sidebar">
@@ -50,27 +46,7 @@
 
   <!-- ===== REAL CONTENT ===== -->
   <div id="real-content">
-    <!-- TWO FIXED HEADER BARS -->
-    <header class="fixed-top-bar" id="topBar">
-      <div class="header-row top">
-        <div class="left-group">
-          <button id="subjectsBtn" class="btn-text">Subjects</button>
-          <button id="subscribeBtn" class="btn-text subscribe-btn" style="display:none;">Subscribe</button>
-        </div>
-        <div class="right-group">
-          <button id="themeToggle">🌓</button>
-        </div>
-      </div>
-      <div class="header-row bottom">
-        <div class="left-group">
-          <button id="notesBtn" class="btn-text">Notes</button>
-          <button id="profileBtn" class="btn-text">Profile</button>
-        </div>
-        <div class="right-group" id="header-status"></div>
-      </div>
-    </header>
-
-    <!-- MAIN APP -->
+    <!-- MAIN APP (no header — sticky footer at bottom) -->
     <div id="app">
       <div class="sidebar" id="sidebar">
         <div class="sidebar-header">Chats</div>
@@ -129,6 +105,22 @@
         </div>
       </div>
     </div>
+
+    <!-- Sticky footer navigation — 3 fixed + 1 dynamic Subscribe -->
+    <footer class="app-footer" id="aiFooter">
+      <button class="footer-btn" data-route="subjects" title="Subjects">
+        📚<span>Subjects</span>
+      </button>
+      <button class="footer-btn" data-route="profile" title="Profile">
+        👤<span>Profile</span>
+      </button>
+      <button class="footer-btn" data-route="notes" title="Notes">
+        📝<span>Notes</span>
+      </button>
+      <button class="footer-btn footer-subscribe" id="footerSubscribeBtn" style="display:none;" title="Subscribe">
+        💎<span>Subscribe</span>
+      </button>
+    </footer>
   </div>
 
   <!-- Hidden file inputs -->
@@ -136,7 +128,29 @@
   <input type="file" id="photoCapture" class="file-input" accept="image/*" capture="environment" />
   <input type="file" id="documentUpload" class="file-input" accept=".pdf,.doc,.docx,.txt,.ppt,.pptx" />
 
-  <!-- Settings Modal -->
+  <!-- Share modal — populated and shown by AIChatUI._openShareModal -->
+  <div id="share-modal" class="modal-overlay" style="display:none;">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Share Conversation</h3>
+        <button id="closeShareModalBtn" class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>Anyone with this link can view this conversation.</p>
+        <div style="display:flex; gap:0.5rem; margin:1rem 0;">
+          <input type="text" id="share-link-input" readonly
+            style="flex:1; min-width:0; padding:0.5rem;
+                   background:var(--input-bg); border:1px solid var(--border);
+                   border-radius:8px; color:var(--text-primary);" />
+          <button id="copyShareLinkBtn" class="btn-secondary">Copy</button>
+          <button id="shareNativeBtn" class="btn-secondary">📤 Share</button>
+        </div>
+        <p style="font-size:0.8rem; color:var(--text-muted);">Link expires in 24 hours.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings modal -->
   <div class="modal-overlay" id="settingsModal">
     <div class="modal">
       <h3>Settings</h3>

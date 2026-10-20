@@ -11,32 +11,21 @@
   <!-- Hidden logo for PDF generation -->
   <img id="medvix-logo-img" src="/assets/images/logo.jpeg" style="display:none;">
 
-  <!-- Header -->
-<header class="notes-header">
-  <div class="header-left">
-    <button id="hamburgerBtn" class="hamburger icon-btn" aria-label="Open menu" title="Open menu">
-      <i class="fa-solid fa-bars" aria-hidden="true"></i>
-    </button>
-    <span class="page-title">My Notes</span>
-  </div>
-  <div class="header-right">
-    <a id="performanceLink" class="nav-link icon-btn" title="Performance" aria-label="Performance">
-      <i class="fa-solid fa-chart-bar icon-primary" aria-hidden="true"></i>
-      <span>Performance</span>
-    </a>
-    <a id="aiLink" class="nav-link icon-btn" title="AI Tutor" aria-label="AI Tutor">
-      <i class="fa-solid fa-robot icon-purple" aria-hidden="true"></i>
-      <span>AI</span>
-    </a>
-    <a id="subjectsLink" class="nav-link icon-btn" title="Subjects" aria-label="Subjects">
-      <i class="fa-solid fa-book icon-primary" aria-hidden="true"></i>
-      <span>Subjects</span>
-    </a>
-    <button id="themeToggle" class="icon-btn" aria-label="Toggle theme" title="Toggle theme">
-      <i class="fa-solid fa-circle-half-stroke" aria-hidden="true"></i>
-    </button>
-  </div>
-</header>
+  <!-- Header — slimmed down: hamburger + title + theme toggle only.
+       Navigation moved to the fixed footer at the bottom. -->
+  <header class="notes-header">
+    <div class="header-left">
+      <button id="hamburgerBtn" class="hamburger icon-btn" aria-label="Open menu" title="Open menu">
+        <i class="fa-solid fa-bars" aria-hidden="true"></i>
+      </button>
+      <span class="page-title">My Notes</span>
+    </div>
+    <div class="header-right">
+      <button id="themeToggle" class="icon-btn" aria-label="Toggle theme" title="Toggle theme">
+        <i class="fa-solid fa-circle-half-stroke" aria-hidden="true"></i>
+      </button>
+    </div>
+  </header>
 
   <!-- History Panel -->
   <div class="history-panel" id="historyPanel">
@@ -107,4 +96,28 @@
       </div>
     </div>
   </div>
+
+  <!-- Fixed footer navigation.
+       Each button has two stacked spans: the icon renders on its own
+       flex row above the label, matching the performance and AI pages.
+       The router binds every .footer-btn[data-route] — adding another
+       button here requires no JS change. -->
+  <footer class="app-footer" id="notesFooter">
+    <button class="footer-btn" data-route="subjects" title="Subjects" aria-label="Subjects">
+      <span class="footer-icon" aria-hidden="true">📚</span>
+      <span class="footer-label">Subjects</span>
+    </button>
+    <button class="footer-btn" data-route="ai" title="AI Tutor" aria-label="AI Tutor">
+      <span class="footer-icon" aria-hidden="true">🤖</span>
+      <span class="footer-label">AI</span>
+    </button>
+    <button class="footer-btn" data-route="performance" title="Performance" aria-label="Performance">
+      <span class="footer-icon" aria-hidden="true">📊</span>
+      <span class="footer-label">Performance</span>
+    </button>
+    <button class="footer-btn" data-route="profile" title="Profile" aria-label="Profile">
+      <span class="footer-icon" aria-hidden="true">👤</span>
+      <span class="footer-label">Profile</span>
+    </button>
+  </footer>
 </section>

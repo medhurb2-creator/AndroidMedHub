@@ -13,8 +13,8 @@ android {
         applicationId "com.medhurb.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 10
-        versionName "1.0.9"
+        versionCode 11
+        versionName "1.1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
@@ -32,8 +32,17 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // CHANGED: was false — enables R8 shrinking, obfuscation, optimisation
+            minifyEnabled true
+
+            // CHANGED: was 'proguard-android.txt' (includes -dontoptimize).
+            // 'proguard-android-optimize.txt' is Google's recommended default.
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+
+            // OPTIONAL — enable only after code minification is tested and stable.
+            // Uncomment once you have verified release builds work with minifyEnabled alone.
+            // shrinkResources true
+
             signingConfig signingConfigs.release
         }
     }
@@ -58,6 +67,9 @@ dependencies {
 
     // Google Play In-App Updates (Flexible + Immediate)
     implementation 'com.google.android.play:app-update:2.1.0'
+
+    // Google Play In-App Review API
+    implementation 'com.google.android.play:review:2.0.1'
 
     // Google Play Install Referrer (deferred deep links)
     implementation "com.android.installreferrer:installreferrer:2.2"

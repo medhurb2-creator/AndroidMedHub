@@ -1,16 +1,71 @@
 // scripts/ai-chat-ui.js
+/**
+ * AIChatUI — the orchestrator.
+ *
+ * ── What this file is ────────────────────────────────────────────────
+ * Everything that requires a piece of DOM, an instance field, or an
+ * async orchestration step lives here. Everything that is a pure
+ * transformation or an isolated DOM fragment lives in `./ai-chat-ui/*`
+ * and is reached through the barrel.
+ *
+ * ── Responsibilities ─────────────────────────────────────────────────
+ *   • Own the AIChatUI instance state (DOM refs, currentChatId,
+ *     activeModes, sending/editing flags, subscription cache, shared-
+ *     view flags, chat-load generation).
+ *   • Wire the page's DOM events to the appropriate behaviour.
+ *   • Orchestrate async flows: init, load chat, send message, retry,
+ *     regenerate, selection save, share landing, subscription gate.
+ *   • Own the message-building pipeline (parse → build element →
+ *     attach listeners → stream reveal) that turns a backend message
+ *     record into a DOM node.
+ *
+ * ── What lives in `./ai-chat-ui/*` (via the barrel) ─────────────────
+ *   markdown.js         — all text → HTML rendering, escape helpers
+ *   rich-data.js        — meta bar + formulas / mnemonics / sources /
+ *                         references / images cards
+ *   chat-states.js      — loading / empty / error states, subscription
+ *                         gate
+ *   lightbox.js         — image viewer overlay
+ *   share.js            — share modal, URL normalization, shared-view
+ *                         load + banner + read-only lifecycle
+ *   message-actions.js  — edit / copy / retry, failure flag lifecycle,
+ *                         local persistence
+ *   notes-selection.js  — multi-select mode + HTML → notes conversion
+ *   history.js          — sidebar chat list
+ *
+ * ── Delegation pattern ──────────────────────────────────────────────
+ * Every extracted behaviour is exposed on the class as a thin wrapper
+ * of the shape:
+ *
+ *   _someMethod(args) { return chat.someModuleFunction(this, args); }
+ *
+ * This keeps the external API of AIChatUI identical to the pre-split
+ * version — pages/ai.js, share.js, and message-actions.js all call
+ * `chat._someMethod(...)` on the instance and it transparently forwards
+ * to the module. No caller changes were required by the extraction.
+ *
+ * ── Methods that stay in this file ──────────────────────────────────
+ * Deliberately kept here because they're tightly coupled to instance
+ * state and don't belong in any single extracted module:
+ *   • init / destroy
+ *   • loadChats / loadChatUI / _renderChatMessages
+ *   • sendUserMessage (the whole send pipeline)
+ *   • _buildAssistantMessageElement / _attachMessageListeners
+ *   • _renderMessageInstant / _renderMessageStreaming
+ *   • setupEventListeners
+ *   • startRecording / stopRecording
+ *   • the state primitives (clearMessages, resetToWelcome, etc.)
+ */
 
 import * as ui from './ui.js';
-import * as utils from './utils.js';
-import * as router from './router.js';
 import * as auth from './auth.js';
+import * as subscription from './subscription.js';
 import ai from './ai.js';
-import { convexHttpClient } from './convex-client.js';
-import { getToken } from './auth.js';
+import * as chat from './ai-chat-ui/index.js';
 
 export default class AIChatUI {
     constructor() {
-        // DOM elements (unchanged)
+        // ── DOM references ────────────────────────────────────────
         this.sidebar = document.getElementById('sidebar');
         this.menuToggle = document.getElementById('menuToggle');
         this.newChatBtn = document.getElementById('newChatBtn');
@@ -39,7 +94,9 @@ export default class AIChatUI {
         this.imageUpload = document.getElementById('imageUpload');
         this.photoCapture = document.getElementById('photoCapture');
         this.documentUpload = document.getElementById('documentUpload');
+        this.inputArea = document.getElementById('inputArea');
 
+        // ── Instance state ───────────────────────────────────────
         this.currentChatId = null;
         this.activeModes = [];
         this.pendingAttachment = null;
@@ -48,7 +105,32 @@ export default class AIChatUI {
         this.chats = [];
         this.imageViewerOverlay = null;
 
-        // Bind methods
+        // Feature flags
+        this.hasActiveSubscription = false;
+        this._sending = false;
+        this._editing = null;
+        this.shareModal = null;
+        this.shareLinkInput = null;
+
+        // Shared view
+        this.isSharedView = false;
+        this.shareToken = null;
+        this._shareBanner = null;
+
+        // Notes selection
+        this._selectionMode = false;
+        this._selectedElements = new Set();
+        this._selectionBar = null;
+        this._selectionBarCountEl = null;
+
+        // Load generation — cancels superseded fetches
+        this._chatLoadGeneration = 0;
+
+        // ── Bindings ──────────────────────────────────────────────
+        // Only methods whose function identity must survive across
+        // `addEventListener` / `setTimeout` boundaries are bound.
+        // Everything else is a class method and can be invoked as
+        // `this.foo()` without loss.
         this.loadChats = this.loadChats.bind(this);
         this.renderChatHistory = this.renderChatHistory.bind(this);
         this.loadChatUI = this.loadChatUI.bind(this);
@@ -61,135 +143,180 @@ export default class AIChatUI {
         this.renderPendingAttachment = this.renderPendingAttachment.bind(this);
     }
 
-    async init() {
-        await this.loadChats();
+    // ==================== INIT / TEARDOWN ====================
+
+    /**
+     * @param {{sharedMode?: boolean}} [opts]
+     *   sharedMode — skip the subscription check + gate, the page is
+     *   going to load a shared conversation instead.
+     */
+    async init(opts = {}) {
+        const sharedMode = opts.sharedMode === true;
+        if (sharedMode) this.isSharedView = true;
+
+        const [, subActive] = await Promise.all([
+            this.loadChats(),
+            sharedMode ? Promise.resolve(false) : this._checkSubscription(),
+        ]);
+        this.hasActiveSubscription = subActive;
+
         this.setupEventListeners();
+        this._setupShareModal();
         this.resetToWelcome();
         this.hideTypingIndicator();
         this._createImageViewer();
+
+        if (!sharedMode && !this.hasActiveSubscription) {
+            this._showSubscriptionGate();
+        }
+
         document.addEventListener('click', (e) => {
             if (!e.target.closest('.item-menu')) {
-                document.querySelectorAll('.dropdown-menu.show').forEach(m => m.classList.remove('show'));
+                document.querySelectorAll('.dropdown-menu.show')
+                    .forEach((m) => m.classList.remove('show'));
             }
         });
     }
+
+    destroy() {
+        try { this._exitSelectionMode(); } catch { /* ignore */ }
+        try { this._clearSharedState(); } catch { /* ignore */ }
+        try { chat.destroyImageViewer(this); } catch { /* ignore */ }
+
+        // Clean up the share modal's window-level escape handler
+        // (registered once by setupShareModal) and remove the element
+        // if it was created dynamically.
+        if (this.shareModal) {
+            if (this.shareModal._shareEscHandler) {
+                try {
+                    window.removeEventListener('keydown', this.shareModal._shareEscHandler);
+                } catch { /* ignore */ }
+                delete this.shareModal._shareEscHandler;
+            }
+            if (this.shareModal.parentElement === document.body
+                && this.shareModal.dataset.dynamic === '1') {
+                try { this.shareModal.remove(); } catch { /* ignore */ }
+            }
+        }
+    }
+
+    async _checkSubscription() {
+        try {
+            return (await subscription.hasActiveSubscription()) === true;
+        } catch (err) {
+            console.warn('[AI] subscription check failed:', err);
+            return false;
+        }
+    }
+
+    // ==================== CHAT LIST ====================
 
     async loadChats() {
         this.chats = await ai.loadChats();
-        this.renderChatHistory('');
+        this.renderChatHistory(this.searchChats?.value || '');
     }
 
     renderChatHistory(filterText = '') {
-        const filtered = this.chats.filter(c => c.title.toLowerCase().includes(filterText.toLowerCase()));
-        filtered.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
-        this.chatHistoryList.innerHTML = '';
-        filtered.forEach(chat => {
-            const li = document.createElement('li');
-            li.className = `history-item ${chat.pinned ? 'pinned' : ''}`;
-            li.dataset.id = chat.id;
-
-            const titleSpan = document.createElement('span');
-            titleSpan.className = 'chat-title';
-            titleSpan.textContent = chat.title;
-            titleSpan.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.loadChatUI(chat.id);
-            });
-
-            const menuContainer = document.createElement('div');
-            menuContainer.className = 'item-menu';
-
-            const dots = document.createElement('i');
-            dots.className = 'fas fa-ellipsis-v menu-dots';
-            dots.addEventListener('click', (e) => {
-                e.stopPropagation();
-                document.querySelectorAll('.dropdown-menu.show').forEach(m => m.classList.remove('show'));
-                const dropdown = menuContainer.querySelector('.dropdown-menu');
-                dropdown.classList.toggle('show');
-            });
-
-            const dropdown = document.createElement('div');
-            dropdown.className = 'dropdown-menu';
-            dropdown.innerHTML = `
-                <div class="pin-item"><i class="fas fa-thumbtack"></i> ${chat.pinned ? 'Unpin' : 'Pin'}</div>
-                <div class="delete-item"><i class="fas fa-trash"></i> Delete</div>
-                <div class="share-item"><i class="fas fa-share-alt"></i> Share</div>
-            `;
-
-            dropdown.querySelector('.pin-item').addEventListener('click', async (e) => {
-                e.stopPropagation();
-                await ai.pinChat(chat.id);
-                await this.loadChats();
-            });
-
-            dropdown.querySelector('.delete-item').addEventListener('click', async (e) => {
-                e.stopPropagation();
-                if (this.currentChatId === chat.id) {
-                    this.resetToWelcome();
-                    this.currentChatId = null;
-                }
-                await ai.deleteChat(chat.id);
-                await this.loadChats();
-            });
-
-            // ===== SHARE (uses Convex backend) =====
-            dropdown.querySelector('.share-item').addEventListener('click', async (e) => {
-                e.stopPropagation();
-                try {
-                    const token = getToken();
-                    if (!token) {
-                        ui.showToast('You must be logged in to share.', 'error');
-                        return;
-                    }
-                    const result = await convexHttpClient.action('conversations/actions:shareConversation', {
-                        token,
-                        conversationId: chat.id,
-                        expiryHours: 24,
-                        
-                    });
-                    if (result.success) {
-                        const shareUrl = result.data.shareUrl; // e.g., `/ai.html?ref=shared&token=...`
-                        ui.showToast(`🔗 Shareable link: ${window.location.origin}${shareUrl}`, 'success', 5000);
-                    } else {
-                        ui.showToast('Failed to create share link: ' + result.message, 'error');
-                    }
-                } catch (err) {
-                    console.error('Share error:', err);
-                    ui.showToast('Error sharing conversation', 'error');
-                }
-                dropdown.classList.remove('show');
-            });
-
-            menuContainer.appendChild(dots);
-            menuContainer.appendChild(dropdown);
-            li.appendChild(titleSpan);
-            li.appendChild(menuContainer);
-            this.chatHistoryList.appendChild(li);
-        });
+        return chat.renderChatHistory(this, filterText);
     }
 
-    loadChatUI(chatId) {
-        const chat = this.chats.find(c => c.id === chatId);
-        if (!chat) return;
+    /**
+     * Open a chat: load messages (with spinner) and render, or show the
+     * error card with a Retry button on failure.
+     *
+     * Fast path when `chat.messagesLoaded === true` — no network call,
+     * renders instantly, works offline.
+     */
+    async loadChatUI(chatId) {
+        this._ensureNotShared();
+
+        const target = this.chats.find((c) => c.id === chatId);
+        if (!target) {
+            ui.showToast('Chat not found', 'error');
+            return;
+        }
+
+        this._exitSelectionMode();
         this.currentChatId = chatId;
+        this._editing = null;
         this.clearMessages();
-        chat.messages.forEach(msg => {
+
+        const myGen = ++this._chatLoadGeneration;
+        const alreadyLoaded = target.messagesLoaded === true
+            && Array.isArray(target.messages);
+
+        if (alreadyLoaded) {
+            this._renderChatMessages(target.messages, chatId);
+            this.removeWelcomeIfExists();
+            if (target.messages.length === 0) this._showEmptyChatState();
+            if (window.innerWidth < 768) this.sidebar.classList.remove('open');
+            this.renderChatHistory(this.searchChats?.value || '');
+            return;
+        }
+
+        this._showChatLoading();
+
+        try {
+            const messages = await ai.loadConversationMessages(chatId);
+            if (myGen !== this._chatLoadGeneration) return;
+            this._hideChatLoading();
+            this.chats = await ai.loadChats();
+
+            if (!messages || messages.length === 0) {
+                this.removeWelcomeIfExists();
+                this._showEmptyChatState();
+            } else {
+                this._renderChatMessages(messages, chatId);
+                this.removeWelcomeIfExists();
+            }
+        } catch (err) {
+            if (myGen !== this._chatLoadGeneration) return;
+            this._hideChatLoading();
+            this._showChatError(
+                err?.message || 'Failed to load conversation',
+                chatId
+            );
+        }
+
+        if (window.innerWidth < 768) this.sidebar.classList.remove('open');
+        this.renderChatHistory(this.searchChats?.value || '');
+    }
+
+    /**
+     * Render an array of message records into the chat container.
+     * Shared between the fast path, the slow path, and the retry
+     * re-render helper in message-actions.js.
+     */
+    _renderChatMessages(messages, chatId) {
+        messages.forEach((msg) => {
             if (msg.role === 'user') {
-                if (msg.fileData) {
-                    this.addUserMessageWithFile(msg.content, msg.fileData, false);
-                } else {
-                    this.addUserMessage(msg.content, false);
+                const el = msg.fileData
+                    ? this.addUserMessageWithFile(msg.content, msg.fileData, false)
+                    : this.addUserMessage(msg.content, false);
+                if (el) {
+                    el.dataset.timestamp = msg.timestamp;
+                    this._attachUserMessageActions(el, msg.content, msg.timestamp, chatId);
+                    if (msg.failed) this._attachRetryButton(el, msg.content, msg.timestamp);
                 }
             } else {
-                this._renderMessageInstant(msg.content, false, msg.meta, msg.richData);
+                this._renderMessageInstant(
+                    msg.content, false, msg.meta, msg.richData, msg.timestamp
+                );
             }
         });
-        this.removeWelcomeIfExists();
-        if (window.innerWidth < 768) this.sidebar.classList.remove('open');
     }
 
+    // ==================== CHAT STATE DELEGATES ====================
+    _showChatLoading()      { return chat.showChatLoading(this); }
+    _hideChatLoading()      { return chat.hideChatLoading(this); }
+    _showEmptyChatState()   { return chat.showEmptyChatState(this); }
+    _showChatError(m, id)   { return chat.showChatError(this, m, id); }
+    _showSubscriptionGate() { return chat.showSubscriptionGate(this); }
+
+    // ==================== DOM PRIMITIVES ====================
+
     clearMessages() {
-        Array.from(this.chatContainer.children).forEach(child => {
+        Array.from(this.chatContainer.children).forEach((child) => {
             if (child.id !== 'typingIndicator') child.remove();
         });
     }
@@ -219,556 +346,94 @@ export default class AIChatUI {
     }
 
     getUserName() {
-        // ✅ Use auth.getUser() instead of window.app?.getUser?.()
         const user = auth.getUser() || { name: 'Doctor' };
         return user.name?.split(' ')[0] || 'Doctor';
     }
 
     removeWelcomeIfExists() {
-        const welcome = document.getElementById('welcomeBlock');
-        if (welcome) welcome.remove();
+        const w = document.getElementById('welcomeBlock');
+        if (w) w.remove();
     }
 
     scrollToBottom() {
         this.chatContainer.scrollTop = this.chatContainer.scrollHeight;
     }
 
-    escapeHtml(unsafe) {
-        return unsafe.replace(/[&<>"]/g, function (m) {
-            return m === '&' ? '&amp;' : m === '<' ? '&lt;' : m === '>' ? '&gt;' : '"' ? '&quot;' : m;
-        });
+    showTypingIndicator() {
+        this.typingIndicator.style.display = 'flex';
+        this.scrollToBottom();
     }
 
-    escapeHtmlSafe(text) {
-        return text.replace(/[&<>"]/g, m => ({
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;'
-        }[m]));
+    hideTypingIndicator() {
+        this.typingIndicator.style.display = 'none';
     }
 
-    stripMarkdown(md) {
-        let plain = md;
-        plain = plain.replace(/!\[.*?\]\(.*?\)/g, '');
-        plain = plain.replace(/\[([^\]]+)\]\(.*?\)/g, '$1');
-        plain = plain.replace(/\*\*(.+?)\*\*/g, '$1');
-        plain = plain.replace(/\*(.+?)\*/g, '$1');
-        plain = plain.replace(/`{1,3}(.+?)`{1,3}/g, '$1');
-        plain = plain.replace(/\$\$(.+?)\$\$/g, '$1');
-        plain = plain.replace(/\$(.+?)\$/g, '$1');
-        return plain;
-    }
+    // ==================== RENDERING DELEGATES ====================
+    escapeHtml(u)            { return chat.escapeHtml(u); }
+    escapeHtmlSafe(t)        { return chat.escapeHtmlSafe(t); }
+    stripMarkdown(md)        { return chat.stripMarkdown(md); }
+    renderLatex(text)        { return chat.renderLatex(text); }
+    renderMarkdown(t, s)     { return chat.renderMarkdown(t, s); }
+    buildRichMetaBar(rd, m)  { return chat.buildRichMetaBar(rd, m); }
+    renderRichDataCards(rd)  { return chat.renderRichDataCards(rd); }
 
-    renderLatex(text) {
-        if (!window.katex) return text;
-        let result = text.replace(/\$\$(.+?)\$\$/gs, (match, formula) => {
-            try {
-                return `<div class="latex-block">${katex.renderToString(formula.trim(), { throwOnError: false, displayMode: true })}</div>`;
-            } catch (e) {
-                return `<div class="latex-block latex-error">${match}</div>`;
-            }
-        });
-        result = result.replace(/\$(.+?)\$/g, (match, formula) => {
-            try {
-                return `<span class="latex-inline">${katex.renderToString(formula.trim(), { throwOnError: false })}</span>`;
-            } catch (e) {
-                return match;
-            }
-        });
-        return result;
-    }
+    // ==================== USER MESSAGES ====================
 
-    renderMarkdown(text) {
-        const placeholders = {
-            codeBlocks: [],
-            inlineCodes: [],
-            latex: [],
-            images: [],
-            links: [],
-            safeHtml: []
-        };
-
-        const uid = (prefix, idx) => `\u0000${prefix}_${idx}\u0000`;
-
-        let html = text;
-
-        // Fenced code blocks
-        html = html.replace(/```(\w*)\s*\n([\s\S]*?)```/g, (match, lang, code) => {
-            const idx = placeholders.codeBlocks.length;
-            placeholders.codeBlocks.push({
-                type: lang === 'mermaid' ? 'mermaid' : 'code',
-                lang,
-                raw: code.trim(),
-                isAscii: lang !== 'mermaid' && this._isAsciiDiagram(code)
-            });
-            return uid('CB', idx);
-        });
-
-        // Inline code
-        html = html.replace(/`([^`]+)`/g, (match, code) => {
-            const idx = placeholders.inlineCodes.length;
-            placeholders.inlineCodes.push(code);
-            return uid('IC', idx);
-        });
-
-        // LaTeX
-        html = html.replace(/\$\$([\s\S]*?)\$\$/g, (match, formula) => {
-            const idx = placeholders.latex.length;
-            placeholders.latex.push({ type: 'block', formula });
-            return uid('LX', idx);
-        });
-        html = html.replace(/\\\[([\s\S]*?)\\\]/g, (match, formula) => {
-            const idx = placeholders.latex.length;
-            placeholders.latex.push({ type: 'block', formula });
-            return uid('LX', idx);
-        });
-        html = html.replace(/\$(.+?)\$/g, (match, formula) => {
-            const idx = placeholders.latex.length;
-            placeholders.latex.push({ type: 'inline', formula });
-            return uid('LX', idx);
-        });
-        html = html.replace(/\\\(([\s\S]*?)\\\)/g, (match, formula) => {
-            const idx = placeholders.latex.length;
-            placeholders.latex.push({ type: 'inline', formula });
-            return uid('LX', idx);
-        });
-        html = html.replace(/\(\(([\s\S]*?)\)\)/g, (match, formula) => {
-            const idx = placeholders.latex.length;
-            placeholders.latex.push({ type: 'inline', formula });
-            return uid('LX', idx);
-        });
-
-        // Images / Video
-        html = html.replace(/!\[([^\]]*)\]\(([^\)]+)\)/g, (match, alt, url) => {
-            const idx = placeholders.images.length;
-            placeholders.images.push({ alt, url });
-            return uid('IMG', idx);
-        });
-
-        // Standard links
-        html = html.replace(/\[([^\]]+)\]\(([^\)]+)\)/g, (match, text, url) => {
-            const idx = placeholders.links.length;
-            placeholders.links.push({ text, url });
-            return uid('LNK', idx);
-        });
-
-        // Safe HTML tags
-        html = html.replace(/<(\/?)(details|summary|kbd|abbr|sup|sub|mark|del|ins|video|source)([^>]*)>/gi, (match, closing, tag, attrs) => {
-            const idx = placeholders.safeHtml.length;
-            placeholders.safeHtml.push({ closing, tag, attrs });
-            return uid('HTML', idx);
-        });
-
-        // Escape remaining raw text
-        html = this.escapeHtmlSafe(html);
-
-        // Block elements
-        html = this._autoDetectAndWrapAsciiDiagrams(html);
-        html = this._renderPerfectTables(html);
-        html = this._renderAdmonitions(html);
-
-        // Multi‑line blockquotes
-        html = html.replace(/((?:^&gt;\s+.+\n?)+)/gm, (match) => {
-            const lines = match.split('\n').filter(l => l.trim());
-            const content = lines.map(l => l.replace(/^&gt;\s+/, '')).join('<br>');
-            return `<blockquote>${content}</blockquote>`;
-        });
-
-        // Definition lists
-        html = this._renderPerfectDefinitionLists(html);
-
-        // Headers
-        html = html.replace(/^######\s+(.+)$/gm, '<h6>$1</h6>');
-        html = html.replace(/^#####\s+(.+)$/gm, '<h5>$1</h5>');
-        html = html.replace(/^####\s+(.+)$/gm, '<h4>$1</h4>');
-        html = html.replace(/^###\s+(.+)$/gm, '<h3>$1</h3>');
-        html = html.replace(/^##\s+(.+)$/gm, '<h2>$1</h2>');
-        html = html.replace(/^#\s+(.+)$/gm, '<h1>$1</h1>');
-        html = html.replace(/^(---|___|\*\*\*)\s*$/gm, '<hr>');
-
-        // Nested lists
-        html = this._renderPerfectNestedLists(html);
-
-        // Inline formatting
-        html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-        html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-        html = html.replace(/~~(.+?)~~/g, '<del>$1</del>');
-        html = html.replace(/==(.+?)==/g, '<mark>$1</mark>');
-        html = html.replace(/~(\w+)~/g, '<sub>$1</sub>');
-        html = html.replace(/\^(\w+)\^/g, '<sup>$1</sup>');
-
-        // Abbreviations
-        const abbrDefs = new Map();
-        html = html.replace(/^\*\[([^\]]+)\]:\s+(.+)$/gm, (match, abbr, expansion) => {
-            abbrDefs.set(abbr, expansion);
-            return '';
-        });
-        if (abbrDefs.size) {
-            const keys = Array.from(abbrDefs.keys()).map(k => k.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'));
-            const abbrRe = new RegExp(`\\b(${keys.join('|')})\\b`, 'g');
-            html = html.replace(abbrRe, (m) => `<abbr title="${this.escapeHtmlSafe(abbrDefs.get(m))}">${m}</abbr>`);
-        }
-
-        // Backslash escapes
-        html = html.replace(/\\([*_`~\[\]()#+\-.!>])/g, '$1');
-
-        // Line breaks
-        html = html.replace(/\n/g, '<br>');
-
-        // Restore placeholders
-        html = html.replace(/\u0000CB_(\d+)\u0000/g, (m, i) => {
-            const blk = placeholders.codeBlocks[+i];
-            const escaped = this.escapeHtmlSafe(blk.raw);
-            if (blk.type === 'mermaid') {
-                return `<div class="mermaid">${blk.raw}</div>`;
-            }
-            const cls = blk.isAscii ? 'ascii-diagram' : 'code-block';
-            return `<pre class="${cls}"><code>${escaped}</code></pre>`;
-        });
-        html = html.replace(/\u0000IC_(\d+)\u0000/g, (m, i) => {
-            return `<code>${this.escapeHtmlSafe(placeholders.inlineCodes[+i])}</code>`;
-        });
-        html = html.replace(/\u0000LX_(\d+)\u0000/g, (m, i) => {
-            const lx = placeholders.latex[+i];
-            if (lx.type === 'block') {
-                return `<div class="latex-block">${this._renderLatexFormula(lx.formula, true)}</div>`;
-            }
-            return `<span class="latex-inline">${this._renderLatexFormula(lx.formula, false)}</span>`;
-        });
-        html = html.replace(/\u0000IMG_(\d+)\u0000/g, (m, i) => {
-            const img = placeholders.images[+i];
-            const url = this.escapeHtmlSafe(img.url);
-            if (/\.(mp4|webm|ogg)$/i.test(url)) {
-                return `<video controls style="max-width:100%; border-radius:8px;" preload="metadata">
-                    <source src="${url}" type="video/mp4">${this.escapeHtmlSafe(img.alt)}</video>`;
-            }
-            return `<img src="${url}" alt="${this.escapeHtmlSafe(img.alt)}" class="rich-image inline-image" loading="lazy">`;
-        });
-        html = html.replace(/\u0000LNK_(\d+)\u0000/g, (m, i) => {
-            const lnk = placeholders.links[+i];
-            return `<a href="${this.escapeHtmlSafe(lnk.url)}" target="_blank" rel="noopener noreferrer">${this.escapeHtmlSafe(lnk.text)}</a>`;
-        });
-        html = html.replace(/\u0000HTML_(\d+)\u0000/g, (m, i) => {
-            const h = placeholders.safeHtml[+i];
-            return `<${h.closing}${h.tag}${h.attrs}>`;
-        });
-
-        // Auto‑linkify remaining URLs
-        html = html.replace(/(?<!["'>=])(https?:\/\/[^\s<]+)/g,
-            '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
-
-        // Footnotes
-        const footnoteDefs = new Map();
-        let fnCounter = 0;
-        html = html.replace(/^\[\^(\d+|\w+)\]:\s+(.+)$/gm, (m, id, def) => {
-            footnoteDefs.set(id, { def: def.trim(), index: ++fnCounter });
-            return '';
-        });
-        html = html.replace(/\[\^(\d+|\w+)\](?!\])/g, (m, id) => {
-            const d = footnoteDefs.get(id);
-            if (!d) return m;
-            return `<sup class="footnote-ref" id="fnref:${id}"><a href="#fn:${id}">${d.index}</a></sup>`;
-        });
-        if (footnoteDefs.size) {
-            let fnHtml = '<hr><ol class="footnotes-list">';
-            const sorted = [...footnoteDefs.entries()].sort((a, b) => a[1].index - b[1].index);
-            sorted.forEach(([id, d]) => {
-                fnHtml += `<li id="fn:${id}"><a href="#fnref:${id}">↩</a> ${d.def}</li>`;
-            });
-            fnHtml += '</ol>';
-            html += fnHtml;
-        }
-
-        // Final cleanup
-        html = html.replace(/<br>\s*<br>/g, '<br>');
-        return html;
-    }
-
-    // ========== PERFECT HELPERS ==========
-
-    _renderPerfectTables(html) {
-        const tableRe = /\|(.+)\|\s*\n\|([-:| ]+)\|\s*\n((?:\|.+\|\s*\n?)+)/g;
-        return html.replace(tableRe, (match, headerRow, sepRow, dataRows) => {
-            const headers = headerRow.split('|').map(c => c.trim());
-            const alignCells = sepRow.split('|').filter(c => c.trim());
-            const alignments = alignCells.map(c => {
-                if (c.startsWith(':') && c.endsWith(':')) return 'center';
-                if (c.endsWith(':')) return 'right';
-                return 'left';
-            });
-            const dataLines = dataRows.trim().split('\n').filter(l => l.trim());
-            let table = '<table class="md-table"><thead><tr>';
-            headers.forEach((h, i) => {
-                table += `<th style="text-align:${alignments[i] || 'left'}">${h}</th>`;
-            });
-            table += '</tr></thead><tbody>';
-            dataLines.forEach(line => {
-                const cells = line.split('|').filter(c => c.trim());
-                table += '<tr>';
-                cells.forEach((c, j) => {
-                    table += `<td style="text-align:${alignments[j] || 'left'}">${c}</td>`;
-                });
-                table += '</tr>';
-            });
-            table += '</tbody></table>';
-            return table;
-        });
-    }
-
-    _renderPerfectDefinitionLists(html) {
-        const lines = html.split('\n');
-        const out = [];
-        let i = 0;
-        while (i < lines.length) {
-            const line = lines[i];
-            if (i + 1 < lines.length && !/^:\s/.test(line) && /^:\s/.test(lines[i + 1])) {
-                out.push('<dl>');
-                let term = line.trim();
-                if (term) out.push(`<dt>${term}</dt>`);
-                i++;
-                while (i < lines.length && /^:\s/.test(lines[i])) {
-                    const def = lines[i].replace(/^:\s+/, '');
-                    out.push(`<dd>${def}</dd>`);
-                    i++;
-                }
-                out.push('</dl>');
-            } else {
-                out.push(line);
-                i++;
-            }
-        }
-        return out.join('\n');
-    }
-
-    _renderPerfectNestedLists(html) {
-        const lines = html.split('\n');
-        const stack = [];
-        const output = [];
-        for (let i = 0; i < lines.length; i++) {
-            const raw = lines[i];
-            const trimmed = raw.trimStart();
-            const indent = raw.length - trimmed.length;
-
-            let match = trimmed.match(/^[\*\-+]\s+\[([ xX])\]\s+(.+)$/);
-            let isTask = true;
-            if (!match) {
-                match = trimmed.match(/^[\*\-+]\s+(.+)$/);
-                isTask = false;
-            }
-            if (!match) {
-                match = trimmed.match(/^(\d+)\.\s+(.+)$/);
-                isTask = false;
-            }
-
-            if (match) {
-                const content = match[2] || match[1];
-                const tag = match[2] ? (isTask ? 'ul' : 'ul') : 'ol';
-                const isChecked = isTask && /^\[[xX]\]$/.test(match[1]) ? true : false;
-
-                while (stack.length > 0 && stack[stack.length - 1].indent > indent) {
-                    const closed = stack.pop();
-                    output.push(`</${closed.tag}>`);
-                }
-
-                if (stack.length === 0 || stack[stack.length - 1].indent < indent ||
-                    (stack.length > 0 && stack[stack.length - 1].indent === indent && stack[stack.length - 1].tag !== tag)) {
-                    output.push(`<${tag}>`);
-                    stack.push({ tag, indent });
-                }
-
-                if (isTask) {
-                    output.push(`<li class="task-list-item"><input type="checkbox" disabled ${isChecked ? 'checked' : ''}> ${content}</li>`);
-                } else {
-                    output.push(`<li>${content}</li>`);
-                }
-            } else {
-                while (stack.length > 0) {
-                    output.push(`</${stack.pop().tag}>`);
-                }
-                output.push(raw);
-            }
-        }
-        while (stack.length > 0) {
-            output.push(`</${stack.pop().tag}>`);
-        }
-        return output.join('\n');
-    }
-
-    _renderLatexFormula(formula, displayMode) {
-        if (!window.katex) return this.escapeHtmlSafe(formula);
-        try {
-            return katex.renderToString(formula.trim(), { throwOnError: false, displayMode });
-        } catch (e) {
-            return `<span class="latex-error">${this.escapeHtmlSafe(formula)}</span>`;
-        }
-    }
-
-    _isAsciiDiagram(text) {
-        const lines = text.split('\n').filter(l => l.trim().length > 0);
-        if (lines.length < 3) return false;
-        let diagramLineCount = 0;
-        const diagramPatterns = [
-            /[|+\-]{3,}/,
-            /[─┌┐└┘├┤┬┴┼│─━]+/,
-            /v\s*$/,
-            />\s*$/,
-            /^\s*\+[\-+]+\+/,
-            /[←→↑↓↔↕↨↲↳]+/,
-            /^\s{2,}[|]/,
-            /[|]\s{2,}[|]/,
-            /^[|\-+\s]+$/
-        ];
-        for (const line of lines) {
-            if (diagramPatterns.some(p => p.test(line))) diagramLineCount++;
-        }
-        return diagramLineCount >= Math.ceil(lines.length * 0.4);
-    }
-
-    _autoDetectAndWrapAsciiDiagrams(html) {
-        const lines = html.split('<br>');
-        const result = [];
-        let asciiBuffer = [];
-        let inAsciiBlock = false;
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            const plainLine = line.replace(/<[^>]+>/g, '');
-            const isDiagramLine = plainLine.length > 0 && this._isAsciiDiagram(plainLine);
-
-            if (isDiagramLine && !inAsciiBlock) {
-                inAsciiBlock = true;
-                asciiBuffer = [line];
-            } else if (isDiagramLine && inAsciiBlock) {
-                asciiBuffer.push(line);
-            } else if (!isDiagramLine && inAsciiBlock) {
-                if (asciiBuffer.length >= 2) {
-                    const diagramHtml = asciiBuffer.join('\n');
-                    result.push(`<pre class="ascii-diagram"><code>${diagramHtml}</code></pre>`);
-                } else {
-                    result.push(...asciiBuffer);
-                }
-                result.push(line);
-                inAsciiBlock = false;
-                asciiBuffer = [];
-            } else {
-                result.push(line);
-            }
-        }
-        if (inAsciiBlock && asciiBuffer.length >= 2) {
-            const diagramHtml = asciiBuffer.join('\n');
-            result.push(`<pre class="ascii-diagram"><code>${diagramHtml}</code></pre>`);
-        } else if (inAsciiBlock) {
-            result.push(...asciiBuffer);
-        }
-        return result.join('<br>');
-    }
-
-    _renderAdmonitions(html) {
-        const admonitionRegex = /!!!(\w+)\s+(.+?)\n([\s\S]*?)(?=\n(?:!!!|```|$)|$)/g;
-        return html.replace(admonitionRegex, (match, type, title, content) => {
-            const validTypes = ['note', 'warning', 'tip', 'danger', 'info', 'success'];
-            const iconMap = {
-                note: '📝',
-                warning: '⚠️',
-                tip: '💡',
-                danger: '🚨',
-                info: 'ℹ️',
-                success: '✅'
-            };
-            const cleanType = validTypes.includes(type) ? type : 'info';
-            const icon = iconMap[cleanType] || 'ℹ️';
-            const cleanContent = content.trim().replace(/\n/g, '<br>');
-            return `<div class="admonition admonition-${cleanType}">
-                <div class="admonition-header"><span class="admonition-icon">${icon}</span> ${title}</div>
-                <div class="admonition-content">${cleanContent}</div>
-            </div>`;
-        });
-    }
-
-    buildRichMetaBar(richData) {
-        if (!richData) return '';
-        const parts = [];
-        if (richData.modelUsed) parts.push(`🧠 ${richData.modelUsed}`);
-        if (richData.thinkingTime) parts.push(`⏱ ${richData.thinkingTime}s`);
-        if (richData.webPagesRead) parts.push(`🌐 ${richData.webPagesRead} pages`);
-        if (richData.cost) parts.push(`💰 $${richData.cost}`);
-        return parts.length ? `<div class="meta-bar">${parts.join(' · ')}</div>` : '';
-    }
-
-    renderRichDataCards(richData) {
-        if (!richData) return '';
-        let html = '<div class="rich-data-section">';
-        if (richData.formulas && richData.formulas.length) {
-            html += '<div class="formulas-group">';
-            richData.formulas.forEach(f => {
-                html += `
-                    <div class="formula-card">
-                        <div class="formula-desc">${this.escapeHtmlSafe(f.description)}</div>
-                        <div class="formula-equation">${this.renderLatex(this.escapeHtmlSafe(f.formula))}</div>
-                    </div>`;
-            });
-            html += '</div>';
-        }
-        if (richData.mnemonics && richData.mnemonics.length) {
-            html += '<div class="mnemonics-group">';
-            richData.mnemonics.forEach(m => {
-                html += `<div class="mnemonic-card">${this.renderMarkdown(m)}</div>`;
-            });
-            html += '</div>';
-        }
-        if (richData.references && richData.references.length) {
-            html += '<div class="references-group">';
-            html += '<h4 class="rich-heading">References</h4>';
-            richData.references.forEach(ref => {
-                html += `<div class="reference-item">${this.escapeHtmlSafe(ref)}</div>`;
-            });
-            html += '</div>';
-        }
-        if (richData.sources && richData.sources.length) {
-            html += '<div class="sources-group">';
-            html += '<h4 class="rich-heading">Sources</h4>';
-            html += '<div class="source-chips">';
-            richData.sources.forEach(url => {
-                html += `<a href="${this.escapeHtmlSafe(url)}" target="_blank" rel="noopener" class="source-chip">${this.escapeHtmlSafe(url)}</a>`;
-            });
-            html += '</div></div>';
-        }
-        if (richData.images && richData.images.length) {
-            html += '<div class="images-group">';
-            html += '<div class="images-row">';
-            richData.images.forEach(imgUrl => {
-                if (imgUrl && imgUrl.trim() !== '') {
-                    html += `<img src="${this.escapeHtmlSafe(imgUrl)}" alt="Medical Image" class="rich-image" loading="lazy">`;
-                }
-            });
-            html += '</div></div>';
-        }
-        html += '</div>';
-        return html;
-    }
-
-    addUserMessage(text, save = true) {
+    addUserMessage(text) {
         const msgDiv = document.createElement('div');
         msgDiv.className = 'message user';
         msgDiv.innerHTML = `<div class="bubble">${this.escapeHtml(text).replace(/\n/g, '<br>')}</div>`;
         this.chatContainer.insertBefore(msgDiv, this.typingIndicator);
         this.scrollToBottom();
+        return msgDiv;
     }
 
-    addUserMessageWithFile(text, fileData, save = true) {
+    addUserMessageWithFile(text, fileData) {
         const msgDiv = document.createElement('div');
         msgDiv.className = 'message user';
-        let html = `<div class="bubble">${this.escapeHtml(text)}`;
-        if (fileData && fileData.type && fileData.type.startsWith('image/')) {
+        let html = `<div class="bubble">${this.escapeHtml(text || '')}`;
+        if (fileData?.type?.startsWith('image/')) {
             html += `<br><img src="${fileData.data}" class="image-preview" alt="upload" />`;
-        } else if (fileData && fileData.name) {
+        } else if (fileData?.name) {
             html += `<br><i class="fas fa-file" style="margin-right:5px;"></i>${this.escapeHtml(fileData.name)}`;
         }
         html += `</div>`;
         msgDiv.innerHTML = html;
         this.chatContainer.insertBefore(msgDiv, this.typingIndicator);
         this.scrollToBottom();
+        return msgDiv;
     }
+
+    // ==================== MESSAGE-ACTION DELEGATES ====================
+    _attachUserMessageActions(el, text, ts, id) {
+        return chat.attachUserMessageActions(this, el, text, ts, id);
+    }
+    _startEditing(el, text, ts, id) {
+        return chat.startEditing(this, el, text, ts, id);
+    }
+    _cancelEditing() {
+        return chat.cancelEditing(this);
+    }
+    _deleteMessageAndResponse(id, ts) {
+        return chat.deleteMessageAndResponse(this, id, ts);
+    }
+    _attachRetryButton(el, text, ts) {
+        return chat.attachRetryButton(this, el, text, ts);
+    }
+    _retrySend(text, el, ts) {
+        return chat.retrySend(this, text, el, ts);
+    }
+    _markLastUserMessageFailed(id) {
+        return chat.markLastUserMessageFailed(this, id);
+    }
+    _markMessageSuccess(id, ts) {
+        return chat.markMessageSuccess(this, id, ts);
+    }
+    _persistChats(chats) {
+        return chat.persistChats(this, chats);
+    }
+
+    // ==================== ASSISTANT MESSAGES ====================
 
     _parseResponse(text, richData) {
         let actualText = text;
@@ -777,24 +442,23 @@ export default class AIChatUI {
             const trimmed = text.trim();
             if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
                 try {
-                    const parsed = JSON.parse(trimmed);
-                    if (parsed.text) {
-                        actualText = parsed.text;
-                        if (!actualRichData && parsed.richData) actualRichData = parsed.richData;
+                    const p = JSON.parse(trimmed);
+                    if (p.text) {
+                        actualText = p.text;
+                        if (!actualRichData && p.richData) actualRichData = p.richData;
                     }
-                } catch (e) {}
+                } catch { /* ignore */ }
             }
             if (trimmed.startsWith('```json')) {
-                const regex = /```json\s*([\s\S]*?)\s*```/;
-                const match = text.match(regex);
-                if (match && match[1]) {
+                const m = text.match(/```json\s*([\s\S]*?)\s*```/);
+                if (m?.[1]) {
                     try {
-                        const parsed = JSON.parse(match[1].trim());
-                        if (parsed.text) {
-                            actualText = parsed.text;
-                            if (!actualRichData && parsed.richData) actualRichData = parsed.richData;
+                        const p = JSON.parse(m[1].trim());
+                        if (p.text) {
+                            actualText = p.text;
+                            if (!actualRichData && p.richData) actualRichData = p.richData;
                         }
-                    } catch (e) {}
+                    } catch { /* ignore */ }
                 }
             }
         }
@@ -804,18 +468,26 @@ export default class AIChatUI {
     _buildAssistantMessageElement(text, meta, richData, enableTyping) {
         const msgDiv = document.createElement('div');
         msgDiv.className = 'message assistant';
-        let metaHtml = this.buildRichMetaBar(richData);
-        if (!metaHtml && meta) metaHtml = `<div class="message-meta">${meta}</div>`;
 
-        const htmlContent = this.renderMarkdown(text);
-        const richCardsHtml = this.renderRichDataCards(richData);
+        // Meta precedence: backend-supplied `meta` (e.g. "🌐 8 pages ·
+        // MedVix AI · 234 in · 567 out") wins over the field-based
+        // fallback because it includes token counts and mode labels.
+        let metaHtml = this.buildRichMetaBar(richData, meta);
+        if (!metaHtml && meta) {
+            metaHtml = `<div class="message-meta">${this.escapeHtml(meta)}</div>`;
+        }
+
+        // Sources power the inline [N] citation pills rendered by
+        // markdown.js. Only present when the websearch mode ran.
+        const sources = Array.isArray(richData?.sources) ? richData.sources : [];
 
         msgDiv.innerHTML = `
             ${metaHtml}
-            <div class="assistant-content ${enableTyping ? 'typing-effect' : ''}">${htmlContent}</div>
-            ${richCardsHtml}
+            <div class="assistant-content ${enableTyping ? 'typing-effect' : ''}">${this.renderMarkdown(text, sources)}</div>
+            ${this.renderRichDataCards(richData)}
             <div class="message-actions">
                 <span class="copy-action"><i class="far fa-copy"></i> Copy</span>
+                <span class="notes-action"><i class="fas fa-sticky-note"></i> To Notes</span>
                 <span class="regenerate-action"><i class="fas fa-redo-alt"></i> Regenerate</span>
                 <span class="thumbs-up"><i class="far fa-thumbs-up"></i></span>
                 <span class="thumbs-down"><i class="far fa-thumbs-down"></i></span>
@@ -826,30 +498,46 @@ export default class AIChatUI {
     }
 
     _attachMessageListeners(msgDiv, text) {
-        const plainText = this.stripMarkdown(text);
+        const plain = this.stripMarkdown(text);
         const copySpan = msgDiv.querySelector('.copy-action');
+        const notesSpan = msgDiv.querySelector('.notes-action');
         const regenSpan = msgDiv.querySelector('.regenerate-action');
         const thumbsUp = msgDiv.querySelector('.thumbs-up');
         const thumbsDown = msgDiv.querySelector('.thumbs-down');
         const speakSpan = msgDiv.querySelector('.speak-action');
 
         copySpan.addEventListener('click', () => {
-            navigator.clipboard?.writeText(plainText).then(() => {
+            navigator.clipboard?.writeText(plain).then(() => {
                 ui.showToast('Copied to clipboard', 'success');
             }).catch(() => ui.showToast('Press Ctrl+C to copy', 'warning'));
         });
 
+        notesSpan.addEventListener('click', () => {
+            this._enterSelectionMode(msgDiv);
+        });
+
         regenSpan.addEventListener('click', async () => {
+            if (!this.hasActiveSubscription) {
+                this._showSubscriptionGate();
+                ui.showToast('Active subscription required', 'warning');
+                return;
+            }
             msgDiv.remove();
             this.showTypingIndicator();
             try {
                 const response = await ai.regenerateResponse({
                     chatId: this.currentChatId,
-                    modes: this.activeModes.map(m => m.type)
+                    modes: this.activeModes.map((m) => m.type),
                 });
                 this.hideTypingIndicator();
-                this._renderMessageStreaming(response.text, false, response.meta, response.richData);
                 await this.loadChats();
+                const last = this.chats
+                    .find((c) => c.id === this.currentChatId)
+                    ?.messages.filter((m) => m.role === 'assistant').pop();
+                this._renderMessageStreaming(
+                    response.text, false, response.meta, response.richData,
+                    last?.timestamp
+                );
             } catch (error) {
                 this.hideTypingIndicator();
                 ui.showToast(error.message, 'error');
@@ -871,33 +559,36 @@ export default class AIChatUI {
                 ui.showToast('Speech not supported', 'warning');
                 return;
             }
-            const utterance = new SpeechSynthesisUtterance(plainText);
-            window.speechSynthesis.speak(utterance);
+            window.speechSynthesis.speak(new SpeechSynthesisUtterance(plain));
         });
     }
 
-    _renderMessageInstant(text, save = true, meta = null, richData = null) {
+    _renderMessageInstant(text, save = true, meta = null, richData = null, timestamp = null) {
         const { actualText, actualRichData } = this._parseResponse(text, richData);
         const msgDiv = this._buildAssistantMessageElement(actualText, meta, actualRichData, false);
+        if (timestamp != null) msgDiv.dataset.timestamp = String(timestamp);
+        msgDiv.dataset.rawMd = actualText;
         this.chatContainer.insertBefore(msgDiv, this.typingIndicator);
         this.scrollToBottom();
         this._attachMessageListeners(msgDiv, actualText);
         this._setupImageLightbox(msgDiv);
     }
 
-    _renderMessageStreaming(text, save = true, meta = null, richData = null) {
+    _renderMessageStreaming(text, save = true, meta = null, richData = null, timestamp = null) {
         const { actualText, actualRichData } = this._parseResponse(text, richData);
         const msgDiv = this._buildAssistantMessageElement(actualText, meta, actualRichData, true);
+        if (timestamp != null) msgDiv.dataset.timestamp = String(timestamp);
+        msgDiv.dataset.rawMd = actualText;
         this.chatContainer.insertBefore(msgDiv, this.typingIndicator);
         this.scrollToBottom();
 
         const contentDiv = msgDiv.querySelector('.assistant-content');
-        const totalChars = actualText.length;
+        const total = actualText.length;
         let revealed = 0;
-        const speed = totalChars > 500 ? 4 : (totalChars > 100 ? 10 : 20);
-        const step = Math.max(1, Math.floor(totalChars / 50));
+        const speed = total > 500 ? 4 : (total > 100 ? 10 : 20);
+        const step = Math.max(1, Math.floor(total / 50));
 
-        if (totalChars === 0) {
+        if (total === 0) {
             this._attachMessageListeners(msgDiv, actualText);
             this._setupImageLightbox(msgDiv);
             return;
@@ -905,8 +596,8 @@ export default class AIChatUI {
 
         const interval = setInterval(() => {
             revealed += step;
-            if (revealed >= totalChars) {
-                revealed = totalChars;
+            if (revealed >= total) {
+                revealed = total;
                 clearInterval(interval);
                 contentDiv.classList.remove('typing-effect');
                 contentDiv.style.removeProperty('--reveal-percentage');
@@ -914,74 +605,32 @@ export default class AIChatUI {
                 this._setupImageLightbox(msgDiv);
                 return;
             }
-            contentDiv.style.setProperty('--reveal-percentage', `${(revealed / totalChars) * 100}%`);
+            contentDiv.style.setProperty('--reveal-percentage', `${(revealed / total) * 100}%`);
         }, speed);
     }
 
-    showTypingIndicator() {
-        this.typingIndicator.style.display = 'flex';
-        this.scrollToBottom();
-    }
+    // ==================== LIGHTBOX DELEGATES ====================
+    _createImageViewer()       { return chat.createImageViewer(this); }
+    _setupImageLightbox(el)    { return chat.setupImageLightbox(this, el); }
+    _openImageViewer(src, alt) { return chat.openImageViewer(this, src, alt); }
+    _closeImageViewer()        { return chat.closeImageViewer(this); }
 
-    hideTypingIndicator() {
-        this.typingIndicator.style.display = 'none';
-    }
+    // ==================== MODES ====================
 
-    // ===== IMAGE VIEWER (LIGHTBOX) =====
-    _createImageViewer() {
-        if (this.imageViewerOverlay) return;
-        const overlay = document.createElement('div');
-        overlay.className = 'image-viewer-overlay';
-        overlay.innerHTML = `
-            <span class="close-viewer">&times;</span>
-            <img src="" alt="Enlarged Image" />
-        `;
-        document.body.appendChild(overlay);
-        this.imageViewerOverlay = overlay;
-        const closeBtn = overlay.querySelector('.close-viewer');
-        closeBtn.addEventListener('click', () => this._closeImageViewer());
-        overlay.addEventListener('click', () => this._closeImageViewer());
-    }
-
-    _setupImageLightbox(msgDiv) {
-        const images = msgDiv.querySelectorAll('.rich-image');
-        images.forEach(img => {
-            img.removeEventListener('click', this._openImageViewerHandler);
-            const handler = () => this._openImageViewer(img.src);
-            img.addEventListener('click', handler);
-            img._lightboxHandler = handler;
-        });
-    }
-
-    _openImageViewer(src) {
-        if (!this.imageViewerOverlay) return;
-        const img = this.imageViewerOverlay.querySelector('img');
-        img.src = src;
-        this.imageViewerOverlay.classList.add('active');
-        document.body.style.overflow = 'hidden';
-    }
-
-    _closeImageViewer() {
-        if (!this.imageViewerOverlay) return;
-        this.imageViewerOverlay.classList.remove('active');
-        document.body.style.overflow = '';
-    }
-
-    // ---- Modes ----
     addMode(mode) {
-        if (this.activeModes.some(m => m.type === mode.type)) return;
+        if (this.activeModes.some((m) => m.type === mode.type)) return;
         this.activeModes.push(mode);
         this.renderChips();
     }
 
     removeMode(type) {
-        this.activeModes = this.activeModes.filter(m => m.type !== type);
+        this.activeModes = this.activeModes.filter((m) => m.type !== type);
         this.renderChips();
     }
 
     renderChips() {
         this.activeFunctionsDiv.innerHTML = '';
-        this.activeModes.forEach(mode => {
+        this.activeModes.forEach((mode) => {
             const chip = document.createElement('span');
             chip.className = 'function-chip';
             chip.innerHTML = `
@@ -991,16 +640,16 @@ export default class AIChatUI {
             `;
             this.activeFunctionsDiv.appendChild(chip);
         });
-        document.querySelectorAll('.remove-chip').forEach(btn => {
+        this.activeFunctionsDiv.querySelectorAll('.remove-chip').forEach((btn) => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                const type = btn.dataset.type;
-                this.removeMode(type);
+                this.removeMode(btn.dataset.type);
             });
         });
     }
 
-    // ---- Attachments ----
+    // ==================== ATTACHMENTS ====================
+
     setPendingAttachment(fileData) {
         this.pendingAttachment = fileData;
         this.renderPendingAttachment();
@@ -1013,24 +662,60 @@ export default class AIChatUI {
 
     renderPendingAttachment() {
         this.pendingAttachmentsDiv.innerHTML = '';
-        if (this.pendingAttachment) {
-            const chip = document.createElement('span');
-            chip.className = 'attachment-chip';
-            let icon = this.pendingAttachment.type?.startsWith('image/') ? 'fa-image' : 'fa-file';
-            chip.innerHTML = `
-                <i class="fas ${icon}"></i>
-                <span>${this.escapeHtml(this.pendingAttachment.name)}</span>
-                <i class="fas fa-times remove-attachment"></i>
-            `;
-            this.pendingAttachmentsDiv.appendChild(chip);
-            chip.querySelector('.remove-attachment').addEventListener('click', this.clearPendingAttachment);
-        }
+        if (!this.pendingAttachment) return;
+        const chip = document.createElement('span');
+        chip.className = 'attachment-chip';
+        const icon = this.pendingAttachment.type?.startsWith('image/') ? 'fa-image' : 'fa-file';
+        chip.innerHTML = `
+            <i class="fas ${icon}"></i>
+            <span>${this.escapeHtml(this.pendingAttachment.name)}</span>
+            <i class="fas fa-times remove-attachment"></i>
+        `;
+        this.pendingAttachmentsDiv.appendChild(chip);
+        chip.querySelector('.remove-attachment')
+            .addEventListener('click', this.clearPendingAttachment);
     }
 
-    // ---- Send ----
+    // ==================== SEND ====================
+
     async sendUserMessage() {
+        if (this._sending) return;
+
+        if (this.isSharedView) {
+            ui.showToast('This is a shared view — start a new chat to reply', 'info');
+            return;
+        }
+        if (!this.hasActiveSubscription) {
+            this._showSubscriptionGate();
+            ui.showToast('Active subscription required', 'warning');
+            return;
+        }
+        if (this._selectionMode) this._exitSelectionMode();
+
         const rawText = this.messageInput.value.trim();
+
+        // Empty submit while editing = cancel the edit cleanly.
+        if (this._editing && !rawText && !this.pendingAttachment) {
+            this._cancelEditing();
+            this.messageInput.value = '';
+            ui.showToast('Edit cancelled', 'info', 1200);
+            return;
+        }
+
         if (!rawText && !this.pendingAttachment) return;
+
+        // Edit-submit — remove the old message and its reply before
+        // the new content goes through the normal send path.
+        if (this._editing) {
+            const { msgDiv, timestamp, chatId } = this._editing;
+            this._editing = null;
+            const next = msgDiv.nextElementSibling;
+            msgDiv.remove();
+            if (next?.classList.contains('message') && next.classList.contains('assistant')) {
+                next.remove();
+            }
+            await this._deleteMessageAndResponse(chatId, timestamp);
+        }
 
         if (this.currentChatId === null) {
             const title = rawText
@@ -1039,47 +724,143 @@ export default class AIChatUI {
             const newChat = await ai.createChat(title);
             this.chats.push(newChat);
             this.currentChatId = newChat.id;
-            this.renderChatHistory(this.searchChats.value);
+            this.renderChatHistory(this.searchChats?.value || '');
         }
 
         this.removeWelcomeIfExists();
 
         const fileData = this.pendingAttachment;
+        let msgElement;
         if (fileData) {
-            this.addUserMessageWithFile(rawText || `📎 Uploaded ${fileData.name}`, fileData, true);
+            msgElement = this.addUserMessageWithFile(
+                rawText || `📎 Uploaded ${fileData.name}`, fileData
+            );
             this.clearPendingAttachment();
         } else {
-            this.addUserMessage(rawText, true);
+            msgElement = this.addUserMessage(rawText);
         }
 
         this.messageInput.value = '';
         this.messageInput.style.height = 'auto';
         this.showTypingIndicator();
+        this._sending = true;
 
         try {
             const response = await ai.sendMessageToAI({
                 message: rawText,
                 chatId: this.currentChatId,
-                modes: this.activeModes.map(m => m.type),
-                file: fileData
+                modes: this.activeModes.map((m) => m.type),
+                file: fileData,
             });
             this.hideTypingIndicator();
-            this._renderMessageStreaming(response.text, true, response.meta, response.richData);
+
+            // Reload so the just-sent message has its persisted
+            // timestamp, then wire edit/copy onto the bubble.
             await this.loadChats();
+            const lastUser = this.chats
+                .find((c) => c.id === this.currentChatId)
+                ?.messages.filter((m) => m.role === 'user').pop();
+            if (lastUser && msgElement) {
+                msgElement.dataset.timestamp = lastUser.timestamp;
+                this._attachUserMessageActions(
+                    msgElement, lastUser.content, lastUser.timestamp, this.currentChatId
+                );
+            }
+
+            const lastAssistant = this.chats
+                .find((c) => c.id === this.currentChatId)
+                ?.messages.filter((m) => m.role === 'assistant').pop();
+
+            this._renderMessageStreaming(
+                response.text, true, response.meta, response.richData,
+                lastAssistant?.timestamp
+            );
         } catch (error) {
             this.hideTypingIndicator();
-            ui.showToast(error.message, 'error');
+
+            const msg = String(error?.message || '').toLowerCase();
+            if (msg.includes('subscription') || msg.includes('plan')) {
+                this.hasActiveSubscription = false;
+                this._showSubscriptionGate();
+            }
+
+            // Persist the failed flag so the Retry button survives a
+            // reload — markLastUserMessageFailed is a delegate to the
+            // message-actions module.
+            const ts = await this._markLastUserMessageFailed(this.currentChatId);
+            if (msgElement) {
+                if (ts) msgElement.dataset.timestamp = ts;
+                const lastUser = this.chats
+                    .find((c) => c.id === this.currentChatId)
+                    ?.messages.filter((m) => m.role === 'user').pop();
+                if (lastUser) {
+                    this._attachUserMessageActions(
+                        msgElement, lastUser.content, lastUser.timestamp, this.currentChatId
+                    );
+                }
+                this._attachRetryButton(msgElement, rawText, ts || Date.now());
+            }
+
+            ui.showToast(error.message || 'AI request failed', 'error');
+        } finally {
+            this._sending = false;
         }
     }
 
-    // ---- Event listeners ----
+    // ==================== NOTES SELECTION DELEGATES ====================
+    _enterSelectionMode(el)         { return chat.enterSelectionMode(this, el); }
+    _exitSelectionMode()            { return chat.exitSelectionMode(this); }
+    _toggleMessageSelection(el, f)  { return chat.toggleMessageSelection(this, el, f); }
+    _selectAllMessages()            { return chat.selectAllMessages(this); }
+    _deselectAllMessages()          { return chat.deselectAllMessages(this); }
+    _syncSelectionVisual()          { return chat.syncSelectionVisual(this); }
+    _renderSelectionBar()           { return chat.renderSelectionBar(this); }
+    _updateSelectionBarCount()      { return chat.updateSelectionBarCount(this); }
+    _saveSelectedToNotes()          { return chat.saveSelectedToNotes(this); }
+
+    /**
+     * Legacy helper — the old name for what is now
+     * `renderedToNotesHtml` in notes-selection.js. Kept for callers
+     * that may still hold a reference to the old method (nothing in
+     * this file uses it; saveSelectedToNotes goes through the module).
+     */
+    _renderedHtmlToNotesHtml(contentEl) {
+        if (!contentEl) return '';
+        const html = typeof contentEl === 'string'
+            ? contentEl
+            : contentEl.innerHTML;
+        return chat.renderedToNotesHtml(html, 'styled');
+    }
+
+    stripHtml(html) { return chat.extractPlainText(html); }
+
+    _showNoteSavedToast(note) { return chat.showNoteSavedToast(note); }
+
+    // ==================== SHARE DELEGATES ====================
+    _setupShareModal()              { return chat.setupShareModal(this); }
+    _openShareModal(id)             { return chat.openShareModal(this, id); }
+    _buildShareUrl(ref)             { return chat.buildShareUrl(ref); }
+    loadSharedConversation(token)   { return chat.loadSharedConversation(this, token); }
+    _renderSharedMessages(messages) { return chat.renderSharedMessages(this, messages); }
+    _showSharedBanner(conv)         { return chat.showSharedBanner(this, conv); }
+    _enterReadOnlyMode()            { return chat.enterReadOnlyMode(this); }
+    _exitReadOnlyMode()             { return chat.exitReadOnlyMode(this); }
+    _showSharedError(msg)           { return chat.showSharedError(this, msg); }
+    exitSharedView()                { return chat.exitSharedView(this); }
+    _clearSharedState()             { return chat.clearSharedState(this); }
+    _ensureNotShared()              { return chat.ensureNotShared(this); }
+
+    // ==================== EVENT LISTENERS ====================
+
     setupEventListeners() {
+        // ── Sidebar ────────────────────────────────────────────────
         if (this.menuToggle) {
             this.menuToggle.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.sidebar.classList.toggle('open');
             });
         }
+
         const mainEl = document.querySelector('.main');
         if (mainEl) {
             mainEl.addEventListener('click', () => {
@@ -1088,22 +869,29 @@ export default class AIChatUI {
                 }
             });
         }
+
         if (this.newChatBtn) {
-            this.newChatBtn.addEventListener('click', async () => {
+            this.newChatBtn.addEventListener('click', () => {
+                this._ensureNotShared();
+                this._exitSelectionMode();
                 this.resetToWelcome();
                 this.currentChatId = null;
                 this.activeModes = [];
+                this._cancelEditing();
                 this.clearPendingAttachment();
                 this.renderChips();
+                this.renderChatHistory(this.searchChats?.value || '');
                 if (window.innerWidth < 768) this.sidebar.classList.remove('open');
             });
         }
-        if (this.settingsBtn) {
+
+        // ── Settings modal ─────────────────────────────────────────
+        if (this.settingsBtn && this.settingsModal) {
             this.settingsBtn.addEventListener('click', () => {
                 this.settingsModal.style.display = 'flex';
             });
         }
-        if (this.closeModalBtn) {
+        if (this.closeModalBtn && this.settingsModal) {
             this.closeModalBtn.addEventListener('click', () => {
                 this.settingsModal.style.display = 'none';
             });
@@ -1118,39 +906,44 @@ export default class AIChatUI {
                 document.body.classList.toggle('light-mode');
             });
         }
-        if (this.modelSelect) {
+        if (this.modelSelect && this.currentModelSpan) {
             this.modelSelect.addEventListener('change', () => {
-                if (this.currentModelSpan) this.currentModelSpan.textContent = this.modelSelect.value;
+                this.currentModelSpan.textContent = this.modelSelect.value;
             });
         }
-        if (this.modelSelectorBtn) {
+        if (this.modelSelectorBtn && this.settingsModal) {
             this.modelSelectorBtn.addEventListener('click', () => {
-                if (this.settingsModal) this.settingsModal.style.display = 'flex';
+                this.settingsModal.style.display = 'flex';
             });
         }
+
+        // ── Clear history ──────────────────────────────────────────
         if (this.clearHistoryBtn) {
             this.clearHistoryBtn.addEventListener('click', async () => {
                 const confirmed = await ui.showConfirmationDialog(
                     'Clear History',
-                    'Are you sure you want to delete all chats?',
+                    'Delete all chats? This cannot be undone.',
                     'warning'
                 );
-                if (confirmed) {
-                    await ai.clearAllData();
-                    this.chats = [];
-                    this.renderChatHistory('');
-                    this.resetToWelcome();
-                    this.currentChatId = null;
-                    this.activeModes = [];
-                    this.clearPendingAttachment();
-                    this.renderChips();
-                    if (this.settingsModal) this.settingsModal.style.display = 'none';
-                }
+                if (!confirmed) return;
+                this._exitSelectionMode();
+                await ai.clearAllData();
+                this.chats = [];
+                this.renderChatHistory('');
+                this.resetToWelcome();
+                this.currentChatId = null;
+                this.activeModes = [];
+                this._cancelEditing();
+                this.clearPendingAttachment();
+                this.renderChips();
+                if (this.settingsModal) this.settingsModal.style.display = 'none';
+                ui.showToast('Chat history cleared', 'success');
             });
         }
-        if (this.sendBtn) {
-            this.sendBtn.addEventListener('click', this.sendUserMessage);
-        }
+
+        // ── Composer ───────────────────────────────────────────────
+        if (this.sendBtn) this.sendBtn.addEventListener('click', this.sendUserMessage);
+
         if (this.messageInput) {
             this.messageInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -1163,21 +956,44 @@ export default class AIChatUI {
                 this.style.height = Math.min(this.scrollHeight, 120) + 'px';
             });
         }
+
         if (this.searchChats) {
             this.searchChats.addEventListener('input', (e) => {
                 this.renderChatHistory(e.target.value);
             });
         }
+
+        // ── Chat container ─────────────────────────────────────────
         if (this.chatContainer) {
             this.chatContainer.addEventListener('click', (e) => {
+                // Selection mode — clicking anywhere on an assistant
+                // message toggles it (except links, which open normally,
+                // and the checkbox itself, which has its own handler).
+                if (this._selectionMode) {
+                    if (e.target.closest('a')) return;
+                    const msgEl = e.target.closest('.message.assistant');
+                    if (msgEl && !e.target.closest('.message-select-checkbox')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        this._toggleMessageSelection(msgEl);
+                    }
+                    return;
+                }
+
                 const btn = e.target.closest('.quick-action-btn');
                 if (btn) {
+                    if (this.isSharedView) {
+                        ui.showToast('Start a new chat to try this prompt', 'info');
+                        return;
+                    }
                     const prompt = btn.getAttribute('data-prompt') || btn.innerText.trim();
                     if (this.messageInput) this.messageInput.value = prompt;
                     this.sendUserMessage();
                 }
             });
         }
+
+        // ── Attachments ────────────────────────────────────────────
         if (this.attachBtn) {
             this.attachBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -1191,11 +1007,13 @@ export default class AIChatUI {
                 }
             }
         });
+
         if (this.attachDropdown) {
-            document.querySelectorAll('.attach-item').forEach(item => {
+            document.querySelectorAll('.attach-item').forEach((item) => {
                 item.addEventListener('click', () => {
                     const action = item.getAttribute('data-action');
                     if (this.attachDropdown) this.attachDropdown.classList.remove('show');
+
                     if (action === 'upload image' && this.imageUpload) {
                         this.imageUpload.click();
                         this.imageUpload.onchange = async (e) => {
@@ -1230,13 +1048,12 @@ export default class AIChatUI {
                 });
             });
         }
+
+        // ── Voice ──────────────────────────────────────────────────
         if (this.voiceBtn) {
             this.voiceBtn.addEventListener('click', () => {
-                if (this.isRecording) {
-                    this.stopRecording();
-                } else {
-                    this.startRecording();
-                }
+                if (this.isRecording) this.stopRecording();
+                else this.startRecording();
             });
         }
         if (this.stopRecordingBtn) {
@@ -1244,13 +1061,13 @@ export default class AIChatUI {
         }
     }
 
+    // ==================== VOICE (SIMULATED) ====================
+
     startRecording() {
         this.isRecording = true;
         if (this.normalInput) this.normalInput.style.display = 'none';
         if (this.voiceRecordingBar) this.voiceRecordingBar.style.display = 'flex';
-        this.recordingTimer = setTimeout(() => {
-            this.stopRecording();
-        }, 3000);
+        this.recordingTimer = setTimeout(() => this.stopRecording(), 3000);
     }
 
     stopRecording() {
@@ -1260,7 +1077,7 @@ export default class AIChatUI {
         if (this.voiceRecordingBar) this.voiceRecordingBar.style.display = 'none';
         if (this.normalInput) this.normalInput.style.display = 'flex';
         if (this.messageInput) {
-            this.messageInput.value = "This is a simulated voice transcription.";
+            this.messageInput.value = 'This is a simulated voice transcription.';
             this.messageInput.style.height = 'auto';
             this.messageInput.focus();
         }

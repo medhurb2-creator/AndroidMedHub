@@ -96,7 +96,7 @@ h1 {
     align-items: center;
     min-height: 44px;
     margin-bottom: 0.5rem;
-    transition: opacity 0.15s ease;
+    transition: opacity 0.15s ease, filter 0.15s ease;
 }
 .google-signin-container iframe {
     margin: 0 auto;
@@ -111,6 +111,41 @@ h1 {
     cursor: pointer;
     background: transparent;
 }
+
+/* ─── Google sign-up gated state ───────────────────────────────────────────
+   Applied by updateGoogleGuard() in signup.js when the Terms of Service
+   checkbox is unchecked. Communicates "disabled" three ways:
+
+     1. Reduced opacity + grayscale — visually dimmed.
+     2. cursor: not-allowed on the container and the guard — hover state
+        tells the user before they click.
+     3. aria-disabled="true" on the container (set in JS) — screen readers
+        announce the state.
+
+   The guard keeps pointer-events: auto while gated (set inline by JS), so
+   the click is intercepted and the "accept terms first" toast fires. */
+
+.google-signin-container.is-terms-gated {
+    opacity: 0.55;
+    filter: grayscale(0.35);
+    cursor: not-allowed;
+}
+
+.google-signin-container.is-terms-gated .google-click-guard {
+    cursor: not-allowed;
+}
+
+/* Belt-and-braces: any real button the SDK injects stops accepting
+   pointer events while gated. (The guard already blocks the click,
+   but this ensures hover/focus states don't fire on the underlying
+   button either.) */
+.google-signin-container.is-terms-gated > *:not(.google-click-guard) {
+    pointer-events: none;
+}
+
+/* When terms are accepted, the guard becomes transparent to pointer
+   events (set inline by JS) and the container returns to full strength.
+   No CSS needed — the absence of .is-terms-gated is the "on" state. */
 
 /* "or" divider between Google and Email/Phone */
 .auth-divider {
@@ -420,6 +455,15 @@ input:disabled {
 }
 .dark-theme #google-link-modal .modal-body strong {
     color: var(--text-primary, #f1f5f9);
+}
+
+/* Google sign-up gated state — dark theme.
+   The dimming is slightly less aggressive because dark surfaces
+   already carry less visual weight than light ones; the grayscale
+   filter carries the "disabled" signal. */
+.dark-theme .google-signin-container.is-terms-gated {
+    opacity: 0.6;
+    filter: grayscale(0.45);
 }
 
 /* ==========================================================================

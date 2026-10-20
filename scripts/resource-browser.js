@@ -9,19 +9,41 @@
  *   - Downloaded METADATA lives in localStorage (DOWNLOADED_META_KEY) → cards render offline.
  *   - Undownloaded catalogue items are NEVER persisted. Offline you see only what you saved.
  *
- * Path scoping (subject + category):
+ * Path scoping (subject + category + optional topic):
  *   Downloads and favorites are BOUND TO THE PATH THEY WERE CREATED IN.
- *   A resource downloaded while viewing Anatomy → notes is only ever
- *   surfaced under Anatomy → notes. It will not appear in Physiology →
- *   textbooks, nor under any other subject/category combination, neither
- *   in the "Downloaded" filter nor in the offline-only fallback view.
+ *   A resource downloaded while viewing Anatomy → notes → abdomen&pelvis is
+ *   only ever surfaced under that exact path. It will not appear under a
+ *   different topic, under Anatomy → notes at the category level, nor under
+ *   any other subject/category combination.
  *
- *   This is enforced in `getDownloadedDocuments()` and `getFavoriteDocuments()`
- *   by comparing each persisted record's `subject`/`category` against the
- *   currently-active `currentSubject`/`currentCategory`. The persisted
- *   record already carries both fields (written verbatim by
- *   `saveDownloadedMeta`), and `currentCategory` is the same normalized
- *   value that was written, so the comparison is apples-to-apples.
+ *   Topic-scoping is enforced in `getDownloadedDocuments()` and
+ *   `getFavoriteDocuments()`: when a topic is active (`currentTopic !== null`),
+ *   records whose `topic` field differs are excluded. When no topic is active
+ *   (a category without topics), all records in the category are eligible —
+ *   this matches the user's expectation for topic-less subjects.
+ *
+ * Topic selection:
+ *   When topics.json declares a topic list for the current subject+category,
+ *   the browser shows a topic-selection grid FIRST. Each tile is rendered
+ *   from /assets/images/topic.png plus a formatted topic name. Clicking a
+ *   tile scopes the resource fetch to that topic and updates the URL with
+ *   `?topic=<slug>`.
+ *
+ *   When topics.json has no entry for this subject+category, or its entry
+ *   is an empty array, the browser skips the topic step entirely and loads
+ *   resources directly — identical to the pre-topics behaviour.
+ *
+ *   The topics.json payload is delivered by `getTopicsJson()` from
+ *   `./public-assets.js`, which fetches and caches the file via the same
+ *   R2 + IndexedDB pipeline used for the user manual and resources-update.
+ *
+ * First-paint budget:
+ *   The initial render does not wait on entitlement or on thumbnail
+ *   hydration. It fires the subscription refresh in the background and
+ *   repaints once it resolves; it renders the grid once with whatever
+ *   thumbnail state is available, then hydrates and repaints. The
+ *   perceived first paint is bounded by topics.json (fast path) or the
+ *   resource fetch (slow path) — nothing else.
  *
  * Sorting:
  *   Documents are sorted alphabetically by title — case-insensitive, locale-
@@ -34,30 +56,49 @@
  *   downloads, persisted favorites) all funnel through it, so display order
  *   is consistent regardless of where the data came from.
  *
+ * De-duplication:
+ *   A single resource must never render as two cards. Two independent
+ *   sources of duplication are guarded against:
+ *     • Pagination overlap — the backend's cursor is exclusive on `_id`
+ *       while the index scan is ordered by `_creationTime`, so documents
+ *       that share a millisecond timestamp with the cursor document can
+ *       slip through and reappear on the next page. This is most visible
+ *       in batches uploaded by the sync script in a single write.
+ *     • Share-landing injection — `_consumeSharedDoc` prepends the shared
+ *       document to `allDocuments`; if it was already on the page it would
+ *       render twice.
+ *
+ *   `_dedupeDocuments()` collapses by `_id` preserving first-occurrence
+ *   order. It is applied (a) when appending a new page so `allDocuments`
+ *   never grows a duplicate, and (b) again at render time so "one card
+ *   per `_id`" is an invariant of the renderer itself.
+ *
  * Filter sourcing:
  *   The "Downloaded" and "Favorites" filters do NOT filter the loaded list.
  *   They read directly from their persisted sources (localStorage), so a
- *   download or favorite from page 5 of the SAME subject/category is visible
- *   even when only page 1 is loaded. Cross-path leakage is prevented by the
- *   subject/category scoping described above.
+ *   download or favorite from page 5 of the SAME subject/category/topic is
+ *   visible even when only page 1 is loaded.
  *
  * Pagination on revisit:
  *   The in-memory catalogue cache (in content.js) preserves cursor and
  *   hasMore, so revisiting a subject shows the first page WITH a working
- *   "Load more" button — not a silently truncated list.
+ *   "Load more" button — not a silently truncated list. The cache key
+ *   includes the topic when one is active, so a topic-scoped cache never
+ *   serves a category-wide request or vice versa.
  *
  * Offline race handling:
  *   When the browser goes offline mid-fetch, the in-flight response is
  *   discarded and the offline-only set is rendered. This is done by
- *   checking navigator.onLine after every await boundary.
+ *   checking navigator.onLine after every await boundary and by a load
+ *   generation counter that invalidates superseded fetches.
  *
  * Metadata contract:
  *   `saveDownloadedMeta` persists the FULL public document shape returned by
- *   the catalogue queries — including `isPremium`, `subject`, `description`,
- *   `tags`, `r2ThumbnailKey`, counters, and timestamps. This is what makes
- *   the offline Open handler able to apply the same premium policy as the
- *   online one: it reads `doc.isPremium` from the persisted record without
- *   ever contacting the backend.
+ *   the catalogue queries — including `isPremium`, `subject`, `category`,
+ *   `topic`, `description`, `tags`, `r2ThumbnailKey`, counters, and
+ *   timestamps. This is what makes the offline Open handler able to apply
+ *   the same premium policy as the online one, and what makes topic-scoped
+ *   offline filtering possible.
  *
  * Preview-mode policy:
  *   A downloaded PREMIUM resource opened by a user with NO active subscription
@@ -71,73 +112,27 @@
  *   entirely within the button. This gives the tap immediate visual
  *   confirmation while the entitlement check, blob resolution, and viewer
  *   boot happen asynchronously. On failure the button is restored and a
- *   toast reports the error. On success the viewer takes over the screen
- *   and the button's state becomes irrelevant.
- *
- *   The inline state deliberately does NOT use the global overlay spinner,
- *   which would hide the whole grid and give no per-card context. Every
- *   card can be loading independently; the user always knows which one is
- *   working.
+ *   toast reports the error.
  *
  * Premium badge display policy:
  *   The 🔒 Premium badge is INFORMATIONAL ONLY. It is rendered on a card
  *   only when the resource is premium AND the user currently has no active
- *   subscription or free trial. Subscribers and trial users do not see it,
- *   since the badge would be misleading (they already have access).
- *
- *   This never affects functionality: the Open handler and the Download
- *   handler still call subscription.hasActiveSubscription() themselves and
- *   remain the sole authority on entitlement. The cached flag below is a
- *   presentation hint only.
+ *   subscription or free trial.
  *
  * Share links (deep link, not a premium or download feature):
  *   A card's ⋮ menu exposes "🔗 Share". Sharing builds a compact URL from
  *   the document's identity so the recipient lands directly on it instead
- *   of browsing for it.
+ *   of browsing for it. Alongside the URL, a short human-readable
+ *   paragraph accompanies the link so the recipient knows what the link
+ *   contains before tapping it — see `buildShareMessage()`.
  *
  *   URL shape:
- *     https://app.medvix.co.ke/resource-browser?subject=<s>&type=<t>&share=1&id=<_id>
+ *     https://app.medvix.co.ke/resource-browser?subject=<s>&type=<t>[&topic=<k>]&share=1&id=<_id>
  *
- *   The origin is FIXED to the production domain — not whatever host the
- *   sharer happens to be browsing from. During local development the app
- *   runs at localhost:3001, but a link with that origin is useless to the
- *   recipient. See SHARE_ORIGIN below.
- *
- *   Landing flow (no auto-download, no auto-open, no premium decision here):
- *     1. initResourceBrowser() runs first — routing + page 1 fetch.
- *     2. Share params consumed:
- *          • If the id is already in docMap → use the real doc, no
- *            network call.
- *          • Miss → content.fetchResourceById(id), which queries
- *            `resources/queries:getResource` (public, no auth) and
- *            returns the canonical public shape.
- *          • Null → toast "Shared document not found", stop.
- *     3. The recipient sees the shared document rendered as a normal card
- *        in the grid, highlighted so they can identify it, and a toast
- *        naming it. The filter is reset to "all" and any active search
- *        term cleared so the card is guaranteed visible.
- *     4. Strip share params from the URL.
- *     5. Nothing else happens. The recipient decides whether to Download
- *        the resource (which stores the blob in IndexedDB, enabling
- *        offline access) or, once downloaded, to Open it in the viewer.
- *
- *   Why no auto-open:
- *     Opening a share link on an undownloaded resource would force the
- *     recipient to fetch the entire file just to look at page 1, without
- *     asking. That is a silent bandwidth cost on someone else's device.
- *     The card gives the recipient full metadata — title, author, file
- *     size, premium status, download state — so they can make the
- *     decision themselves. Every path from the card (Download, Open,
- *     favourite, share again) flows through the existing handlers that
- *     already implement entitlement, preview mode, and offline storage.
- *
- *   Native share (Android):
- *     Inside the Capacitor Android app the Web Share API is unreliable, so
- *     `shareResource` prefers the native `MedvixShare` plugin
- *     (com.medhurb.app.MedvixSharePlugin) when present. The plugin's
- *     `share({title, text, url, dialogTitle})` method opens the system
- *     chooser with the link as text/plain. On the web build it falls back
- *     to navigator.share, then to clipboard copy + toast.
+ *   The topic parameter is included when the shared document belongs to a
+ *   topic. On landing, the share is consumed FIRST — the recipient sees
+ *   the shared card immediately — but `currentTopic` is set from the URL
+ *   so a subsequent Back tap lands on the topic grid, not on subjects.
  *
  * Diagnostic logging:
  *   Set localStorage['debugPremium'] = '1' to enable detailed field-level
@@ -153,6 +148,8 @@ import * as ui from './ui.js';
 import * as router from './router.js';
 import { convexHttpClient } from './convex-client.js';
 import { getToken, logout } from './auth.js';
+import { getTopicsJson } from './public-assets.js';
+import * as rateUs from './rate-us.js';
 
 // ==================== CONSTANTS ====================
 const CATEGORY_MAP = {
@@ -169,6 +166,10 @@ const TYPE_NAMES = {
 };
 const FAVORITES_KEY = 'favorite_resources';
 const DOWNLOADED_META_KEY = 'downloaded_resource_meta';
+
+// Folder icon used by every topic card. Served from the app's public
+// assets directory by Vite (public → /). Change here if the image moves.
+const TOPIC_ICON_SRC = '/assets/images/topic.png';
 
 // ==================== DIAGNOSTIC LOGGER ====================
 // Zero-cost when disabled. Toggle with:
@@ -213,6 +214,7 @@ function _summariseDoc(d) {
     return {
         _id: d._id,
         title: d.title,
+        topic: d.topic,
         isPremium: d.isPremium,
         typeofIsPremium: typeof d.isPremium,
         isStrictTrue: d.isPremium === true,
@@ -239,6 +241,8 @@ function _pathKey(subject, category) {
 // ==================== STATE ====================
 let currentSubject = null;
 let currentCategory = null;
+let currentTopic = null;            // null = no topic filter active (grid or topic-less category)
+let availableTopics = [];           // string[] — slugs from topics.json for this subject+category
 let currentCursor = null;
 let isLoading = false;
 let hasMore = true;
@@ -249,6 +253,18 @@ export const docMap = new Map();
 
 // resourceId -> object URL (thumbnail blobs we've hydrated or downloaded)
 const thumbnailCache = new Map();
+
+// Monotonic counter used to abandon superseded loads. Each invocation of
+// loadResources() increments this and captures the new value. Anything the
+// async body writes after an await boundary first checks that its captured
+// value still matches — if not, a newer load has started and this one's
+// result would clobber it, so we bail out silently.
+let _loadGeneration = 0;
+
+// True while the topic-selection grid is on screen. Offline and online
+// handlers consult this so they don't overwrite the grid with a resource
+// listing before the user has picked a topic.
+let _topicGridVisible = false;
 
 // ==================== SUBSCRIPTION STATE (DISPLAY ONLY) ====================
 //
@@ -309,6 +325,10 @@ function setDownloadedMeta(map) {
  * the sole source of truth for offline rendering, filtering, and — critically
  * — the Open handler's premium check.
  *
+ * `topic` is written verbatim (`null` when the document has no topic). The
+ * offline filters read it to decide whether a record matches the currently
+ * active topic scope.
+ *
  * @param {object} doc  the full document record from docMap
  */
 function saveDownloadedMeta(doc) {
@@ -328,6 +348,7 @@ function saveDownloadedMeta(doc) {
         title: doc.title,
         subject: doc.subject,
         category: doc.category,
+        topic: doc.topic ?? null,
 
         // ── Attribution ─────────────────────────────────────────────
         author: doc.author ?? '',
@@ -361,6 +382,7 @@ function saveDownloadedMeta(doc) {
         id: doc._id,
         title: doc.title,
         pathKey: _pathKey(doc.subject, doc.category),
+        topic: doc.topic ?? null,
         incomingIsPremium,
         incomingTypeofIsPremium: typeof incomingIsPremium,
         storedIsPremium,
@@ -397,11 +419,21 @@ function isFavorite(id) {
 // regardless of pagination WITHIN the current subject/category.
 //
 // Both helpers are SCOPED to the path (subject + category) currently being
-// browsed. A download or favorite created in Anatomy → notes is invisible
-// from any other path. The persisted record already carries subject and
-// category (written verbatim by `saveDownloadedMeta`), and `currentCategory`
-// is the same normalized value that was written, so the comparison is
-// apples-to-apples.
+// browsed, and — when a topic is active — additionally scoped to that topic.
+// A download or favorite created in Anatomy → notes → lower-limb is
+// invisible while browsing a different topic, or while browsing the
+// category without a topic selected.
+
+/**
+ * Return true if the persisted record `d` matches the currently active
+ * topic scope. When `currentTopic === null` (topic-less category, or the
+ * category-wide view), every record passes — the topic filter is only
+ * applied when the user has explicitly selected one.
+ */
+function _matchesTopicScope(d) {
+    if (currentTopic === null) return true;
+    return (d.topic ?? null) === currentTopic;
+}
 
 function getDownloadedDocuments() {
     const meta = getDownloadedMeta();
@@ -412,7 +444,8 @@ function getDownloadedDocuments() {
     return Object.values(meta).filter(d =>
         d &&
         manifest[d._id] &&
-        _pathKey(d.subject, d.category) === pathKey
+        _pathKey(d.subject, d.category) === pathKey &&
+        _matchesTopicScope(d)
     );
 }
 
@@ -427,20 +460,22 @@ function getFavoriteDocuments() {
     const result = new Map();
 
     // Source 1: currently loaded catalogue docs. Already path-scoped by
-    // construction (allDocuments is the current subject/category page set).
+    // construction (allDocuments is the current subject/category page set)
+    // and topic-scoped when a topic is active.
     allDocuments.forEach(d => {
         if (favSet.has(d._id)) result.set(d._id, d);
     });
 
-    // Source 2: persisted downloaded metadata. Must be path-scoped here,
-    // otherwise a favorite that is ALSO downloaded would leak across paths
-    // (the store is global).
+    // Source 2: persisted downloaded metadata. Must be path- and
+    // topic-scoped here, otherwise a favorite that is ALSO downloaded
+    // would leak across paths (the store is global).
     const meta = getDownloadedMeta();
     const manifest = content.getDownloadManifest() || {};
     Object.values(meta).forEach(d => {
         if (!d || !favSet.has(d._id)) return;
         if (!manifest[d._id]) return;
         if (_pathKey(d.subject, d.category) !== pathKey) return;
+        if (!_matchesTopicScope(d)) return;
         if (!result.has(d._id)) result.set(d._id, d);
     });
 
@@ -545,6 +580,46 @@ function _compareTitles(a, b) {
     }
 }
 
+// ── DEDUPE ─────────────────────────────────────────────────────────────
+//
+// Collapse duplicate documents by `_id`, preserving first-occurrence order.
+//
+// Protects against two independent sources of duplication:
+//
+//   • Pagination overlap — the backend's cursor is exclusive on `_id` but
+//     the index scan is ordered by `_creationTime`, so documents that share
+//     a millisecond timestamp with the cursor document can slip through the
+//     `_id < cursor` filter and reappear on the next page. This is most
+//     visible in batches uploaded by the sync script in a single write.
+//
+//   • Share-landing injection — `_consumeSharedDoc` prepends the shared doc
+//     to `allDocuments`; if that doc was already on the page it would render
+//     twice.
+//
+// Order is preserved so "Load more" appends cleanly after what is already
+// on screen. Documents with a missing `_id` are dropped — they cannot be
+// addressed by the card's handlers anyway.
+//
+// Applied in two places:
+//   1. loadResources() on merge — keeps `allDocuments` free of duplicates.
+//   2. applyFiltersAndRender() — makes "one card per `_id`" an invariant
+//      of the renderer itself, regardless of where the data came from.
+//
+// @param {Array<object>} docs
+// @returns {Array<object>}
+function _dedupeDocuments(docs) {
+    if (!Array.isArray(docs)) return [];
+    const seen = new Set();
+    const out = [];
+    for (const d of docs) {
+        if (!d || d._id == null) continue;
+        if (seen.has(d._id)) continue;
+        seen.add(d._id);
+        out.push(d);
+    }
+    return out;
+}
+
 // ==================== RENDER ====================
 function applyFiltersAndRender() {
     const grid = document.getElementById('resource-grid');
@@ -555,9 +630,12 @@ function applyFiltersAndRender() {
     const searchEl = document.getElementById('search-input');
     const term = searchEl ? searchEl.value : '';
 
-    // Filter, then sort. Order is applied uniformly to every filter source.
+    // Filter, dedupe, then sort. The dedupe here guarantees "one card per
+    // `_id`" even if a future code path (share landing, a new pagination
+    // strategy) manages to put the same doc in `allDocuments` twice. Order
+    // is applied uniformly to every filter source.
     const filtered = sortDocuments(
-        filterDocuments(allDocuments, currentFilter, term),
+        _dedupeDocuments(filterDocuments(allDocuments, currentFilter, term)),
         currentFilter,
     );
 
@@ -566,6 +644,7 @@ function applyFiltersAndRender() {
             currentFilter,
             searchTerm: term,
             pathKey: _pathKey(currentSubject, currentCategory),
+            topic: currentTopic,
             totalInAllDocuments: allDocuments.length,
             afterFilter: filtered.length,
             premiumInFiltered: filtered.filter(d => d.isPremium === true).length,
@@ -672,6 +751,283 @@ function createResourceCard(doc) {
     `;
 }
 
+// ==================== TOPIC SELECTION ====================
+//
+// When topics.json declares topics for the current subject+category, the
+// browser renders a grid of topic cards instead of the resource grid. Each
+// card is a folder-style tile. Clicking a card scopes the resource fetch
+// to that topic and updates the URL.
+//
+// If topics.json has no entry (or the entry is empty) for this
+// subject+category, the topic layer is skipped entirely and the browser
+// behaves as before.
+
+/**
+ * Format a topic slug for display.
+ *
+ *   "abdomen&pelvis"           → "Abdomen & Pelvis"
+ *   "intro-anatomy"            → "Intro Anatomy"
+ *   "carbohydrate-metabolism"  → "Carbohydrate Metabolism"
+ *   "respiratory-physiology"   → "Respiratory Physiology"
+ *
+ * Hyphens and whitespace become word boundaries; each word is capitalized.
+ * Ampersands are spaced symmetrically.
+ */
+function _formatTopicName(slug) {
+    return String(slug || '')
+        .replace(/&/g, ' & ')
+        .split(/[-\s]+/)
+        .filter(Boolean)
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+}
+
+function createTopicCard(topic) {
+    const display = _formatTopicName(topic);
+    return `
+        <div class="topic-card" data-topic="${topic}" role="button" tabindex="0">
+            <div class="topic-thumbnail">
+                <img src="${TOPIC_ICON_SRC}" alt="" loading="lazy"
+                     onerror="this.onerror=null;this.outerHTML='<div class=&quot;topic-thumbnail-placeholder&quot;>📁</div>'">
+            </div>
+            <div class="topic-info">
+                <h3 class="topic-name">${display}</h3>
+            </div>
+        </div>
+    `;
+}
+
+function attachTopicCardListeners() {
+    document.querySelectorAll('.topic-card').forEach(card => {
+        card.addEventListener('click', () => {
+            const topic = card.dataset.topic;
+            if (topic) _selectTopic(topic);
+        });
+        card.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                const topic = card.dataset.topic;
+                if (topic) _selectTopic(topic);
+            }
+        });
+    });
+}
+
+/**
+ * Render the topic-selection grid. Replaces the resource grid, hides the
+ * catalogue chrome (search, filter, load more), and marks the module as
+ * showing topics so offline and online handlers leave the grid alone.
+ */
+function _showTopicGrid() {
+    const grid = document.getElementById('resource-grid');
+    if (!grid) {
+        console.error('[ResourceBrowser] resource-grid not found!');
+        return;
+    }
+
+    // Abandon any in-flight resource load. It may still resolve, but the
+    // generation check inside loadResources will silently drop its result.
+    _loadGeneration++;
+    isLoading = false;
+    _topicGridVisible = true;
+
+    // Clear state that belonged to a previous topic-scoped view.
+    allDocuments = [];
+    docMap.clear();
+    currentCursor = null;
+    hasMore = false;
+
+    // Hide chrome that only applies to the resource view.
+    _setCatalogueChromeVisible(false);
+
+    grid.innerHTML = availableTopics.map(createTopicCard).join('');
+    attachTopicCardListeners();
+
+    // Reset the filter dropdown to "all" so returning to the grid and then
+    // selecting a different topic does not carry over a stale filter.
+    currentFilter = 'all';
+    const dropdown = document.getElementById('filter-dropdown');
+    if (dropdown) {
+        dropdown.querySelectorAll('button').forEach(b => {
+            b.classList.toggle('active-filter', b.dataset.filter === 'all');
+        });
+    }
+
+    // Clear the search box — it isn't visible, but clearing avoids the
+    // next topic-scoped fetch being narrowed by a stale query.
+    const searchEl = document.getElementById('search-input');
+    if (searchEl) searchEl.value = '';
+
+    if (_dbg()) {
+        _logLine('topic-grid', `rendered ${availableTopics.length} topic(s)`, 'info');
+    }
+}
+
+/**
+ * Show or hide the catalogue chrome (search + filter row and the
+ * load-more container). Hidden while the topic grid is showing; visible
+ * while browsing resources.
+ */
+function _setCatalogueChromeVisible(visible) {
+    const display = visible ? '' : 'none';
+
+    const searchWrap = document.querySelector('.search-filter-row');
+    if (searchWrap) searchWrap.style.display = display;
+
+    const loadMoreContainer = document.getElementById('load-more-container');
+    if (loadMoreContainer) loadMoreContainer.style.display = display;
+}
+
+/**
+ * User tapped a topic card. Scope the browser to that topic.
+ */
+async function _selectTopic(topic) {
+    currentTopic = topic;
+    _topicGridVisible = false;
+    _setUrlTopic(topic);
+    _updatePageTitle();
+
+    if (_dbg()) {
+        _logLine('topic-select', `topic="${topic}"`, 'ok');
+    }
+
+    _setCatalogueChromeVisible(true);
+    await loadResources(true);
+}
+
+/**
+ * Return to the topic grid from a topic-scoped view. Called by the page
+ * file when the user taps the Back button while a topic is active.
+ */
+export function backToTopics() {
+    if (availableTopics.length === 0) {
+        // No topics to return to — should not happen (page only calls this
+        // when isTopicActive() is true) but guard anyway.
+        return;
+    }
+
+    currentTopic = null;
+    _setUrlTopic(null);
+    _updatePageTitle();
+    _showTopicGrid();
+
+    if (_dbg()) {
+        _logLine('back-to-topics', 'returned to topic grid', 'info');
+    }
+}
+
+/**
+ * Return the currently-active topic slug, or `null` when no topic is
+ * active (grid showing, or topic-less category view).
+ */
+export function getCurrentTopic() {
+    return currentTopic;
+}
+
+/**
+ * True when a topic is selected AND the current subject+category has
+ * topics. Drives the page-level Back button's decision between
+ * "return to the topic grid" and "navigate to subjects".
+ */
+export function isTopicActive() {
+    return currentTopic !== null && availableTopics.length > 0;
+}
+
+/**
+ * Re-sync the browser to a topic supplied from the URL. Called by the page
+ * file's popstate handler when browser back/forward lands on a URL whose
+ * `topic` param differs from the module's current state.
+ *
+ * Idempotent: no-op when the requested topic already matches.
+ *
+ * @param {string|null} topic
+ */
+export async function syncTopicFromUrl(topic) {
+    const normalized = topic || null;
+    if (normalized === currentTopic) return;
+
+    if (_dbg()) {
+        _logLine(
+            'topic-sync',
+            `currentTopic="${currentTopic}" → urlTopic="${normalized}"`,
+            'info'
+        );
+    }
+
+    if (normalized === null) {
+        // URL says no topic. If topics exist, show the grid. Otherwise
+        // treat as a topic-less category and load resources.
+        currentTopic = null;
+        _updatePageTitle();
+        if (availableTopics.length > 0) {
+            _showTopicGrid();
+        } else {
+            _topicGridVisible = false;
+            _setCatalogueChromeVisible(true);
+            await loadResources(true);
+        }
+        return;
+    }
+
+    // URL says a specific topic.
+    currentTopic = normalized;
+    _topicGridVisible = false;
+    _updatePageTitle();
+    _setCatalogueChromeVisible(true);
+    await loadResources(true);
+}
+
+/**
+ * Read the `topic` param from the current URL.
+ * @returns {string|null}
+ */
+function _readUrlTopic() {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('topic') || null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Set (or clear) the `topic` param on the current URL via pushState, so
+ * browser back/forward can traverse between the grid and scoped views.
+ * @param {string|null} topic
+ */
+function _setUrlTopic(topic) {
+    try {
+        const url = new URL(window.location.href);
+        if (topic) {
+            url.searchParams.set('topic', topic);
+        } else {
+            url.searchParams.delete('topic');
+        }
+        const qs = url.searchParams.toString();
+        const next = url.pathname + (qs ? '?' + qs : '') + url.hash;
+        history.pushState(null, '', next);
+    } catch { /* ignore */ }
+}
+
+/**
+ * Update the page title to reflect the active topic, if any.
+ */
+function _updatePageTitle() {
+    const pageTitle = document.getElementById('page-title');
+    if (!pageTitle) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const type = params.get('type');
+    const typeName = TYPE_NAMES[type] || 'Resources';
+    const subject = currentSubject || '';
+
+    if (currentTopic) {
+        pageTitle.textContent = `${typeName} – ${subject} · ${_formatTopicName(currentTopic)}`;
+    } else {
+        pageTitle.textContent = `${typeName} – ${subject}`;
+    }
+}
+
 // ==================== OPEN-BUTTON FEEDBACK ====================
 
 /**
@@ -762,7 +1118,7 @@ function _highlightSharedCard(id) {
 // made here.
 //
 // URL shape:
-//   https://app.medvix.co.ke/resource-browser?subject=<s>&type=<t>&share=1&id=<_id>
+//   https://app.medvix.co.ke/resource-browser?subject=<s>&type=<t>[&topic=<k>]&share=1&id=<_id>
 //
 // Origin policy:
 //   The share URL ALWAYS points at the production origin, regardless of
@@ -770,20 +1126,31 @@ function _highlightSharedCard(id) {
 //   runs at http://localhost:3001, but a link with that origin is useless
 //   to the recipient. Change SHARE_ORIGIN only if the app moves.
 //
+// Message policy:
+//   Alongside the URL, a single short paragraph is emitted so the recipient
+//   knows what the link is before tapping. See `buildShareMessage()`.
+//   Native share and navigator.share receive the URL as a separate field
+//   and do not print it twice; the clipboard fallback concatenates the
+//   paragraph and the URL after a blank line.
+//
 // Landing flow:
-//   1. initResourceBrowser() runs first — routing + page 1 fetch as normal.
+//   1. initResourceBrowser() runs first — routing + topics.json read.
 //   2. Share params consumed:
-//        • If the id is already in docMap (it landed on a loaded page),
-//          use the real doc. No network call.
+//        • If the id is already in docMap → use the real doc, no
+//          network call.
 //        • Miss → content.fetchResourceById(id), which queries
-//          `resources/queries:getResource` (public, no auth) and returns
-//          the canonical public shape.
+//          `resources/queries:getResource` (public, no auth) and
+//          returns the canonical public shape.
 //        • Null → toast "Shared document not found", stop.
-//   3. The shared card is injected into the grid (if not already present),
-//      the filter is reset to "all", any active search is cleared, the
-//      card is scrolled into view and briefly highlighted, and a toast
-//      names it. NO viewer is opened. NO download is started.
-//   4. Strip share params from the URL.
+//   3. The recipient sees the shared document rendered as a normal card
+//      in the grid, highlighted so they can identify it, and a toast
+//      naming it. The filter is reset to "all" and any active search
+//      term cleared so the card is guaranteed visible.
+//   4. If the URL carried a topic, `currentTopic` is set so a subsequent
+//      Back tap returns to the topic grid rather than subjects.
+//   5. Strip share params from the URL (topic remains).
+//   6. Nothing else happens. The recipient decides whether to Download
+//      the resource or, once downloaded, to Open it in the viewer.
 //
 // Native share (Android):
 //   Inside the Capacitor Android app, `shareResource` prefers the native
@@ -811,10 +1178,85 @@ function buildShareUrl(doc) {
     const params = new URLSearchParams();
     params.set('subject', String(doc.subject ?? ''));
     params.set('type', String(_categoryToType(doc.category)));
+    if (doc.topic) {
+        params.set('topic', String(doc.topic));
+    }
     params.set(SHARE_PARAM, '1');
     params.set('id', String(doc._id));
 
     return `${SHARE_ORIGIN}${SHARE_PATH}?${params.toString()}`;
+}
+
+/**
+ * Build the human-readable message that accompanies a share URL.
+ *
+ * Written as a single short paragraph so it reads naturally in a chat
+ * preview (WhatsApp, Telegram, SMS) rather than as a bulleted list.
+ * Medvix is named in the opening clause so the recipient knows which
+ * app the link will open.
+ *
+ * Canonical shape:
+ *
+ *   Check out "Anatomy of the Abdomen" on Medvix — a Study Resources
+ *   document for Anatomy under the Abdomen & Pelvis topic, by
+ *   Dr. Smith (2024).
+ *
+ * Every optional clause degrades gracefully. A document with no topic,
+ * author, or year simply produces a shorter but still grammatical
+ * paragraph:
+ *
+ *   Check out "Chapter 1" on Medvix — a Study Resources document for
+ *   Anatomy.
+ *
+ * The URL is deliberately NOT included here. Native share and
+ * navigator.share both receive it as a separate field and append it
+ * themselves; the clipboard fallback concatenates it explicitly.
+ *
+ * @param {object} doc
+ * @returns {string}
+ */
+function buildShareMessage(doc) {
+    const title = String(doc.title || '').trim() || 'this resource';
+    const subject = String(doc.subject || '').trim();
+    const typeKey = _categoryToType(doc.category);
+    const categoryLabel =
+        TYPE_NAMES[typeKey] || String(doc.category || '').trim();
+    const topicName = doc.topic ? _formatTopicName(doc.topic) : '';
+    const author = String(doc.author || '').trim();
+    const year = doc.year ? String(doc.year) : '';
+
+    // ── Opening clause ───────────────────────────────────────────────
+    // Quotes around the title make it stand out in a chat preview.
+    // Medvix is named here so the recipient knows which app to open.
+    let message = `Check out "${title}" on Medvix`;
+
+    // ── Classification clause ────────────────────────────────────────
+    // " — a Study Resources document for Anatomy under the Abdomen &
+    // Pelvis topic" — each fragment drops out if the data is missing,
+    // leaving a shorter but still grammatical paragraph.
+    const categoryBit = categoryLabel
+        ? `a ${categoryLabel} document`
+        : 'a document';
+    const subjectBit = subject ? ` for ${subject}` : '';
+    const topicBit = topicName ? ` under the ${topicName} topic` : '';
+
+    message += ` — ${categoryBit}${subjectBit}${topicBit}`;
+
+    // ── Attribution ──────────────────────────────────────────────────
+    // ", by Dr. Smith (2024)" — appended only when there is something
+    // to attribute. Handles the four combinations explicitly so no
+    // stray punctuation leaks out.
+    if (author && year) {
+        message += `, by ${author} (${year})`;
+    } else if (author) {
+        message += `, by ${author}`;
+    } else if (year) {
+        message += ` (${year})`;
+    }
+
+    message += '.';
+
+    return message;
 }
 
 /** Parse the current URL. Returns `{id}` or null. */
@@ -831,7 +1273,7 @@ function readSharedDocFromUrl() {
     }
 }
 
-/** Strip share params from the URL after consumption. */
+/** Strip share params from the URL after consumption. Topic is preserved. */
 function clearSharedDocFromUrl() {
     try {
         const url = new URL(window.location.href);
@@ -892,7 +1334,13 @@ async function copyToClipboard(text) {
  *   2. Web Share API (navigator.share) — modern mobile browsers.
  *   3. Clipboard copy + toast — desktop / older browsers.
  *
- * Only needs `_id`, `subject`, and `category`.
+ * Only needs `_id`, `subject`, `category`, and optionally `topic`.
+ *
+ * The message body is a single short paragraph describing the document
+ * (see `buildShareMessage()`), so the recipient knows what the link is
+ * before tapping. The URL is passed as a separate field to native share
+ * and navigator.share so it is not duplicated in the body; the clipboard
+ * fallback concatenates both after a blank line.
  *
  * @param {object} doc
  */
@@ -904,10 +1352,10 @@ async function shareResource(doc) {
 
     const url = buildShareUrl(doc);
     const shareTitle = doc.title || 'Shared document';
-    const shareText = `Check out this resource: ${doc.title || ''}`;
+    const shareText = buildShareMessage(doc);
 
     if (_dbg()) {
-        _logLine('share', `id=${doc._id} url=${url}`, 'info');
+        _logLine('share', `id=${doc._id} topic=${doc.topic || '—'} url=${url}`, 'info');
     }
 
     // ── 1. Native plugin ───────────────────────────────────────────
@@ -944,11 +1392,16 @@ async function shareResource(doc) {
     }
 
     // ── 3. Clipboard ───────────────────────────────────────────────
-    const ok = await copyToClipboard(url);
+    //
+    // Unlike the native / Web Share paths, the clipboard receives only
+    // what we hand it — no URL is appended automatically. Concatenate the
+    // paragraph and the URL so the pasted content is self-describing.
+    const clipboardPayload = `${shareText}\n\n${url}`;
+    const ok = await copyToClipboard(clipboardPayload);
     if (ok) {
-        ui.showToast('Share link copied to clipboard', 'success');
+        ui.showToast('Share message + link copied to clipboard', 'success');
     } else {
-        try { window.prompt('Copy this link to share:', url); } catch { /* ignore */ }
+        try { window.prompt('Copy this message to share:', clipboardPayload); } catch { /* ignore */ }
     }
 }
 
@@ -959,9 +1412,7 @@ async function shareResource(doc) {
  * NO viewer is opened. NO download is started. The recipient gets the
  * card with full metadata (title, author, size, premium badge, download
  * state) and decides what to do with it — Download, Open (once
- * downloaded), favourite, or nothing. Every one of those paths flows
- * through the existing card handlers, which already implement
- * entitlement checks, preview mode, and offline storage.
+ * downloaded), favourite, or nothing.
  *
  * Called from two places:
  *   • initResourceBrowser() on cold start, when the URL carries share
@@ -990,8 +1441,17 @@ async function _consumeSharedDoc(share) {
         return;
     }
 
+    // Make sure we're not showing the topic grid while the shared card
+    // is on screen. Hide the chrome per the resource-view convention.
+    _topicGridVisible = false;
+    _setCatalogueChromeVisible(true);
+
     // Inject the doc into the grid so the recipient sees it as a real
     // card, with all its metadata, file size, and entitlements intact.
+    // Guarded so a share landing on a page that already contains the same
+    // doc doesn't create a duplicate — the render-time dedupe is the final
+    // safety net, but keeping `allDocuments` clean here means the
+    // "load more" cursor and the button state remain coherent.
     docMap.set(doc._id, doc);
     if (!allDocuments.some(d => d._id === doc._id)) {
         allDocuments = [doc, ...allDocuments];
@@ -1025,7 +1485,11 @@ async function _consumeSharedDoc(share) {
     _highlightSharedCard(doc._id);
 
     if (_dbg()) {
-        _logLine('share-land', `id=${doc._id} title="${doc.title}"`, 'info');
+        _logLine(
+            'share-land',
+            `id=${doc._id} title="${doc.title}" topic="${doc.topic || '—'}"`,
+            'info'
+        );
     }
 
     ui.showToast(`Shared: ${doc.title}`, 'info');
@@ -1067,7 +1531,7 @@ function attachCardEventListeners() {
                 let previewMode = false;
                 let hasActive = false;
 
-                             try {
+                try {
                     if (doc && doc.isPremium === true) {
                         hasActive = await subscription.hasActiveSubscription();
                         if (!hasActive) {
@@ -1125,8 +1589,7 @@ function attachCardEventListeners() {
                     // button.
                     _restoreButton(btn);
                 }
-                return;  
-
+                return;
             }
 
             // ===== DOWNLOAD =====
@@ -1399,10 +1862,17 @@ async function startDownload(resourceId) {
         };
         content.setDownloadManifest(manifest);
 
-        // Persisted metadata — this is where isPremium AND the path
-        // (subject/category) are written. Without these the record would
-        // be unreachable from any future browsing path.
+        // Persisted metadata — this is where isPremium, path, and topic
+        // are written. Without these the record would be unreachable from
+        // any future browsing path.
         saveDownloadedMeta(doc);
+
+        // ── TRIGGER IN-APP REVIEW (Respects 45-day cooldown) ──
+        try {
+            await rateUs.requestAppReview();
+        } catch (err) {
+            console.warn('[ResourceBrowser] RateUs trigger failed:', err);
+        }
 
         // Full re-render: the card's sort position may change, and if the
         // user is filtered by "downloaded" or "all", a new card may appear.
@@ -1411,6 +1881,7 @@ async function startDownload(resourceId) {
         _logLine(
             'download-complete',
             `id=${resourceId} path=${_pathKey(doc && doc.subject, doc && doc.category)} ` +
+            `topic=${(doc && doc.topic) || '—'} ` +
             `size=${blob.size} thumbnail=${thumbnailDownloaded} ` +
             `premiumWritten=${doc ? doc.isPremium === true : false}`,
             'ok'
@@ -1443,8 +1914,11 @@ async function startDownload(resourceId) {
 
 /**
  * Build the resource list from what has actually been downloaded, SCOPED
- * TO THE CURRENT PATH (subject + category). A download made in Anatomy →
- * notes is invisible here while browsing Physiology → textbooks.
+ * TO THE CURRENT PATH (subject + category + topic).
+ *
+ * When a topic is active, only downloads whose `topic` matches are shown.
+ * When no topic is active, all downloads in the category are shown — which
+ * matches the topic-less category flow.
  *
  * Sorting and filtering are applied by `applyFiltersAndRender`.
  */
@@ -1454,6 +1928,7 @@ function loadOfflineResources() {
     if (_dbg()) {
         _log('offline-load', {
             pathKey: _pathKey(currentSubject, currentCategory),
+            topic: currentTopic,
             downloadedCount: docs.length,
             titles: docs.map(d => d.title),
         });
@@ -1476,8 +1951,14 @@ function loadOfflineResources() {
  * Immediate offline-only render, bypassing the isLoading guard.
  * Called from the offline event handler so an in-flight fetch cannot
  * block the offline view from appearing.
+ *
+ * Deliberately a no-op while the topic grid is visible: the grid is
+ * derived from topics.json (a cached asset) and remains usable offline.
+ * Replacing it with a resource listing would yank the user out of the
+ * selection step before they've picked a topic.
  */
 function renderOfflineNow() {
+    if (_topicGridVisible) return;
     isLoading = false;
     loadOfflineResources();
     applyFiltersAndRender();
@@ -1485,8 +1966,10 @@ function renderOfflineNow() {
 
 // ==================== LOAD RESOURCES ====================
 async function loadResources(reset = true) {
-    if (isLoading) return;
+    // Abandon any pending load before starting a new one.
+    const myGen = ++_loadGeneration;
     isLoading = true;
+    _topicGridVisible = false;
 
     if (reset) {
         currentCursor = null;
@@ -1512,8 +1995,13 @@ async function loadResources(reset = true) {
                 currentSubject,
                 currentCategory,
                 currentCursor,
-                {}
+                {},
+                currentTopic
             );
+
+            // A newer load has started while we were fetching. Discard
+            // our result so it cannot clobber the newer one's writes.
+            if (myGen !== _loadGeneration) return;
 
             // The fetch may have spanned a connectivity change. If we are
             // offline now, discard the response and render the offline set
@@ -1532,6 +2020,7 @@ async function loadResources(reset = true) {
                     source: result && result.source,
                     subject: currentSubject,
                     category: currentCategory,
+                    topic: currentTopic,
                     pathKey: _pathKey(currentSubject, currentCategory),
                     reset,
                     cursor: currentCursor,
@@ -1543,10 +2032,14 @@ async function loadResources(reset = true) {
                 }, premiumCount > 0 ? 'ok' : 'warn');
             }
 
+            // ── DEDUPE ── Collapse on append so `allDocuments` never grows
+            // a duplicate. The render-time dedupe is a second safety net,
+            // but keeping the source list clean here also keeps
+            // `hasMore`/`currentCursor` coherent with what the user sees.
             if (reset) {
-                allDocuments = result.documents;
+                allDocuments = _dedupeDocuments(result.documents);
             } else {
-                allDocuments = allDocuments.concat(result.documents);
+                allDocuments = _dedupeDocuments(allDocuments.concat(result.documents));
             }
             allDocuments.forEach(d => docMap.set(d._id, d));
 
@@ -1561,6 +2054,7 @@ async function loadResources(reset = true) {
             networkSucceeded = true;
 
         } catch (error) {
+            if (myGen !== _loadGeneration) return;
             console.warn('[ResourceBrowser] Network fetch failed, falling back to offline set:', error);
             _logLine('network-failed', String(error && error.message || error), 'fail');
         }
@@ -1568,13 +2062,36 @@ async function loadResources(reset = true) {
         _logLine('network-skip', 'navigator.onLine === false', 'warn');
     }
 
+    if (myGen !== _loadGeneration) return;
+
     if (!networkSucceeded) {
         loadOfflineResources();
     }
 
     isLoading = false;
 
+    // ── First paint: as soon as documents are in state ───────────────
+    //
+    // Render immediately with whatever thumbnail state we have. Cards
+    // whose thumbnails are already in the in-memory cache (or which have
+    // a live remote URL and are online) show real images; everything
+    // else falls back to the 📄 placeholder. This is what makes the
+    // resource list appear the instant the fetch resolves rather than
+    // after a batch of disk reads.
+    if (myGen !== _loadGeneration) return;
+    applyFiltersAndRender();
+
+    // ── Second paint: after thumbnails hydrate ───────────────────────
+    //
+    // hydrateThumbnailCache reads from IndexedDB (or the native bridge)
+    // and populates blob URLs for any previously-downloaded thumbnails.
+    // When it completes, cards that were showing placeholders or remote
+    // URLs swap to their offline-safe blob versions. In the common case
+    // where nothing was downloaded, this is a no-op and the second
+    // render produces identical output — cheap, and invisible to the
+    // user.
     await hydrateThumbnailCache(allDocuments);
+    if (myGen !== _loadGeneration) return;
     applyFiltersAndRender();
 }
 
@@ -1604,6 +2121,12 @@ function attachConnectivityListeners() {
     window.addEventListener('online', () => {
         ui.showToast('Back online', 'success');
         isLoading = false;
+
+        // On the topic grid: nothing to fetch until a topic is picked.
+        // The user can continue browsing topics; the next topic selection
+        // will do its own fetch.
+        if (_topicGridVisible) return;
+
         // Refresh entitlement before re-rendering so the premium badge
         // reflects the latest subscription state (a plan may have been
         // purchased or expired while we were offline).
@@ -1613,6 +2136,7 @@ function attachConnectivityListeners() {
     window.addEventListener('offline', () => {
         ui.showToast('Offline – showing downloaded resources only', 'info');
         // Immediate offline render — do NOT wait for any in-flight fetch.
+        // renderOfflineNow() is a no-op while the topic grid is visible.
         renderOfflineNow();
     });
 }
@@ -1628,13 +2152,15 @@ export async function initResourceBrowser(subject, type, forceRefresh = false) {
     currentSubject = subject;
     currentCategory = CATEGORY_MAP[type] || type;
 
-    // Reset per-visit UI state so filters don't leak
+    // Reset per-visit state.
     currentFilter = 'all';
+    currentTopic = null;
+    availableTopics = [];
+    _topicGridVisible = false;
     const searchEl = document.getElementById('search-input');
     if (searchEl) searchEl.value = '';
 
-    const typeName = TYPE_NAMES[type] || 'Resources';
-    pageTitle.textContent = `${typeName} – ${subject}`;
+    _updatePageTitle();
 
     const dropdown = document.getElementById('filter-dropdown');
     if (dropdown) {
@@ -1642,6 +2168,10 @@ export async function initResourceBrowser(subject, type, forceRefresh = false) {
             b.classList.toggle('active-filter', b.dataset.filter === 'all');
         });
     }
+
+    // Hide the chrome until we know which view we'll render. Prevents a
+    // flash of the search bar above a topic grid.
+    _setCatalogueChromeVisible(false);
 
     if (_dbg()) {
         _logLine(
@@ -1652,45 +2182,105 @@ export async function initResourceBrowser(subject, type, forceRefresh = false) {
         );
     }
 
-    await refreshSubscriptionState();
+    // ── Kick off the entitlement refresh, but do NOT wait for it ─────
+    //
+    // The only thing the fresh value changes on the first paint is the
+    // 🔒 Premium badge — a presentation hint. The Open and Download
+    // handlers re-check entitlement themselves at the moment of use and
+    // remain the sole authority. Blocking the render on this call used
+    // to add 500–2000 ms to the initial paint on a cold backend; now it
+    // runs in the background and repaints when it lands.
+    //
+    // Repaint guard:
+    //   • _topicGridVisible — nothing to repaint; the badge isn't shown
+    //     on topic tiles.
+    //   • isLoading — a fetch is in flight; its own completion will
+    //     call applyFiltersAndRender() and pick up the fresh value.
+    //   • No documents yet — the branch dispatch below hasn't rendered
+    //     anything; the subsequent render will read the (possibly
+    //     already-updated) flag directly.
+    refreshSubscriptionState().then(() => {
+        if (_topicGridVisible) return;
+        if (isLoading) return;
+        if (allDocuments.length === 0) return;
+        applyFiltersAndRender();
+    });
+
+    // ── Load topics.json and derive the available topic list ──────
+    //
+    // topics.json is downloaded and cached by the same public-assets
+    // pipeline as the user manual. A missing or malformed payload is
+    // treated as "no topics for this subject+category" — the browser
+    // then falls through to the category view exactly as before.
+    try {
+        const topicsJson = await getTopicsJson();
+        availableTopics = topicsJson?.subjects?.[subject]?.[currentCategory] || [];
+    } catch (err) {
+        console.warn('[ResourceBrowser] topics.json unavailable:', err);
+        availableTopics = [];
+    }
+
+    if (_dbg()) {
+        _logLine(
+            'topics-loaded',
+            `availableTopics=${availableTopics.length}` +
+            (availableTopics.length ? ` [${availableTopics.join(', ')}]` : ''),
+            availableTopics.length ? 'ok' : 'info'
+        );
+    }
 
     // ── Deep Link / Share Link Check ──────────────────────────────
-    // If a share link is present, fetch ONLY the specific shared document
-    // and skip loading the rest of the category from the backend.
+    //
+    // Share takes priority over the topic grid. A share link carries
+    // `share=1&id=…` and must resolve that ONE document rather than
+    // show a selection step.
+    //
+    // If the share URL also carried `?topic=…`, we preserve it on
+    // `currentTopic` so a subsequent Back tap returns to that topic's
+    // grid instead of exiting the page.
     const share = readSharedDocFromUrl();
+    const urlTopic = _readUrlTopic();
+
     if (share) {
         if (_dbg()) {
-            _logLine('init', `Share link detected for id=${share.id}. Skipping category bulk fetch.`, 'info');
+            _logLine(
+                'init',
+                `Share link detected for id=${share.id} ` +
+                `(urlTopic=${urlTopic || '—'}). Skipping topic grid.`,
+                'info'
+            );
         }
 
-        const doc = await content.fetchResourceById(share.id);
-        clearSharedDocFromUrl();
+        // Preserve topic context for the Back button even though the
+        // share resolution short-circuits the topic-scoped fetch.
+        currentTopic = urlTopic;
+        _updatePageTitle();
 
-        if (!doc) {
-            ui.showToast('Shared document not found', 'error');
-            // Fallback to normal category loading if the shared doc doesn't exist
-            await loadResources(true);
-        } else {
-            docMap.clear();
-            docMap.set(doc._id, doc);
-            allDocuments = [doc];
-            currentCursor = null;
-            hasMore = false;
-
-            const loadMoreBtn = document.getElementById('load-more-btn');
-            const loadMoreSpinner = document.getElementById('load-more-spinner');
-            if (loadMoreBtn) loadMoreBtn.style.display = 'none';
-            if (loadMoreSpinner) loadMoreSpinner.style.display = 'none';
-
-            await hydrateThumbnailCache([doc]);
-            applyFiltersAndRender();
-            _highlightSharedCard(doc._id);
-            ui.showToast(`Shared: ${doc.title}`, 'info');
+        await _consumeSharedDoc(share);
+    } else if (urlTopic !== null) {
+        // Direct URL topic — skip the grid and load that topic's resources.
+        if (_dbg()) {
+            _logLine('init', `URL topic="${urlTopic}" → loading directly`, 'info');
         }
+        currentTopic = urlTopic;
+        _topicGridVisible = false;
+        _updatePageTitle();
+        _setCatalogueChromeVisible(true);
+        await loadResources(true);
+    } else if (availableTopics.length > 0) {
+        // Topics exist for this subject+category — show the grid.
+        if (_dbg()) {
+            _logLine('init', `Rendering topic grid (${availableTopics.length} topics)`, 'info');
+        }
+        _showTopicGrid();
     } else {
-        // Standard flow: call all documents in that category as normal
+        // No topics — behave as before.
+        _topicGridVisible = false;
+        _setCatalogueChromeVisible(true);
         await loadResources(true);
     }
+
+    // ── Chrome wiring ─────────────────────────────────────────────
 
     if (searchEl) {
         searchEl.oninput = null;
@@ -1722,6 +2312,7 @@ export async function initResourceBrowser(subject, type, forceRefresh = false) {
     if (loadMoreBtn) {
         loadMoreBtn.onclick = () => {
             if (!navigator.onLine) return;
+            if (_topicGridVisible) return;
             loadResources(false);
         };
     }

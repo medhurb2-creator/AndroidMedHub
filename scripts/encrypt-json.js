@@ -14,6 +14,7 @@ const SKIP_FILES = new Set([
     'manifest.json',
     'assetlinks.json',
     'emoji-map.json',
+    'asset-manifest.json',
     // add more runtime-fetched JSON here, e.g.:
     // 'questions.json',
     // 'currencies.json',

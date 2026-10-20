@@ -15,6 +15,7 @@ import * as timeVerifier from './timeVerifier.js';
 import * as ui from './ui.js';
 import * as security from './security.js';
 import { initRouter, navigateTo } from './router.js';
+import * as redirect from './redirect.js';
 import * as updates from './updates.js';
 import * as events from './events.js';
 
@@ -437,7 +438,33 @@ function extractDeepLinkPath(rawUrl) {
 // ============================================================
 // DEEP LINK — COLD START ROUTE
 // ============================================================
+/**
+ * Decide where the app should open on cold start.
+ *
+ * Priority:
+ *   1. Native deep link   — an explicit external intent overrides
+ *                            whatever URL the WebView happens to be
+ *                            sitting on.
+ *   2. Native file intent — opens the viewer directly.
+ *   3. window.location    — the URL the user actually requested. This
+ *                            covers browser reloads, bookmarked links,
+ *                            and deep links delivered as URLs. It is
+ *                            the sole source of truth for the SPA's
+ *                            initial route when no native intent has
+ *                            been captured.
+ *   4. Default            — subjects if authenticated, else welcome.
+ *
+ * Before this function honored window.location, every cold start
+ * resolved to `subjects` or `welcome` regardless of what URL the
+ * user requested — the subsequent `history.replaceState` then
+ * clobbered the address bar before the router ever saw it. Loading
+ * `/login?email=…` silently redirected to `/subjects`. The URL
+ * branch below is the fix for that.
+ *
+ * @returns {string} route (e.g. "login?email=x" — no leading slash)
+ */
 function resolveInitialRoute() {
+    // 1. Native deep link wins.
     if (pendingAppUrl) {
         const link = extractDeepLinkPath(pendingAppUrl);
         if (link) {
@@ -472,11 +499,36 @@ function resolveInitialRoute() {
         }
     }
 
+    // 2. Native file intent.
     if (fileLaunchPending) {
         console.log('[App] Initial route: viewer (file intent)');
         return 'viewer';
     }
 
+    // 3. Honor the URL the user actually requested.
+    try {
+        const pathname = window.location.pathname || '/';
+        const route = pathname.replace(/^\//, '');
+        const suffix = (window.location.search || '') +
+                       (window.location.hash   || '');
+
+        if (route) {
+            console.log('[App] Initial route from URL:', route + suffix);
+            return route + suffix;
+        }
+
+        // Root path with a query/hash (e.g. "/?ref=ABC") — preserve the
+        // suffix but use the default route to render the page.
+        if (suffix) {
+            const def = appAuthenticated ? 'subjects' : 'welcome';
+            console.log('[App] Root path with query — default route + suffix');
+            return def + suffix;
+        }
+    } catch (err) {
+        console.warn('[App] Could not read window.location:', err);
+    }
+
+    // 4. Truly at root with no query → pick the default.
     return appAuthenticated ? 'subjects' : 'welcome';
 }
 
@@ -598,6 +650,187 @@ function capturePendingDeepLink() {
     })();
 
     return _pendingDeepLinkPromise;
+}
+
+// ============================================================
+// SMART HARDWARE BACK BUTTON
+// ============================================================
+//
+// Android hardware back button policy for this app:
+//
+//   • Single press  → router.goBack()  (walk the SPA history stack)
+//   • If there is nothing to go back to → show "Press back again to
+//     exit" and arm the exit timer.
+//   • Two presses inside BACK_DOUBLE_PRESS_WINDOW_MS → exit the app
+//     via MedvixApp.exitApp().
+//
+// How it plugs into the native side
+// ---------------------------------
+// MedvixAppPlugin.dispatchBackButton() fires the 'backButton' event
+// and returns true whenever a JS listener is registered — so
+// MainActivity.onBackPressed() consumes the press and does NOT call
+// super.onBackPressed(). That means: as long as this listener is
+// installed, the WebView is never implicitly killed by Android.
+// Exiting is only ever an explicit MedvixApp.exitApp() from here.
+//
+// We install the listener exactly once, at boot, right after
+// importCapacitor() has resolved the plugin reference. It stays
+// registered for the whole session.
+
+const BACK_DOUBLE_PRESS_WINDOW_MS = 2000;
+
+let _smartBackInstalled = false;
+let _lastBackPressAt = 0;
+let _backToastHideTimer = null;
+let _backToastRemoveTimer = null;
+
+/**
+ * Lightweight in-app toast. Matches the update-banner aesthetic
+ * (dark pill, safe-area aware) without pulling in a native plugin.
+ *
+ * @param {string} text
+ * @param {number} [durationMs=1600]
+ */
+function showBackToast(text = 'Press back again to exit', durationMs = 1600) {
+    if (typeof document === 'undefined' || !document.body) return;
+
+    let el = document.getElementById('medvix-back-toast');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'medvix-back-toast';
+        el.setAttribute('role', 'status');
+        el.setAttribute('aria-live', 'polite');
+        el.style.cssText = [
+            'position:fixed',
+            'left:50%',
+            'bottom:calc(32px + env(safe-area-inset-bottom, 0px))',
+            'transform:translate(-50%, 16px)',
+            'background:rgba(15, 23, 42, 0.95)',
+            'color:#ffffff',
+            'padding:10px 18px',
+            'border-radius:9999px',
+            'font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif',
+            'font-size:13.5px',
+            'letter-spacing:0.3px',
+            'line-height:1',
+            'box-shadow:0 6px 24px rgba(0, 0, 0, 0.35)',
+            'z-index:99998',
+            'opacity:0',
+            'pointer-events:none',
+            'transition:opacity 0.2s ease, transform 0.2s ease',
+            'white-space:nowrap',
+        ].join(';');
+        document.body.appendChild(el);
+    }
+
+    el.textContent = text;
+
+    if (_backToastHideTimer)   { clearTimeout(_backToastHideTimer);   _backToastHideTimer = null;   }
+    if (_backToastRemoveTimer) { clearTimeout(_backToastRemoveTimer); _backToastRemoveTimer = null; }
+
+    // Force a reflow so the transition fires even if the element was
+    // just created or is already visible.
+    void el.offsetWidth;
+
+    requestAnimationFrame(() => {
+        el.style.opacity = '1';
+        el.style.transform = 'translate(-50%, 0)';
+    });
+
+    _backToastHideTimer = setTimeout(() => {
+        el.style.opacity = '0';
+        el.style.transform = 'translate(-50%, 16px)';
+    }, durationMs);
+}
+
+function hideBackToast() {
+    const el = document.getElementById('medvix-back-toast');
+    if (!el) return;
+
+    if (_backToastHideTimer)   { clearTimeout(_backToastHideTimer);   _backToastHideTimer = null;   }
+    if (_backToastRemoveTimer) { clearTimeout(_backToastRemoveTimer); _backToastRemoveTimer = null; }
+
+    el.style.opacity = '0';
+    el.style.transform = 'translate(-50%, 16px)';
+}
+
+/**
+ * Decide whether the SPA has anywhere to go back to.
+ *
+ * window.history.length counts every entry in the WebView's history,
+ * including the initial page load. After the first pushState the
+ * length is 2; before it, 1. That is the signal we use — the router
+ * itself does not expose a depth counter, and adding one would mean
+ * touching the router for a concern that is really about the back
+ * key, not about routing.
+ *
+ * @returns {boolean}
+ */
+function canGoBackInHistory() {
+    try {
+        return window.history && window.history.length > 1;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Register the hardware back button listener. Idempotent — safe to
+ * call from bootstrap on every cold start.
+ */
+function installSmartBackButton() {
+    if (_smartBackInstalled) return;
+
+    if (!MedvixApp || typeof MedvixApp.addListener !== 'function') {
+        console.log('[Back] MedvixApp plugin unavailable — using default back behaviour');
+        return;
+    }
+
+    MedvixApp.addListener('backButton', () => {
+        const now = Date.now();
+        const sinceLast = now - _lastBackPressAt;
+        const isDoublePress = _lastBackPressAt > 0
+            && sinceLast < BACK_DOUBLE_PRESS_WINDOW_MS;
+
+        // ── Second press inside the window → exit ────────────────
+        if (isDoublePress) {
+            console.log('[Back] Double-press detected → exiting app');
+            _lastBackPressAt = 0;
+            hideBackToast();
+            try {
+                if (typeof MedvixApp.exitApp === 'function') {
+                    MedvixApp.exitApp().catch(() => {});
+                }
+            } catch (err) {
+                console.warn('[Back] exitApp failed:', err);
+            }
+            return;
+        }
+
+        // ── First press → walk SPA history ───────────────────────
+        _lastBackPressAt = now;
+
+        if (canGoBackInHistory()) {
+            try {
+                if (window.router?.goBack) {
+                    window.router.goBack();
+                } else {
+                    window.history.back();
+                }
+            } catch (err) {
+                console.warn('[Back] goBack failed:', err);
+                showBackToast('Press back again to exit');
+            }
+            return;
+        }
+
+        // ── No history to walk → teach the user the exit gesture ─
+        console.log('[Back] At root of history — press again to exit');
+        showBackToast('Press back again to exit');
+    });
+
+    _smartBackInstalled = true;
+    console.log('[Back] Smart back button installed');
 }
 
 // ============================================================
@@ -878,6 +1111,11 @@ async function initializeNetworkPhase() {
 window.addEventListener('time-tamper-detected', async () => {
     console.warn('[App] Time tamper detected – logging out');
     await auth.clearUser();
+    // A locked/tampered session invalidates any pending intent the user
+    // had — clear the redirect chain so we don't hand a stale return
+    // URL to the next login.
+    try { redirect.clearReturns(); } catch { /* ignore */ }
+    try { redirect.clearSnapshots(); } catch { /* ignore */ }
     navigateTo('login?error=time_tamper');
 });
 
@@ -937,6 +1175,16 @@ async function bootstrap() {
         consumeEarlyDeepLink();
         importCapacitor();
 
+        // Smart back button depends only on the MedvixApp plugin
+        // reference, which importCapacitor() has just resolved.
+        // Install it before any await so the listener is in place
+        // even if the rest of boot stalls — the native side checks
+        // hasListeners("backButton") on every press, and if the
+        // listener is not registered by the time the user presses
+        // back, Android falls through to super.onBackPressed() and
+        // kills the activity.
+        installSmartBackButton();
+
         // --- Apply saved theme BEFORE any await ---
         // Prevents a light flash on dark-mode cold starts. Idempotent
         // with the same read inside initializeAppLocal().
@@ -948,10 +1196,24 @@ async function bootstrap() {
         registerFileListener();
         registerAppUrlListener();
 
-        // --- Run local init in parallel with native captures ---
-        // initializeAppLocal() only logs a referral hint from pendingAppUrl;
-        // the real validation happens in initializeNetworkPhase(), which
-        // re-reads pendingAppUrl after captures have settled.
+        // --- Kick off local init and native captures in parallel ---
+        //
+        // `initializeAppLocal()` ends with a network round-trip to
+        // `subscription.initSubscription()`. Historically bootstrap
+        // awaited it, which held the splash and the router start
+        // behind 500–2000 ms of network I/O on every cold boot.
+        //
+        // Nothing in the boot path below needs that call to finish:
+        //   • `auth.checkAuth()` reads localStorage synchronously,
+        //     so the auth flag is accurate without waiting.
+        //   • `resolveInitialRoute()` only consults `appAuthenticated`
+        //     and the native intent flags, both of which are ready now.
+        //   • `initRouter()` renders the first page from the URL.
+        //
+        // The promise therefore resolves in the background; its
+        // completion gates the deferred work (network sync,
+        // notifications, service worker), which is already off the
+        // critical path.
         const capturesPromise  = Promise.all([captureLaunchFile(), captureLaunchUrl()]);
         const localInitPromise = initializeAppLocal();
 
@@ -967,6 +1229,11 @@ async function bootstrap() {
         // fileLaunchPending for referral badge + route resolution.
         await capturesPromise;
 
+        // Synchronous auth read — reads a token from localStorage,
+        // doesn't depend on initUser() having completed.
+        appAuthenticated = auth.checkAuth();
+        appInitialized = true;
+
         referralCode = pendingAppUrl
             ? referral.detectReferralFromURL(pendingAppUrl)
             : referral.detectReferralFromURL();
@@ -978,11 +1245,6 @@ async function bootstrap() {
                 codeSpan.textContent = referralCode;
             }
         }
-
-        const localOk = await localInitPromise;
-
-        appAuthenticated = auth.checkAuth();
-        appInitialized = true;
 
         // --- First-launch only: short race on the deferred deep link ---
         // The late-dispatch .then() below still honors a slow-arriving
@@ -1039,12 +1301,24 @@ async function bootstrap() {
             ? performance.now() : Date.now();
         console.log(`[Boot] First paint + splash teardown: ${Math.round(t1 - t0)}ms`);
 
-        if (localOk) {
-            scheduleDeferredWork();
-        } else {
-            console.warn('[App] Local init failed — running deferred work anyway');
-            scheduleDeferredWork();
-        }
+        // --- Schedule deferred work from localInitPromise's settlement ---
+        //
+        // If local init already resolved by now (fast backend, warm
+        // cache), the `.then()` fires immediately. If not, it fires
+        // the moment the network phase completes — completely
+        // decoupled from splash teardown above.
+        localInitPromise
+            .then((localOk) => {
+                if (!localOk) {
+                    console.warn('[App] Local init reported a fallback — running deferred work anyway');
+                }
+                scheduleDeferredWork();
+            })
+            .catch((err) => {
+                console.error('[App] Local init rejected:', err);
+                scheduleDeferredWork();
+            });
+
     } catch (error) {
         console.error('[App] Bootstrap failed:', error);
 
@@ -1156,6 +1430,22 @@ window.app = {
     isFirstLaunch,
     markLaunched,
 
+    // ── Smart back button (QA / devtools) ──────────────────────
+    // simulateBackPress() fires the same code path the hardware
+    // key triggers, so you can exercise the single/double logic
+    // from DevTools without the physical button.
+    isSmartBackInstalled: () => _smartBackInstalled,
+    simulateBackPress: () => {
+        if (!MedvixApp || typeof MedvixApp.addListener !== 'function') {
+            console.warn('[Back] MedvixApp plugin unavailable');
+            return false;
+        }
+        // Emit the same event the native side would.
+        MedvixApp.notifyListeners?.('backButton', {}).catch(() => {});
+        return true;
+    },
+    resetBackTimer: () => { _lastBackPressAt = 0; },
+
     storageRoot:           () => window.MedVixStorage?.getRoot?.()           || null,
     storageRootType:       () => window.MedVixStorage?.getRootType?.()       || 'unavailable',
     storageAvailable:      () => !!window.MedVixStorage?.isAvailable?.()    ,
@@ -1179,4 +1469,63 @@ window.app = {
     storageRegisteredNamespaces: () => layout.getRegisteredNamespaces(),
     storageMigrationRan:         () => !!utils.getLocalStorage(MIGRATION_KEY),
     storageMigrateLegacyBlobs:   () => migrateLegacyBlobs(),
+};
+
+// ============================================================
+// SMART REDIRECT — GLOBAL EXPOSURE
+// ============================================================
+// Pages that don't want to import the module call these via
+// window.redirect.* — same singleton, same session storage.
+//
+//   navigateWithReturn(target, reason, meta)
+//     Push the current page and go to `target`. Captures form fields,
+//     scroll, focus, and any registered adapter's state so nothing is
+//     lost on the round-trip.
+//
+//   consumeAndReturn(fallback, { clearAll })
+//     Pop the return stack and go back. Falls back to the URL's
+//     returnTo, then to `fallback`.
+//
+//   consumeSnapshot()
+//     Called by the returning page's init() to restore the state the
+//     module captured on the way out. One-shot.
+//
+//   registerStateAdapter(pageKey, { capture, restore })
+//     For pages with in-memory state that never lands in the DOM
+//     (exam-room's question index, exam-settings' active step, …).
+//
+//   readRedirectContext()
+//     Returns { returnTo, reason, source, hasContext } for pages that
+//     want to render "Log in to continue to X" hints.
+//
+//   clearReturns() / clearSnapshots()
+//     Called on logout / time-tamper so a stale chain never leaks into
+//     the next session.
+//
+window.redirect = {
+    // Navigation
+    navigateWithReturn:     redirect.navigateWithReturn,
+    consumeAndReturn:       redirect.consumeAndReturn,
+
+    // Stack
+    pushReturn:             redirect.pushReturn,
+    popReturn:              redirect.popReturn,
+    peekReturn:             redirect.peekReturn,
+    hasReturn:              redirect.hasReturn,
+    getReturnStack:         redirect.getReturnStack,
+    clearReturns:           redirect.clearReturns,
+
+    // State adapters (page-specific capture / restore)
+    registerStateAdapter:   redirect.registerStateAdapter,
+    unregisterStateAdapter: redirect.unregisterStateAdapter,
+
+    // Snapshots (UI + page state)
+    peekSnapshot:           redirect.peekSnapshot,
+    hasSnapshot:            redirect.hasSnapshot,
+    consumeSnapshot:        redirect.consumeSnapshot,
+    clearSnapshots:         redirect.clearSnapshots,
+
+    // Context
+    readRedirectContext:    redirect.readRedirectContext,
+    stripRedirectParams:    redirect.stripRedirectParams,
 };

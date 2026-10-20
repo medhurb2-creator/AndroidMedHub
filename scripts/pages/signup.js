@@ -2,8 +2,8 @@
 import * as auth from '../auth.js';
 import * as ui from '../ui.js';
 import * as router from '../router.js';
+import * as redirect from '../redirect.js';
 import * as validation from '../validation.js';
-import * as security from '../security.js';
 import * as utils from '../utils.js';
 import * as referral from '../referral.js';
 import { initGoogleSignIn, disableGoogleAutoSelect } from '../auth/google.js';
@@ -11,24 +11,16 @@ import { initGoogleSignIn, disableGoogleAutoSelect } from '../auth/google.js';
 export async function init(context) {
   ui.applyTheme();
 
-  // ---- Deep-link redirect (?redirect=...) ----
-  const redirectParam = new URLSearchParams(window.location.search).get('redirect');
-  let redirectTarget = null;
-  if (redirectParam) {
-    try {
-      const decoded = decodeURIComponent(redirectParam);
-      if (decoded.startsWith('/')) redirectTarget = decoded;
-    } catch { /* ignore */ }
-  }
+  // ---- Redirect context ----
+  const redirectCtx = redirect.readRedirectContext();
+  const redirectTarget = redirectCtx.returnTo || null;
 
-  // If already authenticated → redirect
   if (auth.checkAuth()) {
-    if (redirectTarget) window.location.href = redirectTarget;
-    else router.navigateTo('subjects');
+    redirect.consumeAndReturn('subjects');
     return;
   }
 
-  // ---- DOM refs (scoped to the page root) ----
+  // ---- DOM refs ----
   const $ = (sel) => context.root.querySelector(sel);
 
   const stepIndicator = $('#step-indicator');
@@ -114,13 +106,51 @@ export async function init(context) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  function detectCurrentStep() {
+    if (step4 && step4.style.display === 'block') return 4;
+    if (step3 && step3.style.display === 'block') return 3;
+    if (step2 && step2.style.display === 'block') return 2;
+    return 1;
+  }
+
+  // ── State adapter ────────────────────────────────────────────────
+  redirect.registerStateAdapter('signup', {
+    capture: () => ({
+      currentStep: detectCurrentStep(),
+      formData: {
+        ...formData,
+        securityQuestions: formData.securityQuestions.map((q) => ({ ...q })),
+      },
+    }),
+    restore: (data) => {
+      if (!data) return;
+
+      if (data.formData) {
+        Object.assign(formData, data.formData);
+        if (Array.isArray(data.formData.securityQuestions)) {
+          formData.securityQuestions = data.formData.securityQuestions.map((q) => ({ ...q }));
+        }
+      }
+
+      if (data.currentStep) {
+        try { showStep(data.currentStep); }
+        catch (err) { console.warn('[Signup] step restore failed:', err); }
+      }
+    },
+  });
+
   // ---- Header buttons ----
   if (themeToggle) themeToggle.addEventListener('click', () => ui.toggleTheme());
   if (backBtn) backBtn.addEventListener('click', () => router.navigateTo('welcome'));
   if (loginLink) {
     loginLink.addEventListener('click', () => {
       let url = 'login';
-      if (redirectTarget) url += `?redirect=${encodeURIComponent(redirectTarget)}`;
+      if (redirectTarget) {
+        url += `?returnTo=${encodeURIComponent(redirectTarget)}`;
+        if (redirectCtx.reason) {
+          url += `&redirect_reason=${encodeURIComponent(redirectCtx.reason)}`;
+        }
+      }
       router.navigateTo(url);
     });
   }
@@ -129,25 +159,15 @@ export async function init(context) {
   // STEP 1 – Referral + Terms handling
   // ============================================================
 
-  /**
-   * Read the referral code out of the input at the exact moment the
-   * user commits to a signup path (Google or Email/Phone).
-   * This is the ONLY place we should trust for the source of truth.
-   */
   function captureManualReferral() {
     const raw = (referralCode?.value || '').trim();
     if (!raw) {
-      // Don't clobber a previously-validated code (e.g. from URL/storage)
       return formData.referralCode || '';
     }
 
-    // Preserve original casing on the wire; some backends are case-sensitive.
-    // The input is displayed uppercase via CSS/placeholder, but we send
-    // exactly what the user typed.
     formData.referralCode = raw;
 
     try {
-      // Kept for prefill convenience on reload — NOT used as transport to backend.
       utils.setLocalStorage('referral_code', raw);
     } catch (_) { /* ignore */ }
 
@@ -155,10 +175,6 @@ export async function init(context) {
     return formData.referralCode;
   }
 
-  /**
-   * Prefill from URL or storage and validate against the backend.
-   * Does NOT set formData.referralCode unless validation passes.
-   */
   async function prefillReferral() {
     if (!referralCode) return;
 
@@ -212,14 +228,55 @@ export async function init(context) {
     return ok;
   }
 
-  // Google click guard: blocks click until terms accepted
+  // ============================================================
+  // GOOGLE TERMS GUARD
+  // ------------------------------------------------------------
+  // Renders the Google sign-up block as DISABLED until the user
+  // accepts the Terms of Service. The disabled state is signalled
+  // three ways so no assistive tech or visual cue is missed:
+  //
+  //   1. Functionally — the click-guard overlay captures every
+  //      click and shows a "accept terms first" toast instead of
+  //      forwarding to Google.
+  //   2. Visually — the container gets `is-terms-gated`, which CSS
+  //      styles as dimmed + `cursor: not-allowed`. The Google
+  //      button element inside also receives `disabled` so its
+  //      own hover/active states never fire.
+  //   3. Semantically — `aria-disabled="true"` on the container
+  //      tells screen readers the block is not interactive.
+  //
+  // The guard stays on top with `pointer-events: auto` while
+  // disabled (so it can catch clicks) and `pointer-events: none`
+  // once the user accepts (so clicks pass through to the real
+  // Google button underneath).
+  // ============================================================
   function updateGoogleGuard() {
-    if (!googleClickGuard) return;
-    googleClickGuard.style.pointerEvents = terms.checked ? 'none' : 'auto';
+    const accepted = !!(terms && terms.checked);
+
+    if (googleClickGuard) {
+      // The guard is what catches clicks. When terms are accepted it
+      // becomes transparent to pointer events so the real Google
+      // button works normally.
+      googleClickGuard.style.pointerEvents = accepted ? 'none' : 'auto';
+      googleClickGuard.setAttribute('aria-hidden', accepted ? 'true' : 'false');
+    }
+
     if (googleContainer) {
-      googleContainer.style.opacity = terms.checked ? '1' : '0.6';
+      googleContainer.classList.toggle('is-terms-gated', !accepted);
+      googleContainer.setAttribute('aria-disabled', accepted ? 'false' : 'true');
+
+      // Belt-and-braces: also disable any real button element inside
+      // the container so its native hover/focus/active states never
+      // fire while the guard is active. A disabled button does not
+      // respond to clicks either, but the guard is still what shows
+      // the toast — that is why both exist.
+      googleContainer.querySelectorAll('button, [role="button"]').forEach((btn) => {
+        btn.disabled = !accepted;
+        btn.setAttribute('aria-disabled', accepted ? 'false' : 'true');
+      });
     }
   }
+
   if (terms) {
     terms.addEventListener('change', updateGoogleGuard);
     updateGoogleGuard();
@@ -248,18 +305,24 @@ export async function init(context) {
   if (googleContainer) {
     await initGoogleSignIn({
       container: googleContainer,
-      text: 'signup_with',              // renders "Sign up with Google"
+      text: 'signup_with',
       onCredential: async (response) => {
+        // Terms gate — defensive re-check in case the click-guard
+        // was bypassed (e.g. programmatic click, autofill).
         if (!validateStep1()) {
           showStep(1);
+          updateGoogleGuard();
           return;
         }
-        // Capture referral at the exact moment of the Google click —
-        // the Google popup can outlive the input value if we waited.
         const refCode = captureManualReferral();
         await handleGoogleCredential(response.credential, refCode);
       },
     });
+
+    // The GIS SDK injects its own iframe/button into the container
+    // after initGoogleSignIn resolves. Re-apply the disabled state
+    // so the injected button also picks up the correct attributes.
+    updateGoogleGuard();
   }
 
   // ============================================================
@@ -357,28 +420,21 @@ export async function init(context) {
         { question: sq3Val, answer: ans3Val },
       ];
 
-      // Re-capture in case the user went back and edited the referral.
       captureManualReferral();
 
       ui.showLoading('Creating account…');
 
       try {
-        const deviceFingerprint = security.generateDeviceFingerprint();
-        const deviceInfo = {
-          platform: navigator.platform,
-          userAgent: navigator.userAgent,
-          screen: `${screen.width}x${screen.height}`,
-          timezone: new Date().getTimezoneOffset(),
-        };
-
+        // Device identity is built once inside auth.register() via
+        // security.buildDeviceIdentity(). Do NOT construct it here —
+        // that would duplicate the call and, worse, allow it to drift
+        // from the ID used by Google flows.
         await auth.register({
           name: formData.name,
           email: formData.email,
           phone: formData.phone,
           password: formData.password,
           securityQuestions: formData.securityQuestions,
-          deviceFingerprint,
-          deviceInfo,
           referralCode: formData.referralCode || undefined,
         });
 
@@ -396,16 +452,17 @@ export async function init(context) {
   // STEP 4 – Success & Redirect
   // ============================================================
   function goToSuccess(target) {
-    const finalTarget = target || '/free-trial';
+    const fallback = target || '/free-trial';
+    const hasChain = redirect.hasReturn() || !!target;
 
     if (successTitle) successTitle.textContent = 'Account created successfully!';
     if (successMessage) {
-      successMessage.innerHTML = target
+      successMessage.innerHTML = hasChain
         ? `Your account is ready. Redirecting to your page in <span id="countdown">3</span> seconds…`
         : `Your account is ready. Redirecting to your free trial in <span id="countdown">3</span> seconds…`;
     }
     if (redirectNowBtn) {
-      redirectNowBtn.textContent = target ? 'Go to your page now' : 'Go to Free Trial now';
+      redirectNowBtn.textContent = hasChain ? 'Go to your page now' : 'Go to Free Trial now';
     }
 
     showStep(4);
@@ -414,20 +471,29 @@ export async function init(context) {
     const cd = $('#countdown');
     if (cd) cd.textContent = countdown;
 
+    const go = () => {
+      try {
+        redirect.consumeAndReturn(fallback);
+      } catch (err) {
+        console.warn('[Signup] consumeAndReturn failed, using fallback:', err);
+        router.navigateTo(fallback);
+      }
+    };
+
     const interval = setInterval(() => {
       countdown -= 1;
       const el = $('#countdown');
       if (el) el.textContent = countdown;
       if (countdown <= 0) {
         clearInterval(interval);
-        router.navigateTo(finalTarget);
+        go();
       }
     }, 1000);
 
     if (redirectNowBtn) {
       redirectNowBtn.onclick = () => {
         clearInterval(interval);
-        router.navigateTo(finalTarget);
+        go();
       };
     }
   }
@@ -439,7 +505,6 @@ export async function init(context) {
     ui.showLoading('Signing up with Google…');
 
     try {
-      // ✅ Referral code is now passed explicitly to the backend action.
       const result = await auth.loginWithGoogle(idToken, refCode || undefined);
 
       if (result.requiresLink) {
@@ -447,11 +512,15 @@ export async function init(context) {
         openGoogleLinkModal({
           email: result.email,
           linkToken: result.linkToken,
-          idToken,
-          googleSub: result.googleSub,               // legacy field
-          deviceFingerprint: result.deviceFingerprint,
+          // loginWithGoogle() returns the device identity it already
+          // built (deviceId + deviceInfo). Pass it through unchanged
+          // so linkGoogleAccount() reuses the SAME dv_… ID rather
+          // than re-deriving. (Previously this key was named
+          // `deviceFingerprint`, which does not exist on the result
+          // object — the modal silently received undefined.)
+          deviceId: result.deviceId,
           deviceInfo: result.deviceInfo,
-          referralCode: refCode || undefined,        // ✅ carry through
+          referralCode: refCode || undefined,
           redirectTarget,
         });
         return;
@@ -476,11 +545,9 @@ export async function init(context) {
   function openGoogleLinkModal({
     email: linkedEmail,
     linkToken,
-    idToken,
-    googleSub,
-    deviceFingerprint,
+    deviceId,
     deviceInfo,
-    referralCode: refCode,                          // ✅ carried through
+    referralCode: refCode,
     redirectTarget: target,
   }) {
     const modal = $('#google-link-modal');
@@ -512,15 +579,15 @@ export async function init(context) {
       submitBtn.textContent = 'Connecting…';
 
       try {
+        // linkGoogleAccount() destructures { linkToken, password,
+        // deviceId, deviceInfo }. Passing deviceId (already built by
+        // loginWithGoogle) keeps the linking session aligned with
+        // the sign-in attempt that produced the linkToken.
         await auth.linkGoogleAccount({
           linkToken,
-          identifier: linkedEmail,
           password: pwd,
-          idToken,
-          googleSub,
-          deviceFingerprint,
+          deviceId,
           deviceInfo,
-          referralCode: refCode || undefined,       // ✅ forward too
         });
 
         modal.style.display = 'none';
@@ -544,9 +611,34 @@ export async function init(context) {
     };
   }
 
+  // ── Self-consume of the return stack ─────────────────────────────
+  try {
+    const hasSnap = redirect.hasSnapshot();
+    if (hasSnap) {
+      const myUrl =
+        window.location.pathname +
+        (window.location.search || '') +
+        (window.location.hash || '');
+      const top = redirect.peekReturn();
+      if (top && top.url === myUrl) redirect.popReturn();
+    }
+  } catch (err) {
+    console.warn('[Signup] Return-stack cleanup failed:', err);
+  }
+
+  // ── Resume snapshot ──────────────────────────────────────────────
+  const snap = redirect.consumeSnapshot();
+  if (snap && (snap.ui || snap.page)) {
+    ui.showToast('Continuing where you left off', 'info', 1800);
+    console.log('[Signup] Resumed from redirect:', {
+      fields: Object.keys(snap.ui?.fields || {}).length,
+      pageState: snap.page,
+    });
+  }
+
   console.log('[Signup] Initialized.');
 }
 
 export function destroy() {
-  // Nothing to clean up beyond what the page-manager handles.
+  try { redirect.unregisterStateAdapter('signup'); } catch { /* ignore */ }
 }

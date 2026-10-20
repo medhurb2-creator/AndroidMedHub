@@ -1,6 +1,7 @@
 // scripts/pages/pdf-settings.js
 import * as ui from '../ui.js';
 import * as router from '../router.js';
+import * as redirect from '../redirect.js';
 import * as auth from '../auth.js';
 import * as utils from '../utils.js';
 import * as subscription from '../subscription.js';
@@ -256,26 +257,69 @@ export async function init(context) {
 
   ui.applyTheme();
 
-  // Check auth
+  // ── Auth gate ────────────────────────────────────────────────────
+  // Round-trip through login. The engine's PDF config persists across
+  // navigations, so on return the page picks up right where the user
+  // left off.
   if (!auth.checkAuth()) {
-    ui.showToast('Please log in first', 'warning');
-    router.navigateTo('login');
+    ui.showToast('Please log in to configure PDF export', 'warning');
+    redirect.navigateWithReturn('login', 'auth_required');
     return;
   }
 
+  // ── Config gate ──────────────────────────────────────────────────
+  // No PDF config means the user never got here through the intended
+  // flow (subject-specific → select topics → PDF mode). There is no
+  // page to come back to, so we clear the redirect chain and bail to
+  // subjects. A dangling returnTo would just loop us back here.
   config = examEngine.getConfig();
   if (!config || config.mode !== 'pdf') {
     ui.showToast('No PDF configuration found. Please select topics first.', 'error');
+    try { redirect.clearReturns(); }   catch { /* ignore */ }
+    try { redirect.clearSnapshots(); } catch { /* ignore */ }
     router.navigateTo('subjects');
     return;
   }
 
+  // ── State adapter ────────────────────────────────────────────────
+  // Registered after both gates so we only ever capture meaningful
+  // state. The exam code input, question-count input, and the four
+  // checkboxes (include-questions / answer-sheet / answer-booklet /
+  // fillout) already have ids, so the automatic UI snapshot covers
+  // them. This adapter adds the module-local decoded config that
+  // never lands in the DOM.
+  redirect.registerStateAdapter('pdf-settings', {
+    capture: () => {
+      const btn = document.getElementById('generatePdfBtn');
+      const seedFromBtn = btn?.dataset?.seed;
+      return {
+        decodedConfig: window._decodedConfig || null,
+        seedFromButton: seedFromBtn ? Number(seedFromBtn) : null,
+      };
+    },
+    restore: (data) => {
+      if (!data) return;
+      if (data.decodedConfig) {
+        window._decodedConfig = data.decodedConfig;
+      }
+      if (Number.isFinite(data.seedFromButton)) {
+        const btn = document.getElementById('generatePdfBtn');
+        if (btn) btn.dataset.seed = String(data.seedFromButton);
+      }
+    },
+  });
+
+  // ── Subscription check ───────────────────────────────────────────
+  // Non-blocking: the user can still view/edit settings, we just
+  // disable generation and surface a subscribe CTA. This keeps the
+  // page usable for users who want to tweak inputs before paying.
   hasActiveSub = await subscription.hasActiveSubscription();
   if (!hasActiveSub) {
-    ui.showToast('An active subscription is required to generate PDFs.', 'error');
-    $('#generatePdfBtn').disabled = true;
-    $('#sub-required-msg').style.display = 'block';
-    // Still allow viewing, but disable generation
+    ui.showToast('An active subscription is required to generate PDFs.', 'warning');
+    const genBtn = $('#generatePdfBtn');
+    if (genBtn) genBtn.disabled = true;
+    const subMsg = $('#sub-required-msg');
+    if (subMsg) subMsg.style.display = 'block';
   }
 
   // Fill summary
@@ -293,12 +337,45 @@ export async function init(context) {
   // Attach event listeners
   attachEventListeners(context);
 
-  // Check for code param in URL
+  // Auto-decode from URL parameter, if present. Runs BEFORE snapshot
+  // consumption so a deep-linked `?code=X` always wins over a stale
+  // session restore — an explicit link beats a passive memory.
   const urlParams = new URLSearchParams(window.location.search);
   const codeParam = urlParams.get('code');
   if (codeParam) {
     $('#pdf-exam-code').value = codeParam;
     $('#decodeCodeBtn').click();
+  }
+
+  // ── Self-consume of the return stack ─────────────────────────────
+  // If a snapshot exists for this page AND the top of the return
+  // stack points here, we are the target of a just-completed round
+  // trip. Pop the entry so the stack does not grow on subsequent
+  // redirects.
+  try {
+    const hasSnap = redirect.hasSnapshot();
+    if (hasSnap) {
+      const myUrl =
+        window.location.pathname +
+        (window.location.search || '') +
+        (window.location.hash || '');
+      const top = redirect.peekReturn();
+      if (top && top.url === myUrl) redirect.popReturn();
+    }
+  } catch (err) {
+    console.warn('[PDFSettings] Return-stack cleanup failed:', err);
+  }
+
+  // ── Resume snapshot ──────────────────────────────────────────────
+  // Restores exam code input, question count, checkboxes (auto), and
+  // the decoded config / seed (adapter).
+  const snap = redirect.consumeSnapshot();
+  if (snap && (snap.ui || snap.page)) {
+    ui.showToast('Continuing where you left off', 'info', 1800);
+    console.log('[PDFSettings] Resumed from redirect:', {
+      fields: Object.keys(snap.ui?.fields || {}).length,
+      pageState: snap.page,
+    });
   }
 
   console.log('[PDFSettings] Initialized');
@@ -325,6 +402,17 @@ function attachEventListeners(context) {
   const generatePdfBtn = $('#generatePdfBtn');
   if (generatePdfBtn) {
     generatePdfBtn.addEventListener('click', handleGenerate);
+  }
+
+  // Subscribe CTA in the "sub required" message. Round-trips through
+  // subscription so a session expiry mid-flow still lands the user
+  // back on this page with the PDF config intact.
+  const subscribeCta = $('#pdf-subscribe-cta');
+  if (subscribeCta) {
+    subscribeCta.addEventListener('click', (e) => {
+      e.preventDefault();
+      redirect.navigateWithReturn('subscription', 'subscription_required');
+    });
   }
 }
 
@@ -370,6 +458,15 @@ async function handleGenerate() {
   btn.textContent = 'Generating...';
 
   try {
+    // Re-check the subscription at click time — the user may have
+    // been on this page long enough for the sub to expire.
+    const stillSubbed = await subscription.hasActiveSubscription();
+    if (!stillSubbed) {
+      ui.showToast('Your subscription has expired. Please resubscribe.', 'error');
+      redirect.navigateWithReturn('subscription', 'subscription_required');
+      return;
+    }
+
     if (typeof safeExportDocument !== 'function') {
       ui.showToast('PDF engine unavailable — please reload the page', 'error');
       return;
@@ -435,9 +532,6 @@ async function handleGenerate() {
         if (opt.isCorrect) correctLetter = LETTERS[i];
       });
 
-      // Structured explanation: File 2's sanitizeExplanation accepts either
-      // a string or an object. An object lets File 6's answerBlock render
-      // each section with its own bold label.
       const explanationObj = {
         overview:            q.explanation?.overview            || '',
         highYield:           q.explanation?.highYield           || '',
@@ -554,5 +648,7 @@ async function handleGenerate() {
 }
 
 export function destroy() {
-  // Cleanup if needed
+  // Unregister the state adapter so a subsequent page load does not
+  // inherit a stale closure over this page's DOM.
+  try { redirect.unregisterStateAdapter('pdf-settings'); } catch { /* ignore */ }
 }

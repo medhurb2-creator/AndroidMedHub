@@ -2,6 +2,7 @@
 import * as auth from '../auth.js';
 import * as ui from '../ui.js';
 import * as router from '../router.js';
+import * as redirect from '../redirect.js';
 import * as security from '../security.js';
 import * as subscription from '../subscription.js';
 import * as utils from '../utils.js';
@@ -15,12 +16,17 @@ export async function init(context) {
 
   ui.applyTheme();
 
-  // Check authentication
+  // ── Auth gate ────────────────────────────────────────────────────
+  // Round-trip so the user comes back here after logging in. Uses
+  // the redirect module so that if the user arrived here from a
+  // deeper chain (e.g. exam-room → subscription → free-trial),
+  // logging in pops back to free-trial rather than collapasing the
+  // whole stack.
   if (!auth.checkAuth()) {
-    ui.showToast('Please log in to start free trial', 'warning');
-    router.navigateTo('login');
+    ui.showToast('Please log in to start your free trial', 'warning');
     const shimmer = $('#shimmer-overlay');
     if (shimmer) shimmer.classList.add('shimmer-hidden');
+    redirect.navigateWithReturn('login', 'auth_required');
     return;
   }
 
@@ -47,7 +53,7 @@ export async function init(context) {
 
   if (trialDurationHours == null) {
     // Last-resort fallback so the UI never renders "--:--:--"
-    trialDurationHours = 3;
+    trialDurationHours = 24;
   }
 
   applyTrialDuration(trialDurationHours);
@@ -89,6 +95,37 @@ export async function init(context) {
       // Non-blocking
     }
   }
+
+  // ── Self-consume of the return stack ─────────────────────────────
+  // If a snapshot exists for this page AND the top of the return
+  // stack points here, we are the target of a just-completed round
+  // trip. Pop the entry so the stack does not grow on subsequent
+  // redirects. Covers the case where the returning page used
+  // history.back() instead of consumeAndReturn().
+  try {
+    const hasSnap = redirect.hasSnapshot();
+    if (hasSnap) {
+      const myUrl =
+        window.location.pathname +
+        (window.location.search || '') +
+        (window.location.hash || '');
+      const top = redirect.peekReturn();
+      if (top && top.url === myUrl) redirect.popReturn();
+    }
+  } catch (err) {
+    console.warn('[FreeTrial] Return-stack cleanup failed:', err);
+  }
+
+  // ── Resume snapshot ──────────────────────────────────────────────
+  // Free-trial has no forms and no module-local state worth keeping
+  // across a redirect — the duration is re-fetched, the countdown is
+  // recreated, and eligibility re-checks. This call exists to drain
+  // any snapshot that may have been written by a self-redirect from
+  // this page in a future revision, and to keep the module's store
+  // from accumulating stale entries.
+  redirect.consumeSnapshot();
+
+  console.log('[FreeTrial] Initialized');
 }
 
 // ==================== DURATION RENDERING ====================
@@ -155,7 +192,19 @@ function showActiveTrial() {
   `;
 
   const goBtn = $('#goToSubjectsBtn');
-  if (goBtn) goBtn.addEventListener('click', () => router.navigateTo('subjects'));
+  if (goBtn) {
+    goBtn.addEventListener('click', () => {
+      // A trial is active — this is a successful resolution. If we
+      // were sent here by a subscription_required / trial_required
+      // gate, pop the stack and land the user where they wanted to
+      // be. Otherwise fall through to subjects.
+      if (redirect.hasReturn()) {
+        redirect.consumeAndReturn('subjects');
+      } else {
+        router.navigateTo('subjects');
+      }
+    });
+  }
 
   const tick = async () => {
     const el = $('#trialCountdown');
@@ -216,11 +265,18 @@ function attachEventListeners(context) {
     themeToggle.addEventListener('click', ui.toggleTheme);
   }
 
+  // Back to subjects — plain navigation. The user is explicitly
+  // abandoning the trial flow; there is nothing to come back for.
   const backSubjectsBtn = $('#backSubjectsBtn');
   if (backSubjectsBtn) {
     backSubjectsBtn.addEventListener('click', () => router.navigateTo('subjects'));
   }
 
+  // View subscription plans — the user is choosing a different
+  // resolution path than the trial. Plain navigation so the
+  // existing return chain (if any) is preserved: subscription →
+  // payment → consumeAndReturn will still pop back to the original
+  // destination the user was trying to reach.
   const viewSubscriptionBtn = $('#viewSubscriptionBtn');
   if (viewSubscriptionBtn) {
     viewSubscriptionBtn.addEventListener('click', () => router.navigateTo('subscription'));
@@ -279,7 +335,12 @@ async function beginTrial() {
       await subscription.setSubscription(result.subscription);
     }
 
-    router.navigateTo('subjects');
+    // ── Consume the return stack ─────────────────────────────────
+    // The trial is active; whatever subscription_required or
+    // trial_required gate sent the user here is now satisfied.
+    // Pop the stack and land them back on their original page.
+    // If the stack is empty, fall through to subjects.
+    redirect.consumeAndReturn('subjects');
   } catch (error) {
     ui.hideLoading();
     console.error('[FreeTrial] Activation failed:', error);
@@ -292,4 +353,5 @@ export function destroy() {
     clearInterval(countdownTimer);
     countdownTimer = null;
   }
+  // No state adapter to unregister — free-trial registers none.
 }

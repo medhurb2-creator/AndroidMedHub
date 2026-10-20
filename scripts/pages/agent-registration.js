@@ -2,6 +2,7 @@
 import * as auth from '../auth.js';
 import * as ui from '../ui.js';
 import * as router from '../router.js';
+import * as redirect from '../redirect.js';
 import * as validation from '../validation.js';
 import * as security from '../security.js';
 import * as utils from '../utils.js';
@@ -37,6 +38,94 @@ export async function init(context) {
 
   ui.applyTheme();
 
+  // ── State adapter ────────────────────────────────────────────────
+  // Registered before any redirect can fire. Captures the auth modal
+  // state (open/closed, active view, wizard step) and the in-memory
+  // registrationData object, which never touches the DOM. Without
+  // this, being bounced away (session expiry, reading Agent Terms,
+  // forgot-password) would drop the user back on a closed modal with
+  // an empty form.
+  redirect.registerStateAdapter('agent-registration', {
+    capture: () => {
+      const overlay    = document.getElementById('auth-modal-overlay');
+      const loginSheet = document.getElementById('login-sheet');
+      const regFlow    = document.getElementById('registration-flow');
+      const step1      = document.getElementById('reg-step1');
+      const step2      = document.getElementById('reg-step2');
+      const step3      = document.getElementById('reg-step3');
+
+      let activeView = 'choice';
+      if (loginSheet?.classList.contains('active')) activeView = 'login';
+      else if (regFlow?.classList.contains('active')) activeView = 'registration';
+
+      let regStep = 1;
+      if (step3?.classList.contains('active')) regStep = 3;
+      else if (step2?.classList.contains('active')) regStep = 2;
+
+      return {
+        modalOpen: !!overlay?.classList.contains('active'),
+        activeView,
+        regStep,
+        registrationData: { ...registrationData },
+        wasLoggedIn: isLoggedIn,
+      };
+    },
+
+    restore: (data) => {
+      if (!data) return;
+
+      // Auth state changed during the round-trip — the page has
+      // already re-rendered the logged-in view in the init flow.
+      // Re-opening the modal here would hide it behind that view
+      // and confuse the user.
+      if (isLoggedIn && !data.wasLoggedIn) {
+        console.log('[AgentRegistration] Now logged in — skipping modal restore');
+        return;
+      }
+
+      // Restore in-memory registrationData first — the DOM restore
+      // re-populates form fields, but the cross-step object needs
+      // explicit handling.
+      if (data.registrationData) {
+        Object.assign(registrationData, data.registrationData);
+      }
+
+      // Re-open the modal and jump to the same view. Field values
+      // are restored by the module's automatic UI snapshot.
+      if (data.modalOpen) {
+        try {
+          showModal();
+
+          if (data.activeView === 'login') {
+            showLoginSheet();
+          } else if (data.activeView === 'registration') {
+            showRegistrationFlow();
+            if (data.regStep === 2) {
+              document.getElementById('reg-step1')?.classList.remove('active');
+              document.getElementById('reg-step2')?.classList.add('active');
+              const ind = document.getElementById('reg-step-indicator');
+              if (ind) ind.textContent = 'Step 2 of 2: Security Questions';
+            } else if (data.regStep === 3) {
+              document.getElementById('reg-step2')?.classList.remove('active');
+              document.getElementById('reg-step3')?.classList.add('active');
+              const ind = document.getElementById('reg-step-indicator');
+              if (ind) ind.textContent = '✅ Account Created!';
+              const nm = document.getElementById('reg-success-name');
+              if (nm) nm.textContent = registrationData.name || '';
+            }
+          }
+        } catch (err) {
+          console.warn('[AgentRegistration] Modal restore failed:', err);
+        }
+      }
+    },
+  });
+
+  // Clear any leftover body scroll lock from a previous session —
+  // the modal's showModal() sets overflow:hidden, and if a redirect
+  // interrupted it mid-flight, the body could still be locked.
+  try { document.body.style.overflow = ''; } catch { /* ignore */ }
+
   const shimmer = $('#shimmer-overlay');
 
   // 1. Check auth
@@ -69,6 +158,36 @@ export async function init(context) {
   // 4. Attach event listeners
   attachEventListeners(context);
 
+  // ── Self-consume on return ───────────────────────────────────────
+  // If we have a snapshot for this page AND the top of the return
+  // stack points here, we are the target of a just-completed round
+  // trip. Pop the entry so the stack does not grow on subsequent
+  // redirects. This covers the case where the returning page used
+  // history.back() instead of consumeAndReturn().
+  try {
+    const hasSnap = redirect.hasSnapshot();
+    if (hasSnap) {
+      const myUrl =
+        window.location.pathname +
+        (window.location.search || '') +
+        (window.location.hash || '');
+      const top = redirect.peekReturn();
+      if (top && top.url === myUrl) {
+        redirect.popReturn();
+      }
+    }
+  } catch (err) {
+    console.warn('[AgentRegistration] Return-stack cleanup failed:', err);
+  }
+
+  // ── Resume state ─────────────────────────────────────────────────
+  // Restores form fields, scroll, focus, and (via the adapter above)
+  // the modal and registrationData.
+  const snap = redirect.consumeSnapshot();
+  if (snap && (snap.ui || snap.page)) {
+    ui.showToast('Continuing where you left off', 'info', 1800);
+  }
+
   console.log('[AgentRegistration] Initialized');
 }
 
@@ -87,13 +206,15 @@ function attachEventListeners(context) {
     });
   }
 
-  // Agent Terms links
+  // Agent Terms links — round-trip so the modal and form state
+  // survive. The user is reading a document; when they return they
+  // resume exactly where they left off.
   ['#agent-terms-link', '#reg-agent-terms-link', '#google-agent-terms-link'].forEach(sel => {
     const link = $(sel);
     if (link) {
       link.addEventListener('click', (e) => {
         e.preventDefault();
-        router.navigateTo('agent-terms');
+        redirect.navigateWithReturn('agent-terms', 'agent_terms_review');
       });
     }
   });
@@ -108,7 +229,7 @@ function attachEventListeners(context) {
   }
   if (upgradeBtn) upgradeBtn.addEventListener('click', upgradeToAgent);
 
-  // Start earning button
+  // Start earning button — post-upgrade success path, plain nav
   const startEarningBtn = $('#start-earning-btn');
   if (startEarningBtn) {
     startEarningBtn.addEventListener('click', () => router.navigateTo('referral'));
@@ -160,12 +281,16 @@ function attachEventListeners(context) {
   const loginForm = $('#modal-login-form');
   if (loginForm) loginForm.addEventListener('submit', handleLogin);
 
-  // Forgot password
+  // Forgot password — round-trip so the user comes back to the same
+  // sheet with the modal still open after resetting their password.
   const modalForgotPw = $('#modal-forgot-pw');
   if (modalForgotPw) {
     modalForgotPw.addEventListener('click', () => {
-      hideModal();
-      router.navigateTo('forgot-password');
+      // Do NOT hideModal() — the adapter captures the modal as open,
+      // the page-manager replaces the DOM, and restore() re-opens it
+      // when we return. Calling hideModal() here would persist
+      // "closed" into the snapshot.
+      redirect.navigateWithReturn('forgot-password', 'password_reset');
     });
   }
 
@@ -315,9 +440,9 @@ async function handleGoogleCredential(idToken) {
       ui.hideLoading();
       openGoogleLinkModal({
         email: result.email,
-        linkToken: result.linkToken,                     // ← NEW: forward linkToken
+        linkToken: result.linkToken,
         idToken,
-        googleSub: result.googleSub,                     // ← kept for legacy
+        googleSub: result.googleSub,
         deviceFingerprint: result.deviceFingerprint,
         deviceInfo: result.deviceInfo
       });
@@ -391,7 +516,7 @@ function finishAgentFlow(user) {
 // ============================================================
 function openGoogleLinkModal({
   email,
-  linkToken,                                         // ← NEW
+  linkToken,
   idToken,
   googleSub,
   deviceFingerprint,
@@ -430,7 +555,7 @@ function openGoogleLinkModal({
 
     try {
       await auth.linkGoogleAccount({
-        linkToken,                                   // ← NEW: the important one
+        linkToken,
         identifier,
         password: pwd,
         idToken,
@@ -696,7 +821,10 @@ async function handleRegistration() {
     ui.hideLoading();
 
     if (!auth.checkAuth()) {
-      window.location.href = '/referral';
+      // Registration succeeded but no session was established.
+      // Use a redirect so the user lands on referral with a way back
+      // if they need to log in first.
+      redirect.navigateWithReturn('referral', 'post_registration');
       return;
     }
 

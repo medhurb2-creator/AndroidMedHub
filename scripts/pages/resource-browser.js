@@ -28,9 +28,21 @@ let _fileArrivedHandler = null;
 let _shareArrivedHandler = null;
 
 /**
- * Bound handler for browser back/forward onto a share URL. The app uses
- * query-string routing (`?subject=X&type=Y`), not hash routing, so a
- * history traversal onto a share link fires `popstate` — not `hashchange`.
+ * Bound handler for browser back/forward. The app uses query-string
+ * routing (`?subject=X&type=Y`), not hash routing, so a history traversal
+ * fires `popstate` — not `hashchange`.
+ *
+ * This handler covers two independent back/forward cases:
+ *
+ *   • Share URL — the user taps back and lands on a share link from
+ *     earlier in the session (`?share=1&id=…`).
+ *   • Topic change — the user taps back/forward between the topic-grid
+ *     view (`?subject=X&type=Y`) and a topic-scoped resource view
+ *     (`?subject=X&type=Y&topic=Z`).
+ *
+ * Share takes priority: a share URL also carries `subject`/`type`, so
+ * if we checked topic first we would treat a share landing as a plain
+ * topic change and skip the share injection logic.
  *
  * @type {(() => void) | null}
  */
@@ -51,10 +63,11 @@ export async function init(context) {
   //   • `native:file-arrived` — FileOpen plugin delivered a file
   //   • `native:share-arrived` — deep link / new intent delivered a share
   //
-  // The `popstate` listener covers the web-side case: the user taps the
-  // browser back button and lands on a share URL from earlier in the
-  // session. The URL changes without a page reload, so a navigation
-  // listener is required to notice it.
+  // The `popstate` listener covers two web-side cases:
+  //   • the user taps browser back and lands on a share URL from earlier
+  //     in the session;
+  //   • the user taps browser back/forward between a topic-scoped view
+  //     (?topic=X) and the topic-grid view (no ?topic).
   //
   // All listeners are registered first, before the initial pending-file
   // and share checks below, so a payload that arrives during the async
@@ -82,11 +95,25 @@ export async function init(context) {
   };
   document.addEventListener('native:share-arrived', _shareArrivedHandler);
 
-  // ── Share arrival (browser back/forward) ───────────────────────────
+  // ── Back/forward — share OR topic change ───────────────────────────
+  //
+  // Share has priority: a share URL also carries `subject`/`type`, so it
+  // must be consumed by _handleShareIfPresent() before we consider
+  // whether a topic changed. Only if the popstate was NOT a share do we
+  // fall through to the topic-change check.
+  //
+  // _handleTopicIfChanged is a no-op when the URL's `topic` already
+  // matches the module's internal state, so back-to-back popstate events
+  // cannot cause double fetches.
   _popStateHandler = () => {
-    _handleShareIfPresent().catch((err) =>
-      console.warn('[ResourceBrowser] Popstate share check failed:', err)
-    );
+    _handleShareIfPresent()
+      .then((handledShare) => {
+        if (handledShare) return;
+        _handleTopicIfChanged();
+      })
+      .catch((err) =>
+        console.warn('[ResourceBrowser] Popstate handler failed:', err)
+      );
   };
   window.addEventListener('popstate', _popStateHandler);
 
@@ -147,35 +174,61 @@ export async function init(context) {
   }
 
   // ---------------------------------------------------------------------------
-  // Initialize the subscription manager BEFORE the resource browser.
+  // Kick off the subscription refresh — but do NOT wait for it.
   //
   // The Open handler in resource-browser.js calls
   // subscription.hasActiveSubscription() to decide whether a premium
-  // catalogue resource should open in preview mode (unsubscribed) or in full
-  // (subscribed). hasActiveSubscription() reads from the subscription
+  // catalogue resource should open in preview mode (unsubscribed) or in
+  // full (subscribed). hasActiveSubscription() reads from the subscription
   // manager's in-memory state, IndexedDB, and localStorage.
   //
-  // Without an explicit init, the manager's in-memory state is empty on a
-  // fresh session, and the fallback chain can return stale local data. On
-  // page load we want the freshest truth from the backend (when online and
-  // authenticated), which is exactly what initSubscription() obtains.
+  // Historically this call was awaited, on the theory that the very first
+  // paint needed fresh truth. In practice the only thing the fresh truth
+  // changes on the first paint is the 🔒 Premium badge — a cosmetic hint.
+  // The Open and Download handlers each re-check entitlement themselves
+  // at the moment of use and remain the sole authority. So we let this
+  // promise settle in the background instead of holding the render on it.
   //
-  // This is idempotent — the subscription manager handles repeated calls —
-  // and cannot fail the page: any network error falls back to cached state.
+  // If the network is slow or the backend is cold, the previous behaviour
+  // was a blank grid for one to three seconds before anything appeared.
+  // Now the topic grid (or resource fetch) starts immediately with the
+  // last-known entitlement and updates the badge if the check later
+  // reports a different value.
+  //
+  // initSubscription() is idempotent and already falls back to cached
+  // state on network failure, so a rejection here is informational only.
   // ---------------------------------------------------------------------------
-  try {
-    await subscription.initSubscription();
-  } catch (err) {
-    // Never block the resource browser on a subscription hiccup. The Open
-    // handler will still work with whatever cached state is available.
+  subscription.initSubscription().catch((err) => {
     console.warn('[ResourceBrowser] subscription init failed; continuing with cached state', err);
-  }
+  });
 
-  // Attach event listeners
+  // ── Back button ────────────────────────────────────────────────────
+  //
+  // Topic-aware. The page hosts two levels of the resource hierarchy:
+  //
+  //   1. Topic grid      — the list of topics for a subject+category
+  //   2. Scoped view     — the resources inside ONE topic
+  //
+  // When the user is viewing a topic's resources and taps Back, they
+  // expect to return to the topic grid (up one level), not to exit the
+  // page entirely (up two levels). When they're on the topic grid, or
+  // when the subject+category has no topics at all, Back exits to
+  // subjects as before.
+  //
+  // isTopicActive() is false in the "no topics exist" case even if the
+  // user is looking at resources, so this branch naturally falls through
+  // to the old behaviour for topic-less categories.
   const backBtn = $('#backBtn');
   if (backBtn) {
-    backBtn.addEventListener('click', () => router.navigateTo('subjects'));
+    backBtn.addEventListener('click', () => {
+      if (resourceBrowser.isTopicActive()) {
+        resourceBrowser.backToTopics();
+      } else {
+        router.navigateTo('subjects');
+      }
+    });
   }
+
   const themeBtn = $('#themeBtn');
   if (themeBtn) {
     themeBtn.addEventListener('click', ui.toggleTheme);
@@ -188,12 +241,25 @@ export async function init(context) {
 
   // ⚡ Force refresh: pass true to skip cache and call backend.
   //
-  // If the URL also carries a share payload (`?share=1&id=…`), the
-  // resource browser itself consumes it during this call — it resolves
-  // the id (from the loaded page or the backend), injects the shared
-  // document into the grid, highlights it so the recipient can identify
-  // it, and strips the share params. No viewer is opened, no download
-  // is started. The recipient decides what to do with the card.
+  // The module reads the URL itself to decide what to render:
+  //
+  //   • `?share=1&id=…`  → resolve the shared document, inject it as a
+  //                        card, highlight it, strip the share params.
+  //                        Topic is NOT shown.
+  //   • `?topic=Z`       → load topic Z's resources directly.
+  //   • neither, and the subject+category has topics in topics.json
+  //                      → render the topic-selection grid.
+  //   • neither, and there are no topics
+  //                      → load the full category as before.
+  //
+  // All of this branching lives inside initResourceBrowser; the page
+  // file only needs to call it once with the subject and type.
+  //
+  // initResourceBrowser itself no longer awaits the subscription refresh
+  // (see above) — it starts the topics.json read and the branch dispatch
+  // straight away. First paint therefore happens as soon as the topic
+  // list is available (fast path) or as soon as the resource fetch
+  // returns (slow path), without waiting on entitlement.
   await resourceBrowser.initResourceBrowser(subject, type, true);
 
   console.log('[ResourceBrowser] Initialized (forced fresh load)');
@@ -271,6 +337,46 @@ async function _handleShareIfPresent() {
     ui.showToast('Could not open shared document', 'error');
   }
   return true;
+}
+
+/**
+ * If the URL's `topic` param differs from the browser module's currently
+ * active topic, ask the module to re-sync.
+ *
+ * This is what makes browser back/forward work between the two views:
+ *
+ *   ?subject=anatomy&type=notes                  → topic grid
+ *   ?subject=anatomy&type=notes&topic=lower-limb → scoped view
+ *
+ * Traversing history between those URLs fires `popstate` without a page
+ * reload, so `init()` does not re-run. Without this handler, the grid
+ * and the scoped view would go out of sync with the address bar.
+ *
+ * `syncTopicFromUrl(topic)` is idempotent — it is a no-op when the
+ * requested topic already matches the module's internal state — so a
+ * burst of popstate events cannot cause double fetches.
+ *
+ * @private
+ */
+function _handleTopicIfChanged() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const urlTopic = params.get('topic') || null;   // null = no topic in URL
+
+    // Ask the module what it currently thinks the active topic is. If
+    // the URL agrees, this popstate was not a topic navigation and there
+    // is nothing to do.
+    const currentTopic = resourceBrowser.getCurrentTopic();
+    if (currentTopic === urlTopic) return;
+
+    // Re-sync. The module decides whether to show the topic grid
+    // (urlTopic === null) or load the requested topic's resources.
+    // It is responsible for updating its internal state, the URL, and
+    // the grid.
+    resourceBrowser.syncTopicFromUrl(urlTopic);
+  } catch (err) {
+    console.warn('[ResourceBrowser] Topic change handler failed:', err);
+  }
 }
 
 /**
@@ -355,5 +461,5 @@ export function destroy() {
   // #app's display was set to 'none' if we entered file-open mode; the
   // next navigation to any page that uses #app will restore it via the
   // page-manager's `appRoot.innerHTML = pageMeta.html` injection, which
-  // re-creates the #app element fresh.
+  // re-creates the #element fresh.
 }

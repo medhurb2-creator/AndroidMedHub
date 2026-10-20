@@ -25,13 +25,21 @@
  *
  * ─── DEVICEINFO SHAPE ─────────────────────────────────────────────────────
  * deviceInfo is deliberately minimal. It exists to power the "which devices
- * are logged in" list and nothing else. The five fields are:
+ * are logged in" list and nothing else. The fields are:
  *
- *   platform    'android' | 'ios' | 'web' | 'windows'
- *   model       "Samsung Galaxy S23" / "iPhone 14" / null
+ *   platform    'android' | 'ios' | 'web' | 'windows'   (internal routing tag)
+ *   browser     'Chrome' | 'Firefox' | 'Safari' | 'Edge' | 'Opera' |
+ *               'Samsung Internet' | 'Internet Explorer' | 'Unknown' | null
+ *   model       "Samsung Galaxy S23" / "iPhone 14" / "Chrome" / null
  *   osName      "Android" | "iOS" | "Windows" | "macOS" | "Linux" | null
  *   osVersion   "14" / "17.2" / null
  *   appVersion  "2.4.1" / null
+ *
+ * `platform: 'web'` is an INTERNAL tag — never render it. Anything that
+ * shows "where is this session" must prefer `browser` (fall back to
+ * `model`, then `osName`). On native builds `browser` is null and `model`
+ * carries the hardware model. On web/windows builds `model` mirrors the
+ * browser name so legacy UIs that render `model` stop showing "web".
  *
  * Everything else the plugin returns — manufacturer, sdkVersion,
  * isVirtual — is intentionally dropped. If a future feature needs one of
@@ -264,21 +272,60 @@ async function fallbackDeviceId(platformTag) {
     return deriveMedvixId(`${platformTag}:${raw}`);
 }
 
+/**
+ * Build a locally-derived deviceInfo when the preferred source is
+ * unavailable.
+ *
+ * Each branch mirrors the corresponding `normalize*Info()` so that the
+ * fallback and the local path produce structurally identical payloads —
+ * downstream UI cannot tell them apart.
+ */
 function fallbackDeviceInfo(platformTag, reason) {
-    const knownPlatform = platformTag && platformTag !== 'web' ? platformTag : null;
-    const osNameByPlatform = { android: 'Android', ios: 'iOS', windows: 'Windows' };
-
-    return {
-        platform:   knownPlatform || 'web',
-        model:      null,
-        osName:     knownPlatform
-                        ? (osNameByPlatform[knownPlatform] ?? null)
-                        : detectWebOsName(),
-        osVersion:  null,
-        appVersion: getAppVersion(),
-        // Diagnostic fields — only present on the fallback path.
+    const diagnosticFields = {
         _fallback:       true,
         _fallbackReason: reason || 'native-plugin-unavailable',
+    };
+
+    // Web / PWA — no native plugin exists; this is the expected shape
+    // on the browser. Mirror normalizeWebInfo() so the device list shows
+    // the actual browser name instead of "web".
+    if (!platformTag || platformTag === 'web') {
+        const browser = detectBrowserName();
+        return {
+            platform:   'web',
+            browser,
+            model:      browser,           // legacy UIs render `model`
+            osName:     detectWebOsName(),
+            osVersion:  null,
+            appVersion: getAppVersion(),
+            ...diagnosticFields,
+        };
+    }
+
+    // Windows — installation identity; same shape as normalizeWindowsInfo.
+    if (platformTag === 'windows') {
+        return {
+            platform:   'windows',
+            browser:    detectBrowserName(),
+            model:      null,
+            osName:     'Windows',
+            osVersion:  null,
+            appVersion: getAppVersion(),
+            ...diagnosticFields,
+        };
+    }
+
+    // Android / iOS — native plugin failed. Preserve the platform tag so
+    // downstream code still sees the correct platform.
+    const osNameByPlatform = { android: 'Android', ios: 'iOS' };
+    return {
+        platform:   platformTag,
+        browser:    null,
+        model:      null,
+        osName:     osNameByPlatform[platformTag] ?? null,
+        osVersion:  null,
+        appVersion: getAppVersion(),
+        ...diagnosticFields,
     };
 }
 
@@ -404,11 +451,26 @@ export async function getDeviceInfo() {
         try {
             const cached = JSON.parse(cachedRaw);
             if (cached && typeof cached === 'object' && !cached._fallback) {
-                _deviceInfo = cached;
-                _infoSource = cachedSource || (cached.platform === 'web' || cached.platform === 'windows'
-                    ? 'local'
-                    : 'native');
-                return _deviceInfo;
+                // Discard caches written before browser detection shipped.
+                // Without this, users who signed in before this change
+                // would keep seeing "web" in their device list forever.
+                const staleLocalCache =
+                    (cached.platform === 'web' || cached.platform === 'windows') &&
+                    !cached.browser;
+
+                if (!staleLocalCache) {
+                    _deviceInfo = cached;
+                    _infoSource = cachedSource || (
+                        cached.platform === 'web' || cached.platform === 'windows'
+                            ? 'local'
+                            : 'native'
+                    );
+                    return _deviceInfo;
+                }
+
+                // Discard so the resolve path below re-writes it.
+                utils.removeLocalStorage(INFO_KEY);
+                utils.removeLocalStorage(INFO_SOURCE_KEY);
             }
         } catch {
             utils.removeLocalStorage(INFO_KEY);
@@ -452,7 +514,7 @@ async function resolveDeviceInfo() {
             // Single bounded call. MedvixDevicePlugin returns the full
             // payload in one bridge round-trip — ID, platform, model,
             // osName, osVersion, sdkVersion, isVirtual. We trim to the
-            // five fields the UI consumes.
+            // fields the UI consumes.
             const res = await safePluginCall('MedvixDevice.getDeviceInfo',
                 () => plugin.getDeviceInfo());
 
@@ -491,15 +553,13 @@ async function resolveDeviceInfo() {
  * Normalize the shape returned by MedvixDevicePlugin.getDeviceInfo() into
  * the minimal MedVix internal info object.
  *
- * Only the five fields needed to render the "which devices are logged in"
- * list are kept. The plugin also returns deviceId, manufacturer,
- * sdkVersion, and isVirtual — those are intentionally dropped here. If a
- * future feature needs one of them, add it back deliberately rather than
- * re-broadening the default payload.
+ * Native builds: `browser` is null (no browser context); `model` carries
+ * the hardware model returned by the plugin.
  */
 function normalizeNativeInfo(res) {
     return {
         platform:   'android',
+        browser:    null,
         model:      res.model     ?? null,
         osName:     res.osName    ?? 'Android',
         osVersion:  res.osVersion ?? null,
@@ -510,6 +570,7 @@ function normalizeNativeInfo(res) {
 function normalizeWindowsInfo() {
     return {
         platform:   'windows',
+        browser:    detectBrowserName(),   // Electron runs on Chromium
         model:      null,
         osName:     'Windows',
         osVersion:  null,
@@ -518,13 +579,59 @@ function normalizeWindowsInfo() {
 }
 
 function normalizeWebInfo() {
+    const browser = detectBrowserName();
     return {
-        platform:   'web',
-        model:      null,
+        platform:   'web',                 // internal tag — never rendered
+        browser,
+        model:      browser,               // legacy UIs render `model`
         osName:     detectWebOsName(),
         osVersion:  null,
         appVersion: getAppVersion(),
     };
+}
+
+/**
+ * Identify the specific browser so device lists can show "Chrome on
+ * Windows" instead of the generic "web".
+ *
+ * Order matters — Edge / Opera / Samsung Internet / Chrome on iOS all
+ * include compatibility tokens ("Chrome", "Safari") that would match
+ * earlier. Match the most specific token first, Safari last.
+ */
+function detectBrowserName() {
+    try {
+        const ua = navigator.userAgent || '';
+
+        // Edge (Chromium desktop/Android, and iOS build)
+        if (/EdgiOS\//.test(ua))           return 'Edge';
+        if (/Edg\//.test(ua))              return 'Edge';
+
+        // Opera (desktop + iOS)
+        if (/OPiOS\//.test(ua))            return 'Opera';
+        if (/OPR\/|Opera\//.test(ua))      return 'Opera';
+
+        // Samsung Internet (Android)
+        if (/SamsungBrowser/.test(ua))     return 'Samsung Internet';
+
+        // Chrome on iOS ships as CriOS
+        if (/CriOS\//.test(ua))            return 'Chrome';
+
+        // Firefox on iOS ships as FxiOS
+        if (/FxiOS\//.test(ua))            return 'Firefox';
+        if (/Firefox\//.test(ua))          return 'Firefox';
+
+        // Desktop / Android Chrome (must be before Safari: Chrome UA
+        // contains "Safari/" for compatibility)
+        if (/Chrome\//.test(ua))           return 'Chrome';
+
+        // Safari — last, since most browsers include "Safari/" in their UA
+        if (/Safari\//.test(ua))           return 'Safari';
+
+        // Legacy IE
+        if (/MSIE|Trident\//.test(ua))     return 'Internet Explorer';
+    } catch { /* ignore */ }
+
+    return 'Unknown';
 }
 
 function detectWebOsName() {

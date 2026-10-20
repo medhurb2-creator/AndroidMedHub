@@ -20,6 +20,7 @@ import * as ui from './ui.js';
 import * as performanceRating from './performance-rating-v2.js';
 import * as auth from './auth.js';
 import { convexHttpClient } from './convex-client.js';
+import * as rateUs from './rate-us.js';
 
 // Internal state (not exported)
 let examState = {
@@ -484,6 +485,7 @@ export async function endExam() {
             explanation: q.explanation,
             topic: q.topic,
             difficulty: q.difficulty,
+            image: q.image || null,   // ← ADD THIS
             flagged: answer.flagged,
             submitted: examState.submittedQuestions[idx]
         };
@@ -575,7 +577,12 @@ export async function endExam() {
             await db.addSeenQuestions(results.subject, ids, topic);
         }
     }
-
+// ── TRIGGER IN-APP REVIEW (Respects 45-day cooldown) ──
+    try {
+        await rateUs.requestAppReview();
+    } catch (err) {
+        console.warn('[ExamEngine] RateUs trigger failed:', err);
+    }
     return results;
 }
 
@@ -622,8 +629,7 @@ async function submitChallengeResult(results) {
 
     if (navigator.onLine) {
         try {
-            // Use the correct Convex mutation name
-            await convexHttpClient.mutation("challenges/mutations:submitResult", payload);
+            await convexHttpClient.action("challenges/actions:submitResult", payload);   // ← FIXED
             console.log('Challenge result submitted successfully');
             // Mark as submitted to prevent duplicate push via sync
             results.challengeResultSubmitted = true;
@@ -715,16 +721,16 @@ export function clearExamState() {
 
 // Live proxy for backward compatibility with `import { config } from ...`
 export const config = new Proxy({}, {
-  get(_, prop) { return examState.config?.[prop]; },
-  set(_, prop, value) { if (examState.config) { examState.config[prop] = value; return true; } return false; },
-  has(_, prop) { return examState.config ? prop in examState.config : false; },
-  ownKeys() { return examState.config ? Object.keys(examState.config) : []; },
-  getOwnPropertyDescriptor(_, prop) {
-    if (examState.config && prop in examState.config) {
-      return { configurable: true, enumerable: true, value: examState.config[prop] };
+    get(_, prop) { return examState.config?.[prop]; },
+    set(_, prop, value) { if (examState.config) { examState.config[prop] = value; return true; } return false; },
+    has(_, prop) { return examState.config ? prop in examState.config : false; },
+    ownKeys() { return examState.config ? Object.keys(examState.config) : []; },
+    getOwnPropertyDescriptor(_, prop) {
+        if (examState.config && prop in examState.config) {
+            return { configurable: true, enumerable: true, value: examState.config[prop] };
+        }
+        return undefined;
     }
-    return undefined;
-  }
 });
 
 // Standard object literal – uses function hoisting, no issues

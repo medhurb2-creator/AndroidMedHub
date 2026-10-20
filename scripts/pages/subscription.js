@@ -1,6 +1,7 @@
 // scripts/pages/subscription.js
 import * as ui from '../ui.js';
 import * as router from '../router.js';
+import * as redirect from '../redirect.js';
 import * as auth from '../auth.js';
 import * as subscription from '../subscription.js';
 import * as utils from '../utils.js';
@@ -18,10 +19,67 @@ export async function init(context) {
 
   ui.applyTheme();
 
-  // Check auth
+  // ── State adapter ────────────────────────────────────────────────
+  // Registered before the auth gate so a capture-on-redirect is
+  // possible the moment we push login. Captures the parts of UI
+  // state that would otherwise be lost on a redirect round-trip:
+  //
+  //   • activeView  — which body-view is showing ('method-selection',
+  //                   'stk-plans', 'c2b-details').
+  //   • c2bCode     — the M-Pesa transaction code being typed.
+  //   • c2bPhone    — the phone number field (optional).
+  //
+  // We do NOT capture the inline amount field, the plan card
+  // selection state, or the trial option — those are all regenerated
+  // by renderInlinePlans() / renderHeaderStatus() on init.
+  //
+  // Restore order matters: switchBodyView('c2b-details') invokes
+  // resetC2BForm(), which wipes the C2B inputs. So we must re-apply
+  // the saved values AFTER switchBodyView runs. The adapter's
+  // restore does exactly that.
+  redirect.registerStateAdapter('subscription', {
+    capture: () => {
+      const activeViewEl =
+        document.querySelector('.body-view.active');
+
+      const codeEl = document.getElementById('c2b-mpesa-code');
+      const phoneEl = document.getElementById('c2b-phone');
+
+      return {
+        activeView: activeViewEl
+          ? activeViewEl.id.replace(/^view-/, '')
+          : 'method-selection',
+        c2bCode: codeEl ? codeEl.value : '',
+        c2bPhone: phoneEl ? phoneEl.value : '',
+      };
+    },
+    restore: (data) => {
+      if (!data) return;
+
+      // Switch to the saved view first. For c2b-details this calls
+      // resetC2BForm() internally, wiping the inputs — so we re-apply
+      // the saved values immediately after.
+      if (data.activeView) {
+        try { switchBodyView(data.activeView); }
+        catch (err) { console.warn('[Subscription] view restore failed:', err); }
+      }
+
+      if (data.activeView === 'c2b-details') {
+        const codeEl = document.getElementById('c2b-mpesa-code');
+        const phoneEl = document.getElementById('c2b-phone');
+        if (codeEl && typeof data.c2bCode === 'string') codeEl.value = data.c2bCode;
+        if (phoneEl && typeof data.c2bPhone === 'string') phoneEl.value = data.c2bPhone;
+      }
+    },
+  });
+
+  // ── Auth gate ────────────────────────────────────────────────────
+  // Round-trip through login. Subscription is a resolver, so it
+  // pushes itself — after the user authenticates, we come back here
+  // with the same view state and can continue toward payment/trial.
   if (!auth.checkAuth()) {
-    ui.showToast('Please log in to view subscriptions', 'warning');
-    router.navigateTo('login');
+    ui.showToast('Please log in to view subscription plans', 'warning');
+    redirect.navigateWithReturn('login', 'auth_required');
     return;
   }
 
@@ -42,7 +100,6 @@ export async function init(context) {
     try {
       currentSub = await db.getSubscription();
       if (currentSub) await subscription.setSubscription(currentSub);
-      // Re-check active status after loading from DB
       isActive = await subscription.hasActiveSubscription();
     } catch (e) { /* ignore */ }
   }
@@ -59,7 +116,8 @@ export async function init(context) {
   if (shimmer) shimmer.style.display = 'none';
   if (real) real.style.display = 'block';
 
-  // Show method selection
+  // Show default method selection. If the user was on a different
+  // body-view when they were bounced, the adapter restores it below.
   switchBodyView('method-selection');
 
   // Check trial eligibility ONLY if online and no active subscription
@@ -84,11 +142,45 @@ export async function init(context) {
   // Attach event listeners
   attachEventListeners(context);
 
+  // ── Self-consume of the return stack ─────────────────────────────
+  // If a snapshot exists for this page AND the top of the return
+  // stack points here, we are the target of a completed round trip.
+  // Pop so the stack doesn't grow on subsequent redirects.
+  try {
+    const hasSnap = redirect.hasSnapshot();
+    if (hasSnap) {
+      const myUrl =
+        window.location.pathname +
+        (window.location.search || '') +
+        (window.location.hash || '');
+      const top = redirect.peekReturn();
+      if (top && top.url === myUrl) redirect.popReturn();
+    }
+  } catch (err) {
+    console.warn('[Subscription] Return-stack cleanup failed:', err);
+  }
+
+  // ── Resume snapshot ──────────────────────────────────────────────
+  // Restores body view and C2B fields via the adapter. The inline
+  // custom amount field is captured by the UI snapshot (it has an
+  // id) but its oninput listener is not re-fired, so
+  // updateCustomDuration is invoked manually by the adapter's
+  // restore path via switchBodyView → renderInlinePlans.
+  const snap = redirect.consumeSnapshot();
+  if (snap && (snap.ui || snap.page)) {
+    ui.showToast('Continuing where you left off', 'info', 1800);
+    console.log('[Subscription] Resumed from redirect:', {
+      fields: Object.keys(snap.ui?.fields || {}).length,
+      pageState: snap.page,
+    });
+  }
+
   console.log('[Subscription] Initialized');
 }
 
 function attachEventListeners(context) {
-  // Back button
+  // Back button — plain navigation. The user is explicitly leaving
+  // the subscription flow.
   const backBtn = $('#backBtn');
   if (backBtn) {
     backBtn.addEventListener('click', () => router.navigateTo('subjects'));
@@ -100,11 +192,25 @@ function attachEventListeners(context) {
     themeToggle.addEventListener('click', ui.toggleTheme);
   }
 
-  // Payment method selections
+  // ── Payment method selections ────────────────────────────────────
+  //
+  // None of these push the redirect stack. Subscription is an
+  // intermediate page: the user arrived here to satisfy a
+  // subscription_required gate upstream, and every exit is a
+  // hand-off to a downstream resolver (payment, trial) that will
+  // pop the ORIGINAL chain entry on its own success. Pushing
+  // subscription here would corrupt the chain by inserting an
+  // intermediate step that nobody wants to return to.
+  //
+  // The single exception is the auth gate at the top of init(),
+  // which does push because returning to subscription after login
+  // is exactly the intent.
+
   const trialOption = $('#trialOption');
   if (trialOption) {
     trialOption.addEventListener('click', () => {
       if (!trialEligible) { ui.showToast('Free trial not available', 'warning'); return; }
+      // Plain nav — trial activation is a resolver that pops.
       router.navigateTo('free-trial');
     });
   }
@@ -160,12 +266,11 @@ async function renderHeaderStatus(sub, isActive) {
   const container = $('#status-area');
   if (!container) return;
   if (isActive && sub) {
-    const remaining = await subscription.formatRemainingTime(); // uses cached expiry
+    const remaining = await subscription.formatRemainingTime();
     container.innerHTML = `<span class="status-text">Plan: ${sub.plan} · expires ${utils.formatDate(sub.expiryDate)}</span><span class="status-text">(${remaining} left)</span>`;
     return;
   }
 
-  // Recompute trial availability (trialEligible isn't set yet at this point)
   let trialAvailable = false;
   if (navigator.onLine) {
     try {
@@ -176,6 +281,7 @@ async function renderHeaderStatus(sub, isActive) {
     container.innerHTML = `<span class="status-text">No active plan</span><button id="trialHeaderBtn" class="trial-btn">Start Free Trial</button>`;
     const trialHeaderBtn = $('#trialHeaderBtn');
     if (trialHeaderBtn) {
+      // Plain nav — same reasoning as the main trial option.
       trialHeaderBtn.addEventListener('click', () => router.navigateTo('free-trial'));
     }
     return;
@@ -236,7 +342,6 @@ function renderInlinePlans() {
   const order = ['monthly', 'quarterly', 'yearly'];
   regularPlans.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
 
-  // Custom card first, then Monthly / Quarterly / Yearly
   container.innerHTML =
     renderCustomCard(customPlan, defaultAmount) +
     regularPlans.map(renderPlanCard).join('');
@@ -245,7 +350,6 @@ function renderInlinePlans() {
   updateCustomDuration(defaultAmount, 'inline-custom-duration-preview');
 }
 
-// ---------- Device-aware plan card ----------
 function renderPlanCard(plan) {
   const deviceOptions = plan.deviceOptions || [
     { devices: 1, price: plan.basePrice || plan.price, icon: '📱', label: '1 DEVICE' }
@@ -294,7 +398,6 @@ function renderPlanCard(plan) {
     </div>`;
 }
 
-// ---------- Custom amount card (unchanged behaviour) ----------
 function renderCustomCard(plan, defaultAmount) {
   const previewText = plan.duration > 0
     ? `<strong>${plan.duration} days</strong> of access`
@@ -317,7 +420,6 @@ function renderCustomCard(plan, defaultAmount) {
     </div>`;
 }
 
-// ---------- Device selection + subscribe ----------
 function attachPlanCardListeners(container) {
   container.querySelectorAll('.plan-card[data-plan-id]').forEach(card => {
     const deviceButtons = card.querySelectorAll('.device-option');
@@ -357,6 +459,9 @@ function attachPlanCardListeners(container) {
           ctaText: `Subscribe – KES ${price.toLocaleString()}`
         };
         payment.setSelectedPlan(selectedPlan);
+
+        // Plain nav. Payment is the resolver that pops the outer
+        // chain (e.g. exam-room) on success.
         router.navigateTo('payment');
       });
     }
@@ -368,7 +473,6 @@ window.updateInlineCustomAmount = function (value) {
   updateCustomDuration(parseFloat(value) || 0, 'inline-custom-duration-preview');
 };
 
-// Legacy fallback – still available in case anything external calls it.
 window.selectPlanInline = function (planId) {
   const plan = plansList.find(p => p.id === planId);
   if (!plan) { ui.showToast('Plan not found', 'error'); return; }
@@ -392,11 +496,10 @@ window.initiateCustomPayment = function () {
 
 // ==================== C2B ====================
 function resetC2BForm() {
-  // Section only has #c2b-mpesa-code; no phone field currently.
   const codeInput = $('#c2b-mpesa-code');
   if (codeInput) codeInput.value = '';
 
-  const phoneInput = $('#c2b-phone');   // guarded – will be null if not present
+  const phoneInput = $('#c2b-phone');
   if (phoneInput) phoneInput.value = '';
 
   const statusDiv = $('#verification-status');
@@ -443,11 +546,29 @@ async function verifyC2BPayment(event) {
     const result = await window.Payment.claimManualPayment({ mpesaCode, phoneNumber: phone });
     if (statusDiv) {
       statusDiv.className = 'verification-status success';
-      statusDiv.innerHTML = `✅ ${result.message || 'Subscription activated successfully!'} <button class="close-status" onclick="document.getElementById('verification-status').style.display='none'">&times;</button>`;
+      statusDiv.innerHTML = `✅ ${result.message || 'Subscription activated successfully!'}`;
     }
-    // After successful claim, refresh subscription status from backend
+
+    // Refresh subscription status from backend so the header and
+    // any downstream page sees the new active state.
     await subscription.syncSubscription(true);
-    setTimeout(() => window.location.reload(), 2000);
+
+    // C2B success is a resolver: the user now has an active
+    // subscription. Pop the chain if the caller was gated into
+    // subscription from another page; fall through to subjects
+    // otherwise.
+    //
+    // Replaces the previous `window.location.reload()` — a full
+    // reload would lose the redirect chain and re-bootstrap the
+    // entire app for a simple state change.
+    setTimeout(() => {
+      try {
+        redirect.consumeAndReturn('subjects');
+      } catch (err) {
+        console.warn('[Subscription] C2B consumeAndReturn failed, reloading:', err);
+        window.location.reload();
+      }
+    }, 1500);
   } catch (err) {
     if (statusDiv) {
       statusDiv.className = 'verification-status error';
@@ -460,5 +581,7 @@ async function verifyC2BPayment(event) {
 
 // ==================== DESTROY ====================
 export function destroy() {
-  // Cleanup if needed
+  // Unregister the state adapter so a subsequent page load does not
+  // inherit a stale closure over this page's module state.
+  try { redirect.unregisterStateAdapter('subscription'); } catch { /* ignore */ }
 }

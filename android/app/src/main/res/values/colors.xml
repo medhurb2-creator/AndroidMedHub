@@ -1,12 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <!-- Legacy Capacitor defaults. Kept so the base AppTheme compiles. -->
+    <!-- ── Theme base ────────────────────────────────────────────────────
+         Legacy Capacitor defaults. These feed the unused `AppTheme` style
+         (see styles.xml) and any third-party view or dialog that happens
+         to read colorPrimary / colorPrimaryDark / colorAccent from the
+         current theme.
+
+         Nothing in the running app paints with these values directly —
+         the WebView paints everything, and the token palette lives in
+         common.css. They are kept so the `AppTheme` style compiles and
+         so any library that expects the standard AppCompat attributes
+         finds them populated. -->
     <color name="colorPrimary">#2563eb</color>
     <color name="colorPrimaryDark">#1d4ed8</color>
     <color name="colorAccent">#3b82f6</color>
 
     <color name="status_bar_color">#0b1120</color>
+
+   
     <color name="window_background">#0b1120</color>
 
 </resources>

@@ -903,17 +903,18 @@ export function setupControls(core) {
     };
     labelSync();
 
-    _addListener(els.toggleViewBtn, 'click', () => {
-      let mode = 'scroll';
-      try {
-        const state = core.getState();
-        mode = state.get('viewMode') || 'scroll';
-      } catch { /* ignore */ }
-      const next = mode === 'scroll' ? 'page' : 'scroll';
-      try { core.getState().set('viewMode', next); } catch { /* ignore */ }
-      labelSync();
-      _emit(core, Events.LAYOUT_CHANGED, { mode: next });
-    });
+_addListener(els.toggleViewBtn, 'click', () => {
+  let mode = 'scroll';
+  try {
+    const state = core.getState();
+    mode = state.get('viewMode') || 'scroll';
+  } catch { /* ignore */ }
+  const next = mode === 'scroll' ? 'page' : 'scroll';
+  try { 
+    core.getState().set('viewMode', next); 
+  } catch { /* ignore */ }
+  labelSync();
+});
   }
 
   // ── Prev / next page ────────────────────────────────────────────────────
@@ -1655,24 +1656,6 @@ export function bindCoreEvents(core) {
     }
   });
 
-  // ── Memory pressure → throttled toast ────────────────────────────────────
-  //
-  // MemoryManager evicts before registering, so this event fires only when
-  // the pyramid's natural eviction could not keep pace with allocation —
-  // a genuinely tight condition, not a routine one. 60 s throttle rather
-  // than 30 s, matching the reduced frequency.
-  subscribe(Events.MEMORY_PRESSURE, (payload) => {
-    if (!payload || payload.level !== 'critical') return;
-    const now = Date.now();
-    if (now - _memoryToastAt < 60000) return;
-    _memoryToastAt = now;
-    try {
-      showToast(
-        'Memory is tight — some pages may re-render at lower quality while you scroll',
-        'warning',
-      );
-    } catch { /* ignore */ }
-  });
 
   // ── Network offline → throttled toast ───────────────────────────────────
   subscribe(Events.NETWORK_OFFLINE, () => {

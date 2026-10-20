@@ -29,6 +29,11 @@
  *   revisit — without them, the cache-served first page lies about being
  *   the last page, and the "Load more" button never appears.
  *
+ *   The cache key includes the topic when one is active. A topic-scoped
+ *   fetch and a category-wide fetch of the same subject+category are two
+ *   different cache entries, so switching between them never serves stale
+ *   documents from the other scope.
+ *
  * Failure semantics:
  *   `fetchResources` re-throws network errors when it has no cache to
  *   fall back on. This lets the caller (resource-browser.js) detect the
@@ -65,7 +70,9 @@ import * as subscription from './subscription.js';
 //   lastFetched: number,
 // }>
 //
-// Keyed by `${subject}_${category}`. Lost on page unload by design.
+// Keyed by `${subject}_${category}` when no topic is active, or
+// `${subject}_${category}_${topic}` when one is. Lost on page unload by
+// design.
 
 /**
  * @type {Map<string, {
@@ -79,12 +86,25 @@ import * as subscription from './subscription.js';
  */
 const _catalogueCache = new Map();
 
-function _cacheKey(subject, category) {
-  return `${subject}_${category}`;
+/**
+ * Build the cache key for a (subject, category, topic) triple.
+ *
+ *   topic present  → "anatomy_notes_abdomen&pelvis"
+ *   topic absent   → "anatomy_notes"
+ *
+ * The two forms never collide because the topic slug is appended after a
+ * separator that cannot appear in the base key's two parts (subject and
+ * category are written by the backend and do not contain "_" by convention;
+ * if that ever changes, switch to a longer separator like "::").
+ */
+function _cacheKey(subject, category, topic = null) {
+  return topic
+    ? `${subject}_${category}_${topic}`
+    : `${subject}_${category}`;
 }
 
-function _getCache(subject, category) {
-  return _catalogueCache.get(_cacheKey(subject, category)) || {
+function _getCache(subject, category, topic = null) {
+  return _catalogueCache.get(_cacheKey(subject, category, topic)) || {
     version: null,
     documents: [],
     cursor: null,
@@ -94,9 +114,9 @@ function _getCache(subject, category) {
   };
 }
 
-function _setCache(subject, category, data) {
-  const prev = _getCache(subject, category);
-  _catalogueCache.set(_cacheKey(subject, category), {
+function _setCache(subject, category, topic = null, data) {
+  const prev = _getCache(subject, category, topic);
+  _catalogueCache.set(_cacheKey(subject, category, topic), {
     // Preserve fields the caller didn't supply.
     version: data.version !== undefined ? data.version : prev.version,
     documents: data.documents !== undefined ? data.documents : prev.documents,
@@ -145,6 +165,12 @@ function setDownloadManifest(manifest) {
  * identical field set, so downstream consumers (card renderer, open handler,
  * download handler, saveDownloadedMeta) never have to branch on origin.
  *
+ * `topic` is normalized to `null` when absent — the backend already does
+ * this, but re-asserting it here keeps every client-side consumer from
+ * having to distinguish between `undefined` and `null` for the "no topic"
+ * case. `resource-browser.js` relies on this when filtering persisted
+ * downloads by topic scope.
+ *
  * @param {object} doc
  * @returns {object}
  */
@@ -155,6 +181,7 @@ function _toPublicDoc(doc) {
     title: doc.title,
     subject: doc.subject,
     category: doc.category,
+    topic: doc.topic ?? null,        // ← NEW
 
     // Attribution
     author: doc.author,
@@ -187,7 +214,7 @@ function _toPublicDoc(doc) {
 // ==================== FETCH RESOURCES ====================
 
 /**
- * Fetch resources for a subject/category.
+ * Fetch resources for a subject/category, optionally scoped to a topic.
  *
  * Behaviour:
  *   • If first page (no cursor, no filters) and cache version matches,
@@ -200,26 +227,49 @@ function _toPublicDoc(doc) {
  *         the offline-only view. Silently returning [] is what broke
  *         offline downloads.
  *
+ * Topic scoping:
+ *   When `topic` is a non-empty string, the backend query is narrowed to
+ *   that topic via the `by_subject_category_topic` index, and the cache
+ *   key includes the topic. The `getManifest` check is also topic-scoped,
+ *   so a change to a different topic's resources does not invalidate this
+ *   topic's cache.
+ *
+ *   When `topic` is `null`/`undefined`/empty, the query is category-wide
+ *   and the cache key is category-only — matching the pre-topics behavior.
+ *
  * @param {string} subject
  * @param {string} category
  * @param {string|null} cursor
  * @param {Object} filters  { institution, year }
+ * @param {string|null} topic   topic slug, or null/undefined for category-wide
  * @returns {Promise<{documents: Array, cursor: string|null, hasMore: boolean, source: string}>}
  */
-export async function fetchResources(subject, category, cursor = null, filters = {}) {
+export async function fetchResources(
+  subject,
+  category,
+  cursor = null,
+  filters = {},
+  topic = null,
+) {
   await _runCacheMigrationOnce();
+
+  // Normalize topic: empty string and undefined both mean "no topic".
+  const normalizedTopic = topic ? String(topic) : null;
 
   const isFirstPage = !cursor && !filters.institution && !filters.year;
 
   // ── Cache fast-path ────────────────────────────────────────────────
   if (isFirstPage) {
-    const cached = _getCache(subject, category);
+    const cached = _getCache(subject, category, normalizedTopic);
     if (cached.documents.length > 0) {
       try {
-        const manifest = await convexHttpClient.query('resources/queries:getManifest', {
-          subject,
-          category,
-        });
+        const manifestArgs = { subject, category };
+        if (normalizedTopic) manifestArgs.topic = normalizedTopic;
+
+        const manifest = await convexHttpClient.query(
+          'resources/queries:getManifest',
+          manifestArgs,
+        );
         if (manifest && manifest.version === cached.version) {
           return {
             documents: cached.documents,
@@ -241,6 +291,9 @@ export async function fetchResources(subject, category, cursor = null, filters =
     category,
     limit: 20,
   };
+  if (normalizedTopic) {
+    queryParams.topic = normalizedTopic;
+  }
   if (cursor && typeof cursor === 'string' && cursor.length > 0) {
     queryParams.cursor = cursor;
   }
@@ -254,7 +307,7 @@ export async function fetchResources(subject, category, cursor = null, filters =
     // Write the cache on first-page fetches, including cursor and hasMore
     // so a subsequent cache hit continues pagination correctly.
     if (isFirstPage) {
-      _setCache(subject, category, {
+      _setCache(subject, category, normalizedTopic, {
         version: result.manifestVersion,
         documents,
         cursor: result.cursor || null,
@@ -271,8 +324,9 @@ export async function fetchResources(subject, category, cursor = null, filters =
   } catch (err) {
     console.error('[Content] Fetch error:', err);
 
-    // Fall back to in-memory cache if we have one.
-    const cached = _getCache(subject, category);
+    // Fall back to in-memory cache if we have one — scoped to the same
+    // topic (or lack thereof) as this request.
+    const cached = _getCache(subject, category, normalizedTopic);
     if (cached.documents.length > 0) {
       return {
         documents: cached.documents,
@@ -296,12 +350,15 @@ export async function fetchResources(subject, category, cursor = null, filters =
  * Backed by `resources/queries:getResource`, which:
  *   • is public (no auth required);
  *   • returns null for missing or inactive resources;
- *   • applies the canonical `toPublicDocument()` shape.
+ *   • applies the canonical `toPublicDocument()` shape (including `topic`).
  *
  * Used by the share-landing flow: a share link carries only an id, and
  * this resolves it to a full public doc — same shape as a `fetchResources`
  * document — so the caller can inject it into the grid and hand it to the
  * viewer without any shape adaptation.
+ *
+ * The returned document carries `topic`, which lets `resource-browser.js`
+ * preserve topic context for the Back button on share landing.
  *
  * @param {string} resourceId
  * @returns {Promise<object|null>}
@@ -324,6 +381,11 @@ export async function fetchResourceById(resourceId) {
 /**
  * Get available filter values (institutions, years) for a subject/category.
  *
+ * Category-wide by design: the dropdowns are populated once per category
+ * visit and are not re-scoped when the user selects a topic. This keeps
+ * the "years" list stable as the user drills in and out of topics, which
+ * is the expected UX.
+ *
  * @param {string} subject
  * @param {string} category
  * @returns {Promise<{institutions: string[], years: number[]}>}
@@ -341,7 +403,7 @@ export async function getAvailableFilters(subject, category) {
       subject,
       category,
     });
-    _setCache(subject, category, { filters: result });
+    _setCache(subject, category, null, { filters: result });
     return result || { institutions: [], years: [] };
   } catch (err) {
     console.warn('[Content] Failed to fetch filters', err);

@@ -2,6 +2,7 @@
 import * as examSettings from '../exam-settings.js'; // The existing module
 import * as ui from '../ui.js';
 import * as router from '../router.js';
+import * as redirect from '../redirect.js';
 
 // DOM refs – we'll collect them in init
 let dom = {};
@@ -20,7 +21,7 @@ function updateBottomCardPosition() {
 }
 
 function getShareableLink(code) {
-  const BASE_URL = 'https://medvix.co.ke';
+  const BASE_URL = 'https://app.medvix.co.ke';
   const PAGE_PATH = '/exam-settings/';
   return `${BASE_URL}${PAGE_PATH}?exam=${encodeURIComponent(code)}`;
 }
@@ -82,7 +83,8 @@ function showStep(stepId) {
 
 // ==================== EVENT LISTENERS ====================
 function setupEventListeners() {
-  // Back button (clean URL)
+  // Back button (clean URL) — plain navigation, no redirect. The
+  // user is done with this page; there is nothing to come back for.
   dom.backBtn.addEventListener('click', () => router.navigateTo('subjects'));
 
   // Theme toggle
@@ -282,6 +284,77 @@ function setupEventListeners() {
 
 // ==================== INIT ====================
 export async function init(context) {
+  // ── State adapter ────────────────────────────────────────────────
+  // Registered FIRST, before any await. The wizard card, the selected
+  // mode, the challenge type, the join code, the challenge code, and
+  // whether the share-link area is visible all live in memory only —
+  // none of them survive an SPA teardown unless we capture them here.
+  //
+  // Form fields (std-qty, challenge-qty, rev-qty, invite-friend-input,
+  // join-code-input, share-link-input, etc.) already carry an id, so
+  // the redirect module's automatic UI snapshot covers them for free.
+  redirect.registerStateAdapter('exam-settings', {
+    capture: () => {
+      const activeStepEl = document.querySelector('.card-step.active');
+      const selectedModeEl = document.querySelector('.mode-option.selected');
+      const activeChallengeTypeEl = dom.challengeType?.querySelector('button.active');
+
+      return {
+        activeStepId: activeStepEl ? activeStepEl.id : null,
+        selectedMode: selectedModeEl ? selectedModeEl.dataset.mode : null,
+        challengeType: activeChallengeTypeEl ? activeChallengeTypeEl.dataset.type : null,
+        joinCode: dom.joinCodeDisplay?.textContent || null,
+        challengeCode: dom.challengeCodeDisplay?.textContent || null,
+        challengeStatus: dom.challengeStatus?.textContent || '',
+        shareLinkVisible: dom.shareLinkArea
+          ? dom.shareLinkArea.style.display === 'block'
+          : false,
+      };
+    },
+
+    restore: (data) => {
+      if (!data) return;
+
+      // Restore mode selection before we jump to any step — the UI
+      // depends on which mode is highlighted.
+      if (data.selectedMode) {
+        document.querySelectorAll('.mode-option').forEach(el => {
+          el.classList.toggle('selected', el.dataset.mode === data.selectedMode);
+        });
+      }
+
+      // Restore the challenge-type buttons if we were on the
+      // challenge step.
+      if (data.challengeType && dom.challengeType) {
+        dom.challengeType.querySelectorAll('button').forEach(btn => {
+          btn.classList.toggle('active', btn.dataset.type === data.challengeType);
+        });
+        dom.friendExtra?.classList.toggle('show', data.challengeType === 'friend');
+        dom.anyoneExtra?.classList.toggle('show', data.challengeType === 'anyone');
+      }
+
+      // Restore the join / challenge code displays.
+      if (data.joinCode && dom.joinCodeDisplay) {
+        dom.joinCodeDisplay.textContent = data.joinCode;
+      }
+      if (data.challengeCode && dom.challengeCodeDisplay) {
+        dom.challengeCodeDisplay.textContent = data.challengeCode;
+      }
+      if (data.challengeStatus && dom.challengeStatus) {
+        dom.challengeStatus.textContent = data.challengeStatus;
+      }
+      if (data.shareLinkVisible && dom.shareLinkArea) {
+        dom.shareLinkArea.style.display = 'block';
+      }
+
+      // Finally, jump to the same card. showStep() also recomputes the
+      // bottom card position so the header offset stays correct.
+      if (data.activeStepId) {
+        showStep(data.activeStepId);
+      }
+    },
+  });
+
   // DOM references
   dom = {
     shimmer: context.root.querySelector('#shimmer-skeleton'),
@@ -408,10 +481,50 @@ export async function init(context) {
   window.hideInlineSpinner = hideInlineSpinner;
   window.showStep = showStep;
   window.updateBottomCardPosition = updateBottomCardPosition;
+
+  // ── Self-consume of the return stack ─────────────────────────────
+  // If a snapshot exists for this page AND the top of the return
+  // stack points here, we are the target of a just-completed round
+  // trip. Pop the entry so the stack does not grow on subsequent
+  // redirects. This handles the case where the returning page used
+  // history.back() instead of consumeAndReturn().
+  try {
+    const hasSnap = redirect.hasSnapshot();
+    if (hasSnap) {
+      const myUrl =
+        window.location.pathname +
+        (window.location.search || '') +
+        (window.location.hash || '');
+      const top = redirect.peekReturn();
+      if (top && top.url === myUrl) redirect.popReturn();
+    }
+  } catch (err) {
+    console.warn('[ExamSettings] Return-stack cleanup failed:', err);
+  }
+
+  // ── Restore snapshot ─────────────────────────────────────────────
+  // UI fields (quantity inputs, invite email, join code, share link,
+  // preset select, etc.) are restored by the module's automatic UI
+  // snapshot. The adapter above handles the wizard state.
+  //
+  // Note: the URL-param auto-join path above runs before this, so a
+  // snapshot never overrides an explicit `?exam=CODE` deep link.
+  // That is the right precedence — a share link always wins over a
+  // stale session restore.
+  const snap = redirect.consumeSnapshot();
+  if (snap && (snap.ui || snap.page)) {
+    ui.showToast('Continuing where you left off', 'info', 1800);
+  }
+
+  console.log('[ExamSettings] Initialized');
 }
 
 // ==================== DESTROY ====================
 export function destroy() {
+  // Unregister the state adapter so a subsequent page load does not
+  // inherit a stale closure over this page's DOM.
+  try { redirect.unregisterStateAdapter('exam-settings'); } catch { /* ignore */ }
+
   // Cleanup: remove observers, listeners
   window.removeEventListener('resize', updateBottomCardPosition);
   if (headerObserver) {

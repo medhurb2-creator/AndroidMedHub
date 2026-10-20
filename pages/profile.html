@@ -1,13 +1,5 @@
-<section
-  class="page profile-page"
-  data-page="profile"
-  data-script="/scripts/pages/profile.js"
-  data-style="/css/profile.css"
-  data-title="Profile"
-  data-auth="required"
-  data-cache="true"
-  data-transition="fade"
->
+<section class="page profile-page" data-page="profile" data-script="/scripts/pages/profile.js"
+  data-style="/css/profile.css" data-title="Profile" data-auth="required" data-cache="true" data-transition="fade">
   <!-- ===== SHIMMER LOADER ===== -->
   <div id="shimmer-loader">
     <!-- Sticky header skeleton -->
@@ -119,7 +111,8 @@
             <div class="form-group half">
               <label for="institution">Institution</label>
               <div class="institution-wrapper">
-                <input type="text" id="institution" name="institution" placeholder="Search institution..." autocomplete="off">
+                <input type="text" id="institution" name="institution" placeholder="Search institution..."
+                  autocomplete="off">
                 <div id="institution-dropdown" class="institution-dropdown"></div>
               </div>
             </div>
@@ -166,17 +159,25 @@
         <hr>
         <h3>Data & Privacy</h3>
         <button id="exportDataBtn" class="btn-secondary">📤 Export My Data</button>
-        <button id="deleteAccountBtn" class="btn-danger" style="background: #dc2626; color: white;">🗑️ Delete Account</button>
+        <button id="deleteAccountBtn" class="btn-danger" style="background: #dc2626; color: white;">🗑️ Delete
+          Account</button>
       </div>
 
       <!-- Devices Tab -->
       <div id="devices-tab" class="tab-content">
         <div class="devices-header">
           <h3>Your Devices</h3>
-          <button id="logoutAllDevicesBtn" class="btn-small">Logout all others</button>
+          <div class="devices-actions-bar">
+            <button id="refreshDevicesBtn" type="button" class="btn-secondary btn-small">
+              ↻ Refresh
+            </button>
+            <button id="logoutAllDevicesBtn" type="button" class="btn-secondary btn-small">
+              Sign out other devices
+            </button>
+          </div>
         </div>
+        <p id="devices-summary" class="devices-summary"></p>
         <div id="devices-list" class="devices-list"></div>
-        <p class="note">Device fingerprint: <code id="device-fingerprint"></code></p>
       </div>
 
       <!-- Preferences Tab -->

@@ -1,71 +1,102 @@
 /* ==========================================================================
    SHARED NOTE — page-specific styles
-   Requires common.css (tokens, reset, .logo base, :where(header|footer)
-   defaults, .btn-outline base, keyframes, utilities).
-   Adds ONLY: page-container block, header padding/height, logo overrides,
-   main-nav, main layout, note card, Quill-style content typography,
-   note actions, footer overrides, responsive.
+   Requires common.css.
+   Layout: fixed header + scrollable middle + fixed footer.
    ========================================================================== */
 
-/* ---------- Page container ----------
-   Original CSS never styled .page-container, so it was a plain block.
-   Common now constrains it to 1200px with side padding. Block that
-   to preserve the original full-width layout. */
-.page-container {
+/* ═══════════ PAGE SHELL ═══════════════════════════════════════════
+   Anchored to the viewport, flex column so header and footer are
+   always visible and only the middle section scrolls. No padding
+   offset — the header/footer are real flex children, not fixed
+   overlays, so there is no pixel math and no chance of content
+   sliding behind them.
+   ================================================================= */
+.page.shared-note-page {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    background-color: var(--bg-primary, var(--bg-card, #f7f7f8));
+}
+
+.page.shared-note-page .page-container {
+    height: 100%;
     max-width: none;
     margin: 0;
     padding: 0;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
 }
 
-/* ---------- Header override ----------
-   Common's :where(header:not([class])) provides display: flex +
-   justify-content + align-items + padding: 1rem 0. This page overrides
-   padding and adds height, bg, border. */
-header {
-    padding: 0.5rem 1.5rem;
-    height: 10vh;
-    min-height: 60px;
+/* ═══════════ FIXED HEADER ═══════════════════════════════════════ */
+.shared-note-header {
+    flex-shrink: 0;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0 1.5rem;
     background-color: var(--bg-card);
     border-bottom: 1px solid var(--border);
+    z-index: 10;
+    box-sizing: border-box;
 }
 
-/* ---------- Logo override ----------
-   Common's .logo uses 700 weight / 1.3rem; this page uses 600 / 1.2rem. */
-.logo {
+.shared-note-header .logo {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     font-weight: 600;
-    font-size: 1.2rem;
-}
-/* `.logo img` border-radius is identical in common — removed */
-
-/* ---------- Main navigation ---------- */
-.main-nav {
-    display: flex;
-    gap: 1.5rem;
-    align-items: center;
-}
-.main-nav a {
-    color: var(--text-secondary);
-    font-weight: 500;
-    padding: 0.4rem 0.8rem;
-    border-radius: var(--radius-sm);
+    font-size: 1.15rem;
+    color: var(--text-primary);
     text-decoration: none;
-    transition: background 0.2s;
+    margin: 0;
 }
-.main-nav a:hover { background: var(--bg-secondary); }
 
-.header-right {
+.shared-note-header .logo img {
+    border-radius: 8px;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.shared-note-header .header-right {
     display: flex;
-    gap: 1rem;
     align-items: center;
+    gap: 0.75rem;
 }
 
-/* ---------- Main layout ---------- */
-main {
-    min-height: 70vh;
+/* Theme toggle — matches the .btn-outline pattern used elsewhere */
+.shared-note-header .btn-outline {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    padding: 0.4rem 0.7rem;
+    border-radius: 20px;
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--text-primary);
+    transition: background 0.15s, border-color 0.15s;
+    -webkit-tap-highlight-color: transparent;
+}
+.shared-note-header .btn-outline:hover,
+.shared-note-header .btn-outline:focus-visible {
+    background: var(--bg-card);
+    border-color: var(--accent);
+    outline: none;
+}
+
+/* ═══════════ SCROLLABLE CONTENT ═════════════════════════════════ */
+.shared-note-main {
+    flex: 1;
+    min-height: 0;         /* allows overflow-y to work inside flex */
+    overflow-y: auto;
+    overflow-x: hidden;
     padding: 2rem 1.5rem;
     display: flex;
     justify-content: center;
     align-items: flex-start;
+    background-color: var(--bg-primary, var(--bg-card, #f7f7f8));
 }
 
 .shared-note-container {
@@ -74,7 +105,7 @@ main {
     margin: 0 auto;
 }
 
-/* ---------- Loading & error states ---------- */
+/* ═══════════ LOADING & ERROR ════════════════════════════════════ */
 .loading,
 .error {
     text-align: center;
@@ -90,14 +121,13 @@ main {
     border-color: var(--danger);
 }
 
-/* ---------- Note card ---------- */
+/* ═══════════ NOTE CARD ══════════════════════════════════════════ */
 .note-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     padding: 2rem;
     box-shadow: var(--shadow-lg);
-    transition: background-color 0.3s, border-color 0.3s;
 }
 .note-card h1 {
     font-size: 2rem;
@@ -125,21 +155,15 @@ main {
     color: var(--text-primary);
     margin-bottom: 2rem;
 }
-
-/* Quill-rendered content typography */
 .note-content h1,
 .note-content h2,
 .note-content h3 {
     margin: 1.5rem 0 1rem;
     font-weight: 600;
 }
-.note-content p {
-    margin: 1rem 0;
-}
+.note-content p { margin: 1rem 0; }
 .note-content ul,
-.note-content ol {
-    margin: 1rem 0 1rem 2rem;
-}
+.note-content ol { margin: 1rem 0 1rem 2rem; }
 .note-content img {
     max-width: 100%;
     height: auto;
@@ -177,30 +201,92 @@ main {
 }
 .note-actions button { flex: 0 0 auto; }
 
-/* ---------- Footer override ----------
-   Common's :where(footer:not([class])) provides padding: 1.5rem 0 +
-   text-align: center. This page overrides padding and adds border,
-   color, font-size. */
-footer {
-    padding: 1.5rem;
+/* ═══════════ FIXED FOOTER NAV ═══════════════════════════════════
+   Matches the performance-page footer: full-width bar, four
+   flex-1 buttons with emoji + label, accent highlight on hover /
+   focus. Safe-area padding for iPhone home indicator.
+   ================================================================ */
+.app-footer {
+    flex-shrink: 0;
+    min-height: 60px;
+    background: var(--bg-card);
     border-top: 1px solid var(--border);
-    color: var(--text-muted);
-    font-size: 0.875rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 0.25rem 0.5rem;
+    padding-bottom: max(0.25rem, env(safe-area-inset-bottom));
+    z-index: 10;
+    box-sizing: border-box;
 }
 
-/* ---------- Responsive ---------- */
-@media (max-width: 640px) {
-    header { padding: 0.5rem 1rem; }
+.footer-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 0.4rem;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1.2rem;
+    font-family: inherit;
+    transition: color 0.2s, background 0.2s;
+    border-radius: 10px;
+    -webkit-tap-highlight-color: transparent;
+}
+.footer-btn span {
+    font-size: 0.7rem;
+    letter-spacing: 0.02em;
+}
+.footer-btn:hover,
+.footer-btn:active,
+.footer-btn:focus-visible {
+    color: var(--accent);
+    background: rgba(16, 163, 127, 0.08);
+    outline: none;
+}
 
-    .main-nav { gap: 0.5rem; }
-    .main-nav a {
-        padding: 0.3rem 0.5rem;
-        font-size: 0.9rem;
+/* ═══════════ RESPONSIVE ═════════════════════════════════════════ */
+@media (max-width: 640px) {
+    .shared-note-header {
+        padding: 0 1rem;
+        height: 56px;
+    }
+    .shared-note-header .logo {
+        font-size: 1.05rem;
+    }
+    .shared-note-header .logo img {
+        width: 32px;
+        height: 32px;
     }
 
-    .note-card { padding: 1.5rem; }
-    .note-card h1 { font-size: 1.5rem; }
+    .shared-note-main {
+        padding: 1rem;
+    }
 
-    .note-actions { flex-direction: column; }
-    .note-actions button { width: 100%; }
+    .note-card {
+        padding: 1.5rem;
+        border-radius: var(--radius);
+    }
+    .note-card h1 {
+        font-size: 1.5rem;
+    }
+
+    .note-actions {
+        flex-direction: column;
+    }
+    .note-actions button {
+        width: 100%;
+    }
+
+    .footer-btn {
+        font-size: 1.05rem;
+    }
+    .footer-btn span {
+        font-size: 0.65rem;
+    }
 }

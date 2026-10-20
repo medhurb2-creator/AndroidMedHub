@@ -2,6 +2,7 @@
 import * as auth from '../auth.js';
 import * as ui from '../ui.js';
 import * as router from '../router.js';
+import * as redirect from '../redirect.js';
 import * as validation from '../validation.js';
 import * as security from '../security.js';
 import * as utils from '../utils.js';
@@ -10,20 +11,18 @@ import { initGoogleSignIn, disableGoogleAutoSelect } from '../auth/google.js';
 export async function init(context) {
     ui.applyTheme();
 
-    // ---- Deep-link redirect ----
-    const redirectParam = new URLSearchParams(window.location.search).get('redirect');
-    let redirectTarget = null;
-    if (redirectParam) {
-        try {
-            const decoded = decodeURIComponent(redirectParam);
-            if (decoded.startsWith('/')) redirectTarget = decoded;
-        } catch { /* ignore */ }
-    }
+    // ── Redirect context ─────────────────────────────────────────
+    // The redirect module owns the source of truth: it reads the
+    // URL's ?returnTo= / ?redirect= first, then falls back to the
+    // top of the return stack (so the context survives navigations
+    // through intermediate pages like forgot-password).
+    const redirectCtx = redirect.readRedirectContext();
+    const redirectTarget = redirectCtx.returnTo || null;
 
-    // If already authenticated → redirect
+    // If already authenticated → resolve any pending chain, else
+    // land on the default.
     if (auth.checkAuth()) {
-        if (redirectTarget) window.location.href = redirectTarget;
-        else router.navigateTo('subjects');
+        redirect.consumeAndReturn('subjects');
         return;
     }
 
@@ -67,10 +66,19 @@ export async function init(context) {
     }
 
     // ---- Forgot password ----
+    // Propagate the redirect context as a URL param so it survives
+    // even if the user later lands back on /login via a fresh
+    // navigation (not via the SPA history). The stack remains the
+    // primary source; this is belt-and-braces.
     if (forgotBtn) {
         forgotBtn.addEventListener('click', () => {
             let url = 'forgot-password';
-            if (redirectTarget) url += `?redirect=${encodeURIComponent(redirectTarget)}`;
+            if (redirectTarget) {
+                url += `?redirect=${encodeURIComponent(redirectTarget)}`;
+                if (redirectCtx.reason) {
+                    url += `&redirect_reason=${encodeURIComponent(redirectCtx.reason)}`;
+                }
+            }
             router.navigateTo(url);
         });
     }
@@ -79,12 +87,21 @@ export async function init(context) {
     if (signupBtn) {
         signupBtn.addEventListener('click', () => {
             let url = 'signup';
-            if (redirectTarget) url += `?redirect=${encodeURIComponent(redirectTarget)}`;
+            if (redirectTarget) {
+                url += `?redirect=${encodeURIComponent(redirectTarget)}`;
+                if (redirectCtx.reason) {
+                    url += `&redirect_reason=${encodeURIComponent(redirectCtx.reason)}`;
+                }
+            }
             router.navigateTo(url);
         });
     }
 
     // ---- Back ----
+    // Explicit abandonment of the login flow: go to welcome. The
+    // return chain is left intact in case the user comes back — a
+    // subsequent arrival at /login will recover the context from
+    // the stack.
     if (backBtn) {
         backBtn.addEventListener('click', () => router.navigateTo('welcome'));
     }
@@ -132,11 +149,10 @@ export async function init(context) {
                 ui.hideLoading();
                 ui.showToast('Login successful!', 'success');
 
-                if (redirectTarget) {
-                    window.location.href = redirectTarget;
-                } else {
-                    router.navigateTo('subjects');
-                }
+                // Pop the return stack — lands the user on the page
+                // that gated them here (exam-room, ai, notes, ...).
+                // Falls through to `subjects` when no chain exists.
+                redirect.consumeAndReturn('subjects');
             } catch (error) {
                 ui.hideLoading();
 
@@ -185,11 +201,7 @@ export async function init(context) {
                 'success'
             );
 
-            if (redirectTarget) {
-                window.location.href = redirectTarget;
-            } else {
-                router.navigateTo('subjects');
-            }
+            redirect.consumeAndReturn('subjects');
         } catch (err) {
             ui.hideLoading();
 
@@ -277,13 +289,23 @@ export async function init(context) {
 
             renderDeviceList(listEl, devices);
 
-            // Show the upgrade path
+            // Show the upgrade path.
+            //
+            // Plain navigation — NOT navigateWithReturn. The user is
+            // already authenticated at this point; the stack still
+            // holds the ORIGINAL destination (e.g. /exam-room). The
+            // subscription → payment chain will pop that entry when
+            // payment succeeds, landing the user back on their
+            // original page. Pushing /login here would break that.
             if (upgradeSection) upgradeSection.style.display = '';
             if (upgradeBtn) {
                 upgradeBtn.onclick = () => {
                     modal.style.display = 'none';
                     const params = new URLSearchParams();
                     params.set('highlight', 'two-device');
+                    // Preserve the returnTo param as a fallback in
+                    // case sessionStorage was cleared between the
+                    // login page and this navigation.
                     if (redir) params.set('redirect', redir);
                     router.navigateTo(`subscription?${params.toString()}`);
                 };
@@ -334,11 +356,11 @@ export async function init(context) {
                         modal.style.display = 'none';
                         ui.showToast('Device removed. You are now signed in here.', 'success');
 
-                        if (redir) {
-                            window.location.href = redir;
-                        } else {
-                            router.navigateTo('subjects');
-                        }
+                        // Authentication has succeeded. Pop the return
+                        // stack and land the user on whatever gated
+                        // page originally sent them to /login. Falls
+                        // back to `subjects` when no chain exists.
+                        redirect.consumeAndReturn('subjects');
                     } catch (err) {
                         ui.showToast(err.message || 'Could not remove device', 'error');
                         btn.disabled = false;
@@ -433,11 +455,8 @@ export async function init(context) {
                 modal.style.display = 'none';
                 ui.showToast('Google connected to your account', 'success');
 
-                if (redirectTarget) {
-                    window.location.href = redirectTarget;
-                } else {
-                    router.navigateTo('subjects');
-                }
+                // Auth succeeded — pop the return stack.
+                redirect.consumeAndReturn('subjects');
             } catch (err) {
                 // ---- DEVICE LIMIT REACHED during linking ----
                 if (err.code === 'DEVICE_LIMIT_REACHED') {
@@ -490,6 +509,19 @@ export async function init(context) {
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
     }
+
+    // ── Snapshot drain ───────────────────────────────────────────
+    // Login doesn't register a state adapter and normally has no
+    // snapshot of its own — this call is a no-op in the common case.
+    // It exists so that if a stale snapshot under /login is ever
+    // left behind (e.g. by an unusual multi-redirect sequence), it
+    // is cleaned up rather than accumulating in sessionStorage.
+    //
+    // NOTE: deliberately NO self-consume here. Login is a resolver,
+    // not a target: the stack entry that got the user here must
+    // survive until authentication succeeds, because that entry is
+    // what consumeAndReturn() pops to send the user home.
+    redirect.consumeSnapshot();
 
     console.log('[Login] Initialized.');
 }

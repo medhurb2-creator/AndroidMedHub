@@ -1,6 +1,7 @@
 // scripts/pages/performance.js
 import * as ui from '../ui.js';
 import * as router from '../router.js';
+import * as redirect from '../redirect.js';
 import * as auth from '../auth.js';
 import * as utils from '../utils.js';
 import * as analytics from '../analytics.js';
@@ -8,6 +9,10 @@ import * as db from '../db.js';
 import { convexHttpClient } from '../convex-client.js';
 import { PerformanceAI } from '../performance-ai.js';
 import * as performanceRating from '../performance-rating-v2.js';
+// ── IMAGE: needed to resolve slide-subject images from IndexedDB and
+//    distinguish slide from static subjects for URL construction.
+import * as questions from '../questions.js';
+import * as slideData from '../slide-data.js';
 
 let $;
 let analyticsData = null;
@@ -16,6 +21,11 @@ let performanceAI = null;
 
 // Module-scoped chart instances for academic charts
 const academicChartInstances = {};
+
+// ── IMAGE: tracks the currently-open review modal so destroy() can
+//    clean it up (and revoke its object-URLs) if the user navigates
+//    away with the modal still open.
+let _openReviewModal = null;
 
 // ==================== HELPER: SET TEXT (early definition) ====================
 function setText(id, value) {
@@ -89,10 +99,80 @@ export async function init(context) {
 
   ui.applyTheme();
 
+  // ── Auth gate ────────────────────────────────────────────────────
   if (!auth.checkAuth()) {
-    router.navigateTo('login');
+    ui.showToast('Please log in to view your performance', 'warning');
+    redirect.navigateWithReturn('login', 'auth_required');
     return;
   }
+
+  // ── State adapter ────────────────────────────────────────────────
+  redirect.registerStateAdapter('performance', {
+    capture: () => {
+      const activeTab = document.querySelector('.tab-content.active');
+      const activeTabBtn = document.querySelector('.tab-button.active');
+      const activePlanner = document.querySelector('.planner-btn.active');
+      const activeAcademic = document.querySelector('.academic-btn.active');
+      const activeChart = document.querySelector('.chart-btn.active');
+      const activeLbTab = document.querySelector('.leaderboard-tabs button.active');
+
+      return {
+        activeTabId: activeTab ? activeTab.id : null,
+        activeTabBtnId: activeTabBtn ? activeTabBtn.dataset.tab : null,
+        plannerKey: activePlanner ? activePlanner.dataset.planner : null,
+        academicKey: activeAcademic ? activeAcademic.dataset.academic : null,
+        chartType: activeChart ? activeChart.dataset.chart : null,
+        leaderboardTab: activeLbTab ? activeLbTab.dataset.leaderboard : null,
+        pendingAIPlan: window._lastAIPlan || null,
+      };
+    },
+
+    restore: (data) => {
+      if (!data) return;
+
+      if (data.pendingAIPlan) {
+        window._lastAIPlan = data.pendingAIPlan;
+        const aiActions = document.getElementById('ai-actions');
+        if (aiActions) aiActions.style.display = 'flex';
+      }
+
+      if (data.activeTabBtnId) {
+        try { switchTab(data.activeTabBtnId); } catch { /* ignore */ }
+      }
+
+      if (data.plannerKey) {
+        document.querySelectorAll('.planner-btn').forEach(b => {
+          b.classList.toggle('active', b.dataset.planner === data.plannerKey);
+        });
+        document.querySelectorAll('.planner-module-container').forEach(el => {
+          el.classList.toggle('active', el.id === `planner-${data.plannerKey}`);
+        });
+      }
+
+      if (data.academicKey) {
+        document.querySelectorAll('.academic-btn').forEach(b => {
+          b.classList.toggle('active', b.dataset.academic === data.academicKey);
+        });
+        document.querySelectorAll('.academic-module-container').forEach(el => {
+          el.classList.toggle('active', el.id === `academic-${data.academicKey}`);
+        });
+      }
+
+      if (data.chartType) {
+        document.querySelectorAll('.chart-btn').forEach(b => {
+          b.classList.toggle('active', b.dataset.chart === data.chartType);
+        });
+        try { renderChart(data.chartType); } catch { /* ignore */ }
+      }
+
+      if (data.leaderboardTab) {
+        document.querySelectorAll('.leaderboard-tabs button').forEach(b => {
+          b.classList.toggle('active', b.dataset.leaderboard === data.leaderboardTab);
+        });
+        try { renderLeaderboard(data.leaderboardTab); } catch { /* ignore */ }
+      }
+    },
+  });
 
   const shimmer = $('#shimmer-overlay');
   const realContent = $('#real-content');
@@ -192,6 +272,29 @@ export async function init(context) {
   }
 
   attachEventListeners(context);
+
+  try {
+    const hasSnap = redirect.hasSnapshot();
+    if (hasSnap) {
+      const myUrl =
+        window.location.pathname +
+        (window.location.search || '') +
+        (window.location.hash || '');
+      const top = redirect.peekReturn();
+      if (top && top.url === myUrl) redirect.popReturn();
+    }
+  } catch (err) {
+    console.warn('[Performance] Return-stack cleanup failed:', err);
+  }
+
+  const snap = redirect.consumeSnapshot();
+  if (snap && (snap.ui || snap.page)) {
+    ui.showToast('Continuing where you left off', 'info', 1800);
+    console.log('[Performance] Resumed from redirect:', {
+      fields: Object.keys(snap.ui?.fields || {}).length,
+      pageState: snap.page,
+    });
+  }
 
   console.log('[Performance] Initialized');
 }
@@ -1271,8 +1374,12 @@ async function reviewDownloadedExam(examId) {
     }
   }
 
-  const questions = examData && Array.isArray(examData.questions) ? examData.questions : [];
-  const totalQuestions = examData && examData.totalQuestions != null ? examData.totalQuestions : questions.length;
+  const questionsList = examData && Array.isArray(examData.questions) ? examData.questions : [];
+  // ── IMAGE: subject is on both the saved record and the full exam
+  //    result. Prefer the parsed data (source of truth), fall back to
+  //    the summary field on the downloaded entry.
+  const subject = (examData && examData.subject) || exam.subject || '';
+  const totalQuestions = examData && examData.totalQuestions != null ? examData.totalQuestions : questionsList.length;
   const correctAnswers = examData && examData.correctAnswers != null ? examData.correctAnswers : 0;
 
   // Safe date formatting
@@ -1290,15 +1397,24 @@ async function reviewDownloadedExam(examId) {
   modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:9999;overflow-y:auto;padding:1rem;';
 
   let reviewHtml = '';
-  if (questions.length > 0) {
-    reviewHtml = questions.map((q, idx) => {
+  if (questionsList.length > 0) {
+    reviewHtml = questionsList.map((q, idx) => {
       const isCorrect = q.correct;
       const userAnswerText = getOptionText(q.userAnswer, q.options);
       const correctAnswerText = getOptionText(q.correctAnswer, q.options);
       const explanationHtml = formatExplanation(q.explanation);
+
+      // ── IMAGE: empty slot keyed by index. The <img> is injected
+      //    asynchronously by hydrateModalReviewImages so no
+      //    user/zip-controlled string enters the HTML.
+      const imageHtml = q.image
+        ? `<div class="modal-review-image" data-q-idx="${idx}" style="text-align:center;margin:0.5rem 0;"></div>`
+        : '';
+
       return `
         <div class="review-item ${isCorrect ? 'correct' : 'incorrect'}" style="margin-bottom:1rem;padding:1rem;border-radius:8px;background:var(--bg-secondary, #0f172a);border-left:4px solid ${isCorrect ? '#10b981' : '#ef4444'};">
           <div style="font-weight:600;margin-bottom:0.5rem;color:var(--text-primary, #fff);"><strong>Q${idx + 1}:</strong> ${q.question}</div>
+          ${imageHtml}
           <div style="font-size:0.85rem;color:var(--text-muted, #94a3b8);margin-bottom:0.5rem;">
             <span style="color:${isCorrect ? '#10b981' : '#ef4444'};">Your answer: ${userAnswerText}</span> | 
             <span style="color:#10b981;">Correct: ${correctAnswerText}</span>
@@ -1333,10 +1449,91 @@ async function reviewDownloadedExam(examId) {
 
   document.body.appendChild(modal);
 
-  modal.querySelector('.modal-close').onclick = () => modal.remove();
+  // ── IMAGE: track for teardown, then kick off hydration. Fire-and-forget
+  //    — the text is already visible; images stream in as blobs resolve.
+  _openReviewModal = modal;
+  hydrateModalReviewImages(modal, subject, questionsList).catch(err =>
+    console.warn('[Performance] hydrateModalReviewImages failed:', err)
+  );
+
+  modal.querySelector('.modal-close').onclick = () => _cleanupReviewModal(modal);
   modal.onclick = (e) => {
-    if (e.target === modal) modal.remove();
+    if (e.target === modal) _cleanupReviewModal(modal);
   };
+}
+
+// ── IMAGE: modal image hydrator + cleanup ──
+//
+// Mirrors results.js's hydrateReviewImages. Same static-vs-slide split:
+//
+//   • static subject  → /data/images/{subject}/{filename}
+//   • slide subject   → Blob from IndexedDB → object-URL
+//
+// Object-URLs are tracked on the modal element itself (modal._objectUrls)
+// so _cleanupReviewModal can revoke them from any close path — button,
+// backdrop click, or page destroy while the modal is still open.
+async function hydrateModalReviewImages(modal, subject, questionsList) {
+  if (!subject) return;
+
+  const slots = modal.querySelectorAll('.modal-review-image[data-q-idx]');
+  if (slots.length === 0) return;
+
+  const meta = questions.getSubjectMeta(subject);
+  const isSlide = meta.source === 'slide';
+
+  for (const slot of slots) {
+    const idx = parseInt(slot.dataset.qIdx, 10);
+    const q = questionsList[idx];
+    if (!q || !q.image) continue;
+
+    const filename = q.image;
+
+    try {
+      if (isSlide) {
+        const blob = await slideData.getSlideImage(subject, filename);
+        if (!blob) {
+          console.warn(`[Performance] Slide image missing: ${subject}/${filename}`);
+          continue;
+        }
+        const url = URL.createObjectURL(blob);
+        if (!modal._objectUrls) modal._objectUrls = [];
+        modal._objectUrls.push(url);
+
+        const img = document.createElement('img');
+        img.src = url;
+        img.alt = 'Question diagram';
+        img.style.cssText =
+          'max-width:100%;max-height:300px;border-radius:8px;display:inline-block;' +
+          'background:var(--bg-card, #1e293b);padding:4px;border:1px solid var(--border, #334155);';
+        slot.appendChild(img);
+      } else {
+        const img = document.createElement('img');
+        img.src = `/data/images/${encodeURIComponent(subject)}/${encodeURIComponent(filename)}`;
+        img.alt = 'Question diagram';
+        img.style.cssText =
+          'max-width:100%;max-height:300px;border-radius:8px;display:inline-block;' +
+          'background:var(--bg-card, #1e293b);padding:4px;border:1px solid var(--border, #334155);';
+        img.onerror = () => img.remove();
+        slot.appendChild(img);
+      }
+    } catch (e) {
+      console.warn(`[Performance] Failed to load image ${subject}/${filename}:`, e);
+    }
+  }
+}
+
+// Revoke every object-URL the modal minted, then remove it from the
+// DOM. Safe to call from any close path (button, backdrop, destroy).
+function _cleanupReviewModal(modal) {
+  if (!modal) return;
+  if (modal._objectUrls) {
+    for (const url of modal._objectUrls) {
+      try { URL.revokeObjectURL(url); } catch { /* ignore */ }
+    }
+    modal._objectUrls = null;
+  }
+  if (modal.parentNode) modal.remove();
+  if (_openReviewModal === modal) _openReviewModal = null;
 }
 
 function getOptionText(letter, options) {
@@ -1955,6 +2152,10 @@ function updateAvatar(dataUrl) {
 
 // ==================== DESTROY ====================
 export function destroy() {
+  // Unregister the state adapter so a subsequent page load does not
+  // inherit a stale closure over this page's DOM.
+  try { redirect.unregisterStateAdapter('performance'); } catch { /* ignore */ }
+
   if (chartInstance) {
     chartInstance.destroy();
     chartInstance = null;
@@ -1962,5 +2163,13 @@ export function destroy() {
   Object.values(academicChartInstances).forEach((chart) => chart.destroy());
   for (const key in academicChartInstances) {
     delete academicChartInstances[key];
+  }
+
+  // ── IMAGE: tear down any review modal that's still open, revoking
+  //    its object-URLs first so the blobs can be GC'd. Fixes a
+  //    pre-existing leak: the modal is appended to document.body,
+  //    outside the page root, so the page manager doesn't remove it.
+  if (_openReviewModal) {
+    _cleanupReviewModal(_openReviewModal);
   }
 }

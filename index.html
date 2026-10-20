@@ -3,6 +3,11 @@
 
 <head>
     <meta charset="UTF-8" />
+    <!-- viewport-fit=cover is required for env(safe-area-inset-*) to
+         resolve to non-zero values on Android 15+ edge-to-edge layout
+         and on notched devices. Without it, the safe-area padding in
+         common.css and in this file's splash style would collapse to 0
+         and content would sit under the status bar. Do not remove. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes" />
     <meta name="theme-color" content="#0b1120" />
     <meta name="application-name" content="MedVix" />
@@ -45,10 +50,29 @@
             flex-direction: column;
             align-items: center;
             justify-content: flex-end;
-            padding-bottom: 60px;
+            /* Bottom padding now also clears the gesture navigation
+               bar. Position: fixed means the splash covers the full
+               viewport including the status bar and navigation bar
+               areas, so any bottom-anchored content (spinner, progress
+               bar, version text) would otherwise sit half-hidden
+               behind the gesture pill. The inset resolves to 0 on
+               devices with hardware navigation keys, so this is a
+               no-op there. */
+            padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px));
             /* Solid colour from the very first frame, before the image
                loads. Matches the theme's window background and the
-               Android status bar colour so the transition is seamless. */
+               Android status bar colour so the transition is seamless.
+
+               Note: with edge-to-edge enabled, this background paints
+               behind the status bar icons. The icon tint during the
+               launch window is set to white by MainActivity (dark
+               background → white icons). The moment the WebView boots
+               and syncStatusBar() runs, the icon tint follows the
+               user's saved theme. This splash is always dark, so on
+               a light-theme user's device the icons briefly stay
+               white over the dark splash and then flip to dark when
+               the app shell paints. That is the intended sequence —
+               it matches the launch animation. */
             background-color: #0b1120;
             background-image: url('/assets/images/splash.png');
             background-size: 100% 100%;
@@ -182,7 +206,20 @@
         }
 
         #app-root {
-            min-height: 100vh;
+            /* Body already carries padding-top: env(safe-area-inset-top)
+               from common.css to keep content clear of the status bar.
+               Because of that, a naive min-height: 100vh here would
+               extend the content by exactly the safe-area inset and
+               produce a scrollbar on short pages. Subtracting the inset
+               makes the app-root match the body's content box on every
+               device and viewport orientation.
+
+               The dvh variant is preferred where supported: it tracks
+               the actual visible viewport as browser chrome collapses
+               and expands, which vh does not. Older WebViews fall back
+               to the vh line above it. */
+            min-height: calc(100vh  - env(safe-area-inset-top, 0px));
+            min-height: calc(100dvh - env(safe-area-inset-top, 0px));
             position: relative;
             z-index: 1;
         }
@@ -337,7 +374,7 @@
             </div>
         </div>
 
-        <div class="version-info">version 1.0.9</div>
+        <div class="version-info">version 1.1.0</div>
     </div>
 
     <!-- ============================================================

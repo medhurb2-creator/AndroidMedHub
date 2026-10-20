@@ -16,6 +16,22 @@
 html {
     -webkit-text-size-adjust: 100%;
     -webkit-tap-highlight-color: transparent;
+
+    /* Paint the root element's background behind the status bar area.
+       On Android 15+ the OS forces edge-to-edge layout: the WebView
+       fills the entire screen and the status bar becomes transparent.
+       What the user sees behind the battery/time/network icons is
+       whichever element's background paints there. Setting it here
+       (and on body, below) means the bar colour follows the theme
+       automatically via --bg-primary — no runtime setStatusBarColor
+       call is needed, which is important because on API 35+ that call
+       is a documented no-op.
+
+       min-height keeps the root at full viewport height even when
+       body content is short, so the top strip never falls back to
+       the WebView's default (usually white) background. */
+    background-color: var(--bg-primary);
+    min-height: 100%;
 }
 
 /* ---------- 2. Design tokens ---------- */
@@ -100,7 +116,9 @@ html {
     --status-bar-icons: dark;
 }
 
-/* Dark theme */
+/* Dark theme.
+   Applied to <html> by ui.js setTheme(). Descendant selectors like
+   `.dark-theme .history-item:hover` continue to work unchanged. */
 .dark-theme {
     --bg-primary:   #0b1120;
     --bg-secondary: #1e293b;
@@ -133,7 +151,31 @@ body {
     line-height: 1.5;
     transition: background-color 0.3s, color 0.3s;
     min-height: 100vh;
+    min-height: 100dvh; /* dynamic viewport — preferred where supported */
     overflow-x: hidden;
+
+    /* ── Edge-to-edge safe-area insets ─────────────────────────────────
+       On Android 15+ (API 35) the OS enforces edge-to-edge: the WebView
+       extends under the status bar and the navigation bar. The system
+       reports those insets via env(safe-area-inset-*), which we consume
+       here as padding so app content never sits under the system icons.
+
+       The body's own background-color (--bg-primary per theme) paints
+       behind the status bar area. That is what makes the bar background
+       follow the theme without calling Window.setStatusBarColor — which
+       is a no-op on API 35+.
+
+       Left and right insets matter only in landscape with a cutout or
+       a rounded corner. They are zero in portrait on most devices. */
+    padding-top:   env(safe-area-inset-top,   0px);
+    padding-left:  env(safe-area-inset-left,  0px);
+    padding-right: env(safe-area-inset-right, 0px);
+
+    /* No padding-bottom here — .app-footer already adds
+       env(safe-area-inset-bottom) to its own padding, and adding it
+       to body as well would double the gap under the footer. Pages
+       that do not render .app-footer (login, welcome, terms, privacy)
+       have no bottom chrome, so no extra bottom padding is wanted. */
 }
 
 /* ---------- 4. Typography ---------- */
@@ -595,8 +637,11 @@ button:disabled {
 /* ---------- 14. Toast ---------- */
 .toast-container {
     position: fixed;
-    bottom: 1.5rem;
-    right: 1.5rem;
+    /* Offset by the system navigation bar inset so the toast pill is
+       never half-covered by the on-screen nav keys on edge-to-edge
+       devices. Falls back to 0 on devices without a nav-bar inset. */
+    bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
+    right:  calc(1.5rem + env(safe-area-inset-right,  0px));
     z-index: 10000;
 }
 .toast {
@@ -620,8 +665,10 @@ button:disabled {
 /* ---------- 15. Floating action button ---------- */
 .fab {
     position: fixed;
-    bottom: 2rem;
-    right: 2rem;
+    /* Same reason as .toast-container: the FAB must clear the system
+       navigation bar so its bottom edge is never clipped. */
+    bottom: calc(2rem + env(safe-area-inset-bottom, 0px));
+    right:  calc(2rem + env(safe-area-inset-right,  0px));
     width: 56px;
     height: 56px;
     background: var(--accent);

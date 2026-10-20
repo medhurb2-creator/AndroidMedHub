@@ -6,6 +6,7 @@ import { convexHttpClient } from './convex-client.js';
 const ASSET_KEYS = {
   USER_MANUAL: 'user-manual',
   RESOURCES_UPDATE: 'resources-update',
+  TOPICS: 'topics',
 };
 
 const VERSION_STORAGE_KEY = 'publicAssetVersions';
@@ -81,6 +82,49 @@ async function downloadAndStoreAsset(key, assetInfo) {
   return true;
 }
 
+// ============================================================
+// In-memory JSON cache for public-asset payloads.
+//
+// `getTopicsJson()` and `getResourcesUpdateJson()` are called on
+// hot paths — topics on every resource-browser navigation,
+// resources-update on every app boot after the sync check. Each
+// call would otherwise read the blob from IndexedDB, convert it to
+// a string, and JSON.parse it. Three operations that are cheap
+// individually but add up across a session.
+//
+// Design:
+//   • A cache hit returns the parsed object synchronously.
+//   • A cache miss performs the read+parse once and stores the
+//     result. Parse failures are NOT cached — the next call retries,
+//     so a transient disk hiccup does not pin the caller to a null.
+//   • An in-flight promise makes concurrent cold-cache calls share
+//     one underlying read. Two callers landing at the same tick
+//     cannot both open the file.
+//   • The cache is invalidated from `syncPublicAssets()` whenever a
+//     new version of the corresponding asset is downloaded. Absent
+//     a version bump, the parsed object stays warm for the session.
+// ============================================================
+
+let _topicsJsonCache        = null;
+let _topicsJsonCached       = false;
+let _topicsJsonInflight     = null;
+
+let _resourcesUpdateCache   = null;
+let _resourcesUpdateCached  = false;
+let _resourcesUpdateInflight = null;
+
+function _invalidateTopicsCache() {
+  _topicsJsonCache    = null;
+  _topicsJsonCached   = false;
+  _topicsJsonInflight = null;
+}
+
+function _invalidateResourcesUpdateCache() {
+  _resourcesUpdateCache    = null;
+  _resourcesUpdateCached   = false;
+  _resourcesUpdateInflight = null;
+}
+
 export async function syncPublicAssets() {
   console.log('[PublicAssets] Checking sync cooldown...');
   const lastSync = parseInt(localStorage.getItem(LAST_SYNC_KEY) || '0', 10);
@@ -110,6 +154,15 @@ export async function syncPublicAssets() {
       if (success) {
         versions[key] = assetInfo.version;
         updated = true;
+        // The parsed-JSON cache for this asset is now stale. Clear it
+        // so the next getTopicsJson() / getResourcesUpdateJson() call
+        // re-reads the fresh blob from storage.
+        if (key === ASSET_KEYS.TOPICS) {
+          _invalidateTopicsCache();
+        }
+        if (key === ASSET_KEYS.RESOURCES_UPDATE) {
+          _invalidateResourcesUpdateCache();
+        }
         console.log(`[PublicAssets] Successfully updated ${key} to version ${assetInfo.version}`);
       } else {
         console.warn(`[PublicAssets] Failed to update ${key}`);
@@ -162,33 +215,113 @@ export async function getPublicAsset(key) {
   return null;
 }
 
+// ============================================================
+// resources-update.json accessor — cached.
+//
+// Returns the parsed JSON payload, or null when the asset has not
+// been downloaded yet. Failed parses are not cached; a successful
+// parse stays in memory until the sync script downloads a newer
+// version.
+// ============================================================
 export async function getResourcesUpdateJson() {
-  console.log('[PublicAssets] Getting resources-update.json...');
-  const blob = await getPublicAsset(ASSET_KEYS.RESOURCES_UPDATE);
-  if (!blob) {
-    console.warn('[PublicAssets] No blob found for resources-update.json');
-    return null;
+  if (_resourcesUpdateCached) {
+    console.log('[PublicAssets] resources-update.json: cache hit');
+    return _resourcesUpdateCache;
   }
-  const text = await blob.text();
-  console.log(`[PublicAssets] resources-update.json content length: ${text.length}`);
-  try {
-    const data = JSON.parse(text);
-    console.log('[PublicAssets] Successfully parsed resources-update.json:', data);
-    return data;
-  } catch (err) {
-    console.error('[PublicAssets] Failed to parse resources-update.json:', err);
-    return null;
+  if (_resourcesUpdateInflight) {
+    return _resourcesUpdateInflight;
   }
+
+  _resourcesUpdateInflight = (async () => {
+    console.log('[PublicAssets] Getting resources-update.json...');
+    const blob = await getPublicAsset(ASSET_KEYS.RESOURCES_UPDATE);
+    if (!blob) {
+      console.warn('[PublicAssets] No blob found for resources-update.json');
+      return null;
+    }
+    const text = await blob.text();
+    console.log(`[PublicAssets] resources-update.json content length: ${text.length}`);
+    try {
+      const data = JSON.parse(text);
+      _resourcesUpdateCache  = data;
+      _resourcesUpdateCached = true;
+      console.log('[PublicAssets] Successfully parsed resources-update.json');
+      return data;
+    } catch (err) {
+      console.error('[PublicAssets] Failed to parse resources-update.json:', err);
+      return null;
+    } finally {
+      _resourcesUpdateInflight = null;
+    }
+  })();
+
+  return _resourcesUpdateInflight;
+}
+
+// ============================================================
+// topics.json accessor — cached.
+//
+// Returns the parsed JSON payload, or null when the asset has not
+// been downloaded yet (e.g. on first boot before sync completes,
+// or if the download failed). Failed parses are not cached; a
+// successful parse stays in memory until the sync script downloads
+// a newer version.
+//
+// This is the hot path on the resource browser — the module reads
+// topics.json on every navigation to decide whether to show a topic
+// grid. Before the cache, every navigation paid a disk read + blob
+// conversion + JSON.parse. Now it is a synchronous lookup after the
+// first successful parse in the session.
+// ============================================================
+export async function getTopicsJson() {
+  if (_topicsJsonCached) {
+    console.log('[PublicAssets] topics.json: cache hit');
+    return _topicsJsonCache;
+  }
+  if (_topicsJsonInflight) {
+    return _topicsJsonInflight;
+  }
+
+  _topicsJsonInflight = (async () => {
+    console.log('[PublicAssets] Getting topics.json...');
+    const blob = await getPublicAsset(ASSET_KEYS.TOPICS);
+    if (!blob) {
+      console.warn('[PublicAssets] No blob found for topics.json');
+      return null;
+    }
+    const text = await blob.text();
+    console.log(`[PublicAssets] topics.json content length: ${text.length}`);
+    try {
+      const data = JSON.parse(text);
+      _topicsJsonCache  = data;
+      _topicsJsonCached = true;
+      console.log('[PublicAssets] Successfully parsed topics.json');
+      return data;
+    } catch (err) {
+      console.error('[PublicAssets] Failed to parse topics.json:', err);
+      return null;
+    } finally {
+      _topicsJsonInflight = null;
+    }
+  })();
+
+  return _topicsJsonInflight;
 }
 
 export async function initPublicAssets() {
   console.log('[PublicAssets] Initializing...');
   await syncPublicAssets();
-  // Optionally verify the JSON is loadable
-  const json = await getResourcesUpdateJson();
-  if (json) {
-    console.log('[PublicAssets] Initialization complete. JSON loaded.');
+  // Optionally verify the JSON files are loadable
+  const resourcesUpdate = await getResourcesUpdateJson();
+  if (resourcesUpdate) {
+    console.log('[PublicAssets] Initialization complete. resources-update.json loaded.');
   } else {
-    console.warn('[PublicAssets] Initialization complete. JSON not available.');
+    console.warn('[PublicAssets] Initialization complete. resources-update.json not available.');
+  }
+  const topics = await getTopicsJson();
+  if (topics) {
+    console.log('[PublicAssets] Initialization complete. topics.json loaded.');
+  } else {
+    console.warn('[PublicAssets] Initialization complete. topics.json not available.');
   }
 }

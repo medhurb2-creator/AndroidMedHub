@@ -257,11 +257,21 @@ export async function renderNotesList(notesList = null) {
             return;
         }
 
-        container.innerHTML = userNotes.map(note => {
-            const date = utils.formatDate(note.updatedAt, 'short');
-            const plainText = note.plainText || note.content.replace(/<[^>]*>/g, '');
-            const preview = plainText.substring(0, 60) + (plainText.length > 60 ? '…' : '');
-            const lockIcon = note.isProtected ? '🔒' : '';
+container.innerHTML = userNotes.map(note => {
+    const date = utils.formatDate(note.updatedAt, 'short');
+    const plainText = note.plainText || note.content.replace(/<[^>]*>/g, '');
+
+    // Send enough text for the body to fill at every breakpoint. The
+    // visible truncation (and the ellipsis) is handled entirely by
+    // CSS -webkit-line-clamp. There is no JS ellipsis here — adding one
+    // would produce two ellipses on cards that hit the clamp.
+    const PREVIEW_MAX_CHARS = 800;
+    const preview = plainText.length > PREVIEW_MAX_CHARS
+        ? plainText.substring(0, PREVIEW_MAX_CHARS)
+        : plainText;
+
+    const lockIcon = note.isProtected ? '🔒' : '';
+    
             return `
                 <div class="note-card" data-id="${note.id}">
                     <div class="card-title">

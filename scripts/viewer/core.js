@@ -525,22 +525,33 @@ export class ViewerState {
     return copy;
   }
 
-  reset() {
-    const preserved = {
-      flags: this._data.flags,
-      deviceProfile: this._data.deviceProfile,
-      initTimestamp: this._data.initTimestamp,
-    };
-    for (const key of Object.keys(DEFAULT_STATE)) {
-      if (key in preserved) continue;
-      const defaultValue = DEFAULT_STATE[key];
-      const cloned = Array.isArray(defaultValue) ? [] : defaultValue;
-      this.set(key, cloned);
+reset() {
+  const preserved = {
+    flags: this._data.flags,
+    deviceProfile: this._data.deviceProfile,
+    initTimestamp: this._data.initTimestamp,
+  };
+  for (const key of Object.keys(DEFAULT_STATE)) {
+    if (key in preserved) continue;
+    let defaultValue = DEFAULT_STATE[key];
+    
+    // Preserve local storage preference for viewMode on reset
+    if (key === 'viewMode') {
+      try {
+        const stored = localStorage.getItem(CONFIG.VIEW_MODE_STORAGE_KEY);
+        if (stored === 'scroll' || stored === 'page') {
+          defaultValue = stored;
+        }
+      } catch { /* ignore */ }
     }
-    this._data.flags = preserved.flags;
-    this._data.deviceProfile = preserved.deviceProfile;
-    this._data.initTimestamp = preserved.initTimestamp;
+    
+    const cloned = Array.isArray(defaultValue) ? [] : defaultValue;
+    this.set(key, cloned);
   }
+  this._data.flags = preserved.flags;
+  this._data.deviceProfile = preserved.deviceProfile;
+  this._data.initTimestamp = preserved.initTimestamp;
+}
 
   subscribe(key, handler) {
     return this._bus.on(`${Events.STATE_CHANGED}:${key}`, handler);
@@ -874,28 +885,14 @@ export class ViewerCore {
   _wireCrossModuleEvents() {
     const bus = this._bus;
 
-    this._teardowns.push(bus.on(Events.MEMORY_PRESSURE, (payload) => {
-      if (!payload) return;
-      const level = payload.level;
-      const memory = this.getMemory();
-
-      if (level === 'warning') {
-        try {
-          if (memory && typeof memory.scheduleBackgroundEviction === 'function') {
-            memory.scheduleBackgroundEviction(this._state.get('currentPage') || 1);
-          }
-        } catch { /* ignore */ }
-        return;
-      }
-
-      if (level === 'critical') {
-        try {
-          const scheduler = this.getScheduler();
-          if (scheduler && scheduler.cancelBelow) {
-            scheduler.cancelBelow(PRIORITY.MARGIN);
-          }
-        } catch { /* ignore */ }
-      }
+this._teardowns.push(bus.on(Events.MEMORY_PRESSURE, () => {
+      // Silently and smoothly optimize background cache without disrupting user experience
+      try {
+        const memory = this.getMemory();
+        if (memory && typeof memory.scheduleBackgroundEviction === 'function') {
+          memory.scheduleBackgroundEviction(this._state.get('currentPage') || 1);
+        }
+      } catch { /* ignore */ }
     }));
 
     this._teardowns.push(bus.on(Events.RENDER_COMPLETE, (payload) => {
@@ -962,7 +959,7 @@ this._teardowns.push(bus.on(Events.PAGE_VISIBLE, (payload) => {
       } catch { /* ignore */ }
     }));
 
-    this._teardowns.push(bus.on(Events.SCALE_APPLIED, (payload) => {
+this._teardowns.push(bus.on(Events.SCALE_APPLIED, (payload) => {
       if (!payload || typeof payload.scale !== 'number') return;
 
       const prev = this._state.get('scale');
@@ -973,8 +970,24 @@ this._teardowns.push(bus.on(Events.PAGE_VISIBLE, (payload) => {
       this._syncSlotDimensions();
       this._updateXAxisLock();
 
+      const currentPage = this._state.get('currentPage') || 1;
+      const viewMode = this._state.get('viewMode');
+
+      // Cancel background tasks and instantly prioritize the active page render
       try {
-        this._applyPyramidWindow(this._state.get('currentPage') || 1, {
+        const scheduler = this.getScheduler();
+        if (scheduler && scheduler.cancelBelow) {
+          scheduler.cancelBelow(PRIORITY.VISIBLE);
+        }
+      } catch { /* ignore */ }
+
+      if (viewMode === 'page') {
+        this._enqueuePageRender(currentPage, PRIORITY.VISIBLE);
+        return;
+      }
+
+      try {
+        this._applyPyramidWindow(currentPage, {
           mode: this._renderMode,
           bias: this._renderBias,
         });
@@ -1144,15 +1157,16 @@ this._teardowns.push(bus.on(Events.PAGE_VISIBLE, (payload) => {
       : isMobile
         ? CONFIG.MAX_PDF_BYTES_MOBILE
         : CONFIG.MAX_PDF_BYTES_DESKTOP;
-
-    if (blob && typeof blob.size === 'number' && blob.size > capBytes) {
-      const sizeMb = Math.round(blob.size / (1024 * 1024));
-      const capMb = Math.round(capBytes / (1024 * 1024));
-      throw new Error(
-        `This PDF is ${sizeMb} MB — larger than the ${capMb} MB limit for ` +
-        `this device. Open it on a desktop browser.`,
-      );
-    }
+/*
+if (blob && typeof blob.size === 'number' && blob.size > capBytes) {
+  const sizeMb = Math.round(blob.size / (1024 * 1024));
+  const capMb = Math.round(capBytes / (1024 * 1024));
+  throw new Error(
+    `This PDF is ${sizeMb} MB — larger than the ${capMb} MB limit for ` +
+    `this device. Open it on a desktop browser.`,
+  );
+}
+*/
 
     const loadTimeout = isMobile
       ? CONFIG.PDF_LOAD_TIMEOUT_MOBILE_MS
@@ -1647,16 +1661,18 @@ this._teardowns.push(bus.on(Events.PAGE_VISIBLE, (payload) => {
     }
   }
 
-  _reconcileGlance(container, effectiveCentre, limit, displayScale, rotation, scheduler) {
+_reconcileGlance(container, effectiveCentre, limit, displayScale, rotation, scheduler) {
     const INNER = CONFIG.PYRAMID_GLANCE_INNER;
     const OUTER = CONFIG.PYRAMID_GLANCE_OUTER;
     const GLANCE_RES = CONFIG.PYRAMID_GLANCE_RES;
+    const visiblePages = this._state.get('visiblePageNumbers') || [];
 
     const RANGE = CONFIG.PYRAMID_MAX_AHEAD + CONFIG.PYRAMID_MAX_BEHIND;
     for (let d = -RANGE; d <= RANGE; d++) {
       if (Math.abs(d) <= OUTER) continue;
       const pageNum = effectiveCentre + d;
       if (pageNum < 1 || pageNum > limit) continue;
+      if (visiblePages.includes(pageNum)) continue;
 
       const slot = container.querySelector(`[data-page="${pageNum}"]`);
       if (!slot || !slot.classList.contains(CONFIG.PAGE_CLASS)) continue;
@@ -1681,7 +1697,8 @@ this._teardowns.push(bus.on(Events.PAGE_VISIBLE, (payload) => {
       if (!slot) continue;
 
       const isCentre = d === 0;
-      const desiredRes = isCentre ? 1.00 : GLANCE_RES;
+      const isVisible = isCentre || visiblePages.includes(pageNum);
+      const desiredRes = isVisible ? 1.00 : GLANCE_RES;
 
       const isCanvas = slot.classList.contains(CONFIG.PAGE_CLASS);
       const currentRes = isCanvas ? Number(slot.dataset.res || 0) : 0;
@@ -1693,21 +1710,26 @@ this._teardowns.push(bus.on(Events.PAGE_VISIBLE, (payload) => {
       } catch { /* ignore */ }
 
       const renderScale = displayScale * desiredRes;
-      const priority = isCentre ? PRIORITY.VISIBLE : PRIORITY.ADJACENT;
+      const priority = isVisible ? PRIORITY.VISIBLE : PRIORITY.ADJACENT;
 
       this._enqueueRingRender(pageNum, renderScale, desiredRes, rotation, priority);
     }
   }
 
-  _reconcilePyramid(container, effectiveCentre, limit, displayScale, rotation, scheduler) {
+_reconcilePyramid(container, effectiveCentre, limit, displayScale, rotation, scheduler) {
     const MAX_AHEAD = CONFIG.PYRAMID_MAX_AHEAD;
     const MAX_BEHIND = CONFIG.PYRAMID_MAX_BEHIND;
+    const visiblePages = this._state.get('visiblePageNumbers') || [];
 
     for (let d = -MAX_BEHIND; d <= MAX_AHEAD; d++) {
       const pageNum = effectiveCentre + d;
       if (pageNum < 1 || pageNum > limit) continue;
 
-      const desiredRes = this._ringResolutionForDistance(d);
+      let desiredRes = this._ringResolutionForDistance(d);
+      if (visiblePages.includes(pageNum)) {
+        desiredRes = 1.00;
+      }
+
       const slot = container.querySelector(`[data-page="${pageNum}"]`);
       if (!slot) continue;
 
@@ -1786,67 +1808,70 @@ this._teardowns.push(bus.on(Events.PAGE_VISIBLE, (payload) => {
 
   // ── Private: layout builders ──────────────────────────────────────────────
 
-  async _renderScrollLayout() {
-    const els = getViewerElements();
-    if (!els || !els.main) return;
+async _renderScrollLayout() {
+  const els = getViewerElements();
+  if (!els || !els.main) return;
 
-    const main = els.main;
-    main.classList.add('scroll-view');
-    main.classList.remove('page-view');
+  const main = els.main;
+  main.classList.add('scroll-view');
+  main.classList.remove('page-view');
 
-    let container = main.querySelector('.' + CONFIG.PAGE_CONTAINER_CLASS);
+  let container = main.querySelector('.' + CONFIG.PAGE_CONTAINER_CLASS);
+  const totalPages = this._state.get('numPages');
 
-    if (!container) {
-      this._clearViewerMainPreservingChrome();
-      container = document.createElement('div');
-      container.className = CONFIG.PAGE_CONTAINER_CLASS;
+  const previewLimit = this._state.get('previewPageLimit');
+  const visibleCount = previewLimit > 0
+    ? Math.min(previewLimit, totalPages)
+    : totalPages;
 
-      const totalPages = this._state.get('numPages');
-      const previewLimit = this._state.get('previewPageLimit');
-      const visibleCount = previewLimit > 0
-        ? Math.min(previewLimit, totalPages)
-        : totalPages;
+  if (!container || container.querySelectorAll('[data-page]').length !== visibleCount) {
+    this._clearViewerMainPreservingChrome();
+    container = document.createElement('div');
+    container.className = CONFIG.PAGE_CONTAINER_CLASS;
 
-      for (let i = 1; i <= visibleCount; i++) {
-        container.appendChild(this._makeCover(i));
-      }
-
-      if (previewLimit > 0 && totalPages > previewLimit) {
-        container.appendChild(this._buildPreviewCTA(previewLimit, totalPages));
-      }
-
-      main.appendChild(container);
-
-      this._preloadPageSizes();
-    } else {
-      try {
-        const tm = this.getTileManager();
-        if (tm && tm.invalidateAll) tm.invalidateAll();
-      } catch { /* ignore */ }
-      this._syncSlotDimensions();
+    for (let i = 1; i <= visibleCount; i++) {
+      container.appendChild(this._makeCover(i));
     }
 
-    this._updateXAxisLock();
+    if (previewLimit > 0 && totalPages > previewLimit) {
+      container.appendChild(this._buildPreviewCTA(previewLimit, totalPages));
+    }
 
+    main.appendChild(container);
+    this._preloadPageSizes();
+  } else {
     try {
-      const scroll = this.getScroll();
-      if (scroll && scroll.recomputeLayout) scroll.recomputeLayout();
+      const tm = this.getTileManager();
+      if (tm && tm.invalidateAll) tm.invalidateAll();
     } catch { /* ignore */ }
-
-    try {
-      const scroll = this.getScroll();
-      if (scroll && scroll.refreshVisible) scroll.refreshVisible();
-    } catch { /* ignore */ }
-
-    try {
-      this._applyPyramidWindow(this._state.get('currentPage') || 1, {
-        mode: this._renderMode,
-        bias: this._renderBias,
-      });
-    } catch { /* ignore */ }
+    this._syncSlotDimensions();
   }
 
-  async _renderPageLayout() {
+  this._updateXAxisLock();
+
+  try {
+    const scroll = this.getScroll();
+    if (scroll && scroll.recomputeLayout) scroll.recomputeLayout();
+  } catch { /* ignore */ }
+
+  // Jump to the current active page so we don't snap back to page 1
+  const currentPage = this._state.get('currentPage') || 1;
+  try {
+    const scroll = this.getScroll();
+    if (scroll && typeof scroll.navigateTo === 'function') {
+      await scroll.navigateTo(currentPage, { smooth: false });
+    }
+  } catch { /* ignore */ }
+
+  try {
+    this._applyPyramidWindow(currentPage, {
+      mode: this._renderMode,
+      bias: this._renderBias,
+    });
+  } catch { /* ignore */ }
+}
+
+async _renderPageLayout() {
     const els = getViewerElements();
     if (!els || !els.main) return;
 
@@ -1857,6 +1882,11 @@ this._teardowns.push(bus.on(Events.PAGE_VISIBLE, (payload) => {
 
     const container = document.createElement('div');
     container.className = CONFIG.PAGE_CONTAINER_CLASS;
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
+    container.style.alignItems = 'center';
+    container.style.justifyContent = 'center';
+    container.style.minHeight = '100%';
     main.appendChild(container);
 
     const rawPageNum = this._state.get('currentPage');

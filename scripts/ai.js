@@ -3,24 +3,82 @@
  * AI Module – Convex Integration (Memory Chunks)
  * Provides chat, summarization, flashcards, questions, mnemonics, and more.
  * Supports offline persistence via IndexedDB and syncs with backend when online.
- * 
+ *
  * Automatic conversation handling:
  * - The engine maintains a `_currentChatId` to reuse the same conversation for follow‑up messages.
  * - The UI can optionally pass a `chatId` to override the current one.
  * - New conversations are created on the backend immediately – no local IDs.
+ *
+ * Rate limiting:
+ * - This module does NOT enforce any frontend rate limit. Message count,
+ *   hourly caps, abuse detection, and plan-based quotas are all decided
+ *   by the backend. The engine only forwards the request (with the caller's
+ *   `modes`) and reports whatever the backend decides.
+ * - The backend enforces a rolling 24-hour TOKEN quota (2000 input /
+ *   2500 output). When either is exhausted, it returns an error with a
+ *   specific message naming the counter and the reset time. This module
+ *   propagates that message verbatim so the UI can show it.
+ *
+ * Modes:
+ * - Modes are semantic switches the backend understands: `deepthink`,
+ *   `websearch`, `references`. They are always forwarded on both
+ *   `sendMessageToAI` and `regenerateResponse`. The engine never filters
+ *   or mutates the mode list.
+ * - The backend returns mode-attached `richData` (e.g. `sources` from
+ *   websearch, `references` from the references mode) plus a `meta`
+ *   string summarising the response. This module persists both onto the
+ *   assistant message and returns them to the UI.
+ *
+ * Message lifecycle flags:
+ * - A user message that was sent but whose reply never arrived is marked
+ *   `failed: true` (persisted). The UI reads this on load to render a Retry
+ *   affordance and clears it via `markMessageSuccess` on retry.
+ * - Editing a message is modelled as delete-then-resend:
+ *   `deleteMessageAndResponse(chatId, timestamp)` removes the original user
+ *   bubble and any assistant reply that followed it, after which the UI
+ *   re-sends the edited text through the normal path.
+ *
+ * Conversation loading & offline cache:
+ *   Every chat object carries a `messagesLoaded` flag:
+ *     • true  — we have this chat's messages locally (either fetched from
+ *               the backend previously, or created fresh via
+ *               `createEmptyChat` / `saveMessage`, which both start or
+ *               maintain a genuinely known set).
+ *     • false — the chat exists (metadata came from the backend), but its
+ *               message contents have not been fetched yet.
+ *
+ *   `loadConversationMessages(chatId)`:
+ *     • true  → return the cached messages immediately (no network).
+ *     • false → fetch from the backend, persist the result to IndexedDB
+ *               AND localStorage, set `messagesLoaded = true`, return.
+ *
+ *   Persistence contract:
+ *     • Every message pushed via `saveMessage` is written to IDB + LS.
+ *     • Every fetched conversation is written to IDB + LS.
+ *     • `loadChats()` reads IDB first, so any chat whose messages have
+ *       been fetched at least once remains viewable offline.
+ *     • A chat that was NEVER fetched and is opened offline throws a clear
+ *       error instead of silently returning an empty array, so the UI can
+ *       show "You are offline and this conversation has not been downloaded
+ *       yet" rather than a blank screen.
+ *
+ * Sharing:
+ * - `shareConversation(chatId, expiryHours)` creates a share link via the
+ *   backend and returns the raw data — typically `{ shareUrl, shareToken }`.
+ *   The shareUrl is a path (/ai?ref=shared&token=xxx); callers must anchor
+ *   it to their own origin. The AI UI layer (ai-chat-ui.js) always anchors
+ *   to https://app.medvix.co.ke via its `_buildShareUrl` helper.
+ * - `getSharedConversation(shareToken)` fetches a shared conversation by
+ *   token. IMPORTANT: this requires NO authentication — the share token
+ *   itself is the credential, so unauthenticated recipients can view the
+ *   conversation. Only network access is required.
  */
 
 import * as utils from './utils.js';
 import * as ui from './ui.js';
-import * as router from './router.js';
 import * as db from './db.js';
 import * as auth from './auth.js';
-import * as subscription from './subscription.js';
 import { convexHttpClient } from './convex-client.js';
-
-// ==================== CONSTANTS ====================
-
-const FREE_LIMIT = 3;
 
 // ==================== HELPERS ====================
 
@@ -42,35 +100,11 @@ class AIEngine {
   constructor() {
     this._cache = {
       chats: null,
-      usage: null,
     };
     this._currentChatId = null; // the last used conversation ID
-    this._syncInProgress = false;
   }
 
-  // ---- Usage & Subscription ----
-
-  async checkUsageLimit() {
-    const user = auth.getUser();
-    if (!user) return { allowed: false, remaining: 0, limit: 0 };
-    const hasSubscription = await subscription.hasActiveSubscription();
-    if (hasSubscription) {
-      return { allowed: true, remaining: Infinity, limit: Infinity };
-    }
-    const count = utils.getLocalStorage('ai_usage_count', 0);
-    return {
-      allowed: count < FREE_LIMIT,
-      remaining: Math.max(FREE_LIMIT - count, 0),
-      limit: FREE_LIMIT,
-    };
-  }
-
-  async _incrementUsage() {
-    const count = utils.getLocalStorage('ai_usage_count', 0);
-    utils.setLocalStorage('ai_usage_count', count + 1);
-  }
-
-  // ---- Chat CRUD ----
+  // ==================== CHAT CRUD ====================
 
   async loadChats() {
     if (this._cache.chats) return this._cache.chats;
@@ -78,7 +112,7 @@ class AIEngine {
     // 1. Load from IndexedDB first (fast, offline)
     let localChats = [];
     try {
-      localChats = await db.getConversations() || [];
+      localChats = (await db.getConversations()) || [];
     } catch (e) {
       console.warn('[loadChats] Error reading from IndexedDB:', e);
     }
@@ -91,14 +125,12 @@ class AIEngine {
     if (navigator.onLine) {
       try {
         const token = getToken();
-        console.log('[loadChats] Fetching conversations from backend...');
         const result = await convexHttpClient.action('conversations/actions:getConversations', {
           token,
           limit: 100,
         });
         if (result.success && result.data && result.data.conversations) {
-          const backendChats = result.data.conversations;
-          const merged = this._mergeChats(localChats, backendChats);
+          const merged = this._mergeChats(localChats, result.data.conversations);
           this._cache.chats = merged;
           await db.saveConversations(merged);
           await this._saveChatsToStorage(merged);
@@ -113,6 +145,16 @@ class AIEngine {
     return localChats;
   }
 
+  /**
+   * Merge local chats with backend metadata.
+   *
+   * `messagesLoaded` policy:
+   *   • Existing local chat — preserved as-is; if it's already `true`
+   *     OR it has cached messages, we mark it `true` (we have content).
+   *   • New from backend — `false`. The chat exists (metadata came from
+   *     the backend), but its message contents haven't been fetched yet.
+   *     `loadConversationMessages` will fetch them on first open.
+   */
   _mergeChats(local, backend) {
     const map = new Map();
     for (const chat of local) {
@@ -121,10 +163,13 @@ class AIEngine {
     for (const bChat of backend) {
       if (map.has(bChat._id)) {
         const existing = map.get(bChat._id);
+        const hadContent = Array.isArray(existing.messages) && existing.messages.length > 0;
         map.set(bChat._id, {
+          ...existing,
           id: bChat._id,
           title: bChat.title,
           messages: existing.messages || [],
+          messagesLoaded: existing.messagesLoaded === true || hadContent,
           pinned: existing.pinned || false,
           createdAt: bChat.createdAt || existing.createdAt,
           updatedAt: bChat.updatedAt || existing.updatedAt,
@@ -136,6 +181,7 @@ class AIEngine {
           id: bChat._id,
           title: bChat.title,
           messages: [],
+          messagesLoaded: false,
           pinned: false,
           createdAt: bChat.createdAt,
           updatedAt: bChat.updatedAt,
@@ -148,44 +194,62 @@ class AIEngine {
   }
 
   /**
-   * Fetch messages for a specific conversation (from chunks) and merge into local DB.
+   * Load messages for a conversation, with persistence and clear errors.
    */
   async loadConversationMessages(chatId) {
-    if (!chatId) return [];
-    let chats = await this.loadChats();
-    let chat = chats.find(c => c.id === chatId);
-    if (chat && chat.messages && chat.messages.length > 0) {
-      return chat.messages;
+    if (!chatId) throw new Error('No chat ID provided');
+
+    const chats = await this.loadChats();
+    const chat = chats.find((c) => c.id === chatId);
+
+    if (!chat) {
+      throw new Error('Chat not found');
     }
-    if (navigator.onLine) {
-      try {
-        const token = getToken();
-        const result = await convexHttpClient.action('conversations/actions:getConversation', {
-          token,
-          conversationId: chatId,
-          limit: 200,
-        });
-        if (result.success && result.data && result.data.messages) {
-          const messages = result.data.messages;
-          if (chat) {
-            chat.messages = messages;
-            chat.synced = true;
-            await db.saveConversations(chats);
-            await this._saveChatsToStorage(chats);
-            this._cache.chats = chats;
-          }
-          return messages;
-        }
-      } catch (err) {
-        console.warn('[loadConversationMessages] Backend fetch failed:', err);
+
+    // Fast path: messages already loaded — works offline, no network.
+    if (chat.messagesLoaded === true) {
+      return chat.messages || [];
+    }
+
+    // Not loaded yet — need the network to fetch them
+    if (!navigator.onLine) {
+      throw new Error(
+        'You are offline and this conversation has not been downloaded yet.'
+      );
+    }
+
+    let fetchError = null;
+    try {
+      const token = getToken();
+      const result = await convexHttpClient.action('conversations/actions:getConversation', {
+        token,
+        conversationId: chatId,
+        limit: 200,
+      });
+
+      if (!result || !result.success) {
+        fetchError = new Error(
+          (result && result.message) || 'Failed to load conversation'
+        );
+      } else {
+        const messages = (result.data && result.data.messages) || [];
+        chat.messages = messages;
+        chat.messagesLoaded = true;
+        chat.synced = true;
+        this._cache.chats = chats;
+        // Persist for offline use — every successfully-fetched chat
+        // becomes permanently viewable on this device.
+        await db.saveConversations(chats);
+        await this._saveChatsToStorage(chats);
+        return messages;
       }
+    } catch (err) {
+      fetchError = err;
     }
-    return chat ? chat.messages : [];
+
+    throw fetchError || new Error('Failed to load conversation');
   }
 
-  /**
-   * Create a new empty conversation on the backend.
-   */
   async createEmptyChat(title = 'New Chat') {
     requireOnline();
     const token = getToken();
@@ -201,6 +265,10 @@ class AIEngine {
       id: serverId,
       title,
       messages: [],
+      // Freshly-created chats are genuinely empty. We know the content
+      // (nothing), so mark them as loaded. This prevents a needless
+      // fetch on first open.
+      messagesLoaded: true,
       pinned: false,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -218,16 +286,13 @@ class AIEngine {
     return newChat;
   }
 
-  /**
-   * Public alias for createEmptyChat – used by UI.
-   */
   async createChat(title = 'New Chat') {
     return await this.createEmptyChat(title);
   }
 
   async deleteChat(chatId) {
     let chats = await this.loadChats();
-    chats = chats.filter(c => c.id !== chatId);
+    chats = chats.filter((c) => c.id !== chatId);
     this._cache.chats = chats;
     await db.saveConversations(chats);
     await this._saveChatsToStorage(chats);
@@ -250,7 +315,7 @@ class AIEngine {
 
   async pinChat(chatId) {
     const chats = await this.loadChats();
-    const chat = chats.find(c => c.id === chatId);
+    const chat = chats.find((c) => c.id === chatId);
     if (!chat) throw new Error('Chat not found');
     chat.pinned = !chat.pinned;
     this._cache.chats = chats;
@@ -259,11 +324,11 @@ class AIEngine {
     return chat.pinned;
   }
 
-  // ---- Message handling ----
+  // ==================== MESSAGE CRUD ====================
 
   async saveMessage(payload) {
     const chats = await this.loadChats();
-    const chat = chats.find(c => c.id === payload.chatId);
+    const chat = chats.find((c) => c.id === payload.chatId);
     if (!chat) {
       console.warn('[saveMessage] Chat not found; will create a new one.');
       const newChat = await this.createEmptyChat('Untitled');
@@ -271,6 +336,10 @@ class AIEngine {
       return this.saveMessage(payload);
     }
     chat.messages.push(payload);
+    // Pushing a message means we definitively know this chat's content
+    // going forward. Also protects against a scenario where the chat was
+    // fetched empty from the backend and we've now added content to it.
+    if (chat.messagesLoaded !== true) chat.messagesLoaded = true;
     chat.updatedAt = Date.now();
     if (chat.synced !== false) chat.synced = false;
     this._cache.chats = chats;
@@ -279,57 +348,129 @@ class AIEngine {
     return true;
   }
 
-  // ---- Main chat entry point ----
+  /**
+   * Mark the most recent user message in `chatId` as failed.
+   */
+  async markLastUserMessageFailed(chatId) {
+    if (!chatId) return null;
+    try {
+      const chats = await this.loadChats();
+      const chat = chats.find((c) => c.id === chatId);
+      if (!chat) return null;
+      for (let i = chat.messages.length - 1; i >= 0; i--) {
+        if (chat.messages[i].role === 'user') {
+          chat.messages[i].failed = true;
+          chat.updatedAt = Date.now();
+          this._cache.chats = chats;
+          await db.saveConversations(chats);
+          await this._saveChatsToStorage(chats);
+          return chat.messages[i].timestamp;
+        }
+      }
+      return null;
+    } catch (err) {
+      console.warn('[markLastUserMessageFailed] error:', err);
+      return null;
+    }
+  }
 
   /**
-   * Send a message to the AI.
-   * Automatically reuses the current conversation ID if `chatId` is not provided.
-   * @param {Object} params
-   * @param {string} params.message - The user message.
-   * @param {string} [params.chatId] - Optional conversation ID. If omitted, the engine will reuse the last active one.
-   * @param {Array} [params.modes] - Active modes (e.g., ['deepthink', 'websearch']).
-   * @param {Object} [params.file] - (Temporarily disabled) File data from uploadFile().
-   * @returns {Promise<{text: string, chatId: string, meta: any, richData: any}>}
+   * Clear the failed flag on a specific user message.
+   */
+  async markMessageSuccess(chatId, timestamp) {
+    if (!chatId || timestamp == null) return false;
+    try {
+      const chats = await this.loadChats();
+      const chat = chats.find((c) => c.id === chatId);
+      if (!chat) return false;
+      const msg = chat.messages.find(
+        (m) => m.role === 'user' && m.timestamp === timestamp
+      );
+      if (!msg) return false;
+      msg.failed = false;
+      this._cache.chats = chats;
+      await db.saveConversations(chats);
+      await this._saveChatsToStorage(chats);
+      return true;
+    } catch (err) {
+      console.warn('[markMessageSuccess] error:', err);
+      return false;
+    }
+  }
+
+  /**
+   * Delete a user message and the assistant reply that immediately
+   * follows it, if any.
+   */
+  async deleteMessageAndResponse(chatId, timestamp) {
+    if (!chatId || timestamp == null) return false;
+    try {
+      const chats = await this.loadChats();
+      const chat = chats.find((c) => c.id === chatId);
+      if (!chat) return false;
+      const idx = chat.messages.findIndex(
+        (m) => m.role === 'user' && m.timestamp === timestamp
+      );
+      if (idx === -1) return false;
+      let deleteCount = 1;
+      if (chat.messages[idx + 1] && chat.messages[idx + 1].role === 'assistant') {
+        deleteCount = 2;
+      }
+      chat.messages.splice(idx, deleteCount);
+      chat.updatedAt = Date.now();
+      chat.synced = false;
+      this._cache.chats = chats;
+      await db.saveConversations(chats);
+      await this._saveChatsToStorage(chats);
+      return true;
+    } catch (err) {
+      console.warn('[deleteMessageAndResponse] error:', err);
+      return false;
+    }
+  }
+
+  // ==================== SEND ====================
+
+  /**
+   * Send a user message and receive the assistant reply.
+   *
+   * No rate limiting is performed here. `modes` is forwarded verbatim to
+   * the backend. If the backend rejects the request (subscription,
+   * backend-side daily token quota, model error), the error is thrown and
+   * the just-saved user message is flagged `failed: true` so the UI can
+   * offer Retry.
+   *
+   * The backend may return mode-specific rich data (e.g. `sources` from
+   * websearch, `references` from the references mode), a `meta` string
+   * summarising the response, and a `usage` object with the input/output
+   * token counts for this turn. All three are:
+   *   • persisted onto the assistant message for offline display
+   *   • returned to the caller so the UI can render the meta bar and
+   *     rich-data cards immediately
    */
   async sendMessageToAI({ message, chatId, modes = [], file = null }) {
-    // If chatId is provided, use it and update current ID.
     let effectiveChatId = chatId || this._currentChatId;
-
-    // If we have an ID, verify it exists locally.
     let chat = null;
+
     if (effectiveChatId) {
       const chats = await this.loadChats();
-      chat = chats.find(c => c.id === effectiveChatId);
+      chat = chats.find((c) => c.id === effectiveChatId);
       if (!chat) {
-        // The stored ID is not found locally – maybe it was deleted or cache is stale.
-        // We'll treat it as a new conversation.
         effectiveChatId = null;
-        chat = null;
       }
     }
 
-    // If no valid chat, create a new one.
     if (!effectiveChatId) {
-      const newChat = await this.createEmptyChat(message.slice(0, 30) + (message.length > 30 ? '...' : ''));
+      const title =
+        message.length > 30 ? message.slice(0, 30) + '...' : message;
+      const newChat = await this.createEmptyChat(title);
       effectiveChatId = newChat.id;
       chat = newChat;
       this._currentChatId = effectiveChatId;
-    } else {
-      // Ensure we have the chat object loaded.
-      if (!chat) {
-        const chats = await this.loadChats();
-        chat = chats.find(c => c.id === effectiveChatId);
-        if (!chat) {
-          // Fallback: create a new one anyway.
-          const newChat = await this.createEmptyChat(message.slice(0, 30) + '...');
-          effectiveChatId = newChat.id;
-          chat = newChat;
-          this._currentChatId = effectiveChatId;
-        }
-      }
     }
 
-    // Save user message locally.
+    // Save the user message BEFORE the network call so a failure still
+    // leaves the user's intent on screen and persisted.
     await this.saveMessage({
       chatId: effectiveChatId,
       role: 'user',
@@ -338,86 +479,86 @@ class AIEngine {
       timestamp: Date.now(),
     });
 
-    // Check usage limit.
-    const { allowed, remaining } = await this.checkUsageLimit();
-    if (!allowed) {
-      if (remaining <= 0) {
-        ui.showToast('Free limit reached. Please subscribe.', 'error');
-        router.navigateTo('subscription');
-        throw new Error('Usage limit reached');
-      }
-      await this._incrementUsage();
-    }
-
-    // File attachments are temporarily disabled – we do not send fileUrl/fileType.
-    // Future enhancement: upload file to storage and send URL.
-
-    // Send to backend.
     try {
       const token = getToken();
-      // ===== UPDATED: Include modes (fileUrl/fileType omitted for now) =====
       const result = await convexHttpClient.action('conversations/actions:sendMessage', {
         token,
         conversationId: effectiveChatId,
         message,
-        modes,   // pass modes array
-        // fileUrl and fileType are omitted – file attachments disabled
+        // Modes are forwarded verbatim. The engine never filters them.
+        modes: Array.isArray(modes) ? modes : [],
       });
 
       if (!result.success) {
         if (result.error === 'subscription_required') {
-          ui.showToast('Active subscription required for AI features.', 'error');
-          router.navigateTo('subscription');
-          throw new Error('Subscription required');
+          throw new Error(result.message || 'Active subscription required');
         }
         if (result.error === 'rate_limit_exceeded') {
-          ui.showToast('Too many AI requests. Please wait a minute.', 'warning');
-          throw new Error('Rate limit exceeded');
+          // The backend names the exhausted counter and the reset time
+          // (e.g. "You've reached your daily input token limit. Resets
+          // in 5 hours."). Use that message verbatim — it's far more
+          // useful than a generic "too many requests".
+          throw new Error(result.message || 'Daily AI quota reached.');
         }
-        throw new Error(result.message);
+        throw new Error(result.message || 'AI request failed');
       }
 
-      const answer = result.data.message;
+      // Pull meta, richData, and usage out of the backend response.
+      // These carry the mode-attached cards (sources, references),
+      // the meta bar text, and the token counts.
+      const backendData = result.data || {};
+      const answer = backendData.message;
+      const meta = backendData.meta || null;
+      const richData = backendData.richData || null;
+      const usage = backendData.usage || null;
 
-      // Save assistant message.
+      // Persist the assistant message WITH its meta/richData/usage so
+      // the meta bar and rich cards survive a page reload and remain
+      // viewable offline.
       await this.saveMessage({
         chatId: effectiveChatId,
         role: 'assistant',
         content: answer,
-        meta: null,
-        richData: null,
+        meta,
+        richData,
+        usage,
         timestamp: Date.now(),
       });
 
-      // Mark chat as synced.
       chat.synced = true;
       const chats = await this.loadChats();
       await db.saveConversations(chats);
       await this._saveChatsToStorage(chats);
       this._cache.chats = chats;
-
-      // Update the current chat ID (in case it was newly created or changed).
       this._currentChatId = effectiveChatId;
 
       return {
         text: answer,
         chatId: effectiveChatId,
-        meta: null,
-        richData: null,
+        meta,
+        richData,
+        usage,
       };
     } catch (err) {
       console.error('sendMessageToAI error:', err);
-      ui.showToast(err.message || 'AI request failed', 'error');
+      try {
+        await this.markLastUserMessageFailed(effectiveChatId);
+      } catch {
+        /* ignore */
+      }
       throw err;
     }
   }
 
-  // ---- Regenerate ----
+  // ==================== REGENERATE ====================
 
+  /**
+   * Regenerate the assistant reply for the last exchange in `chatId`.
+   */
   async regenerateResponse({ chatId, modes }) {
     if (!chatId) throw new Error('No conversation ID provided.');
     const chats = await this.loadChats();
-    const chat = chats.find(c => c.id === chatId);
+    const chat = chats.find((c) => c.id === chatId);
     if (!chat) throw new Error('Chat not found');
 
     let lastUserMsg = null;
@@ -445,30 +586,112 @@ class AIEngine {
         token,
         conversationId: chatId,
         message: lastUserMsg.content,
-        // modes can be passed if needed, but we omit for simplicity
+        // Forward modes on regenerate too — parity with sendMessageToAI.
+        modes: Array.isArray(modes) ? modes : [],
       });
-      if (!result.success) throw new Error(result.message);
-      const answer = result.data.message;
+
+      if (!result.success) {
+        if (result.error === 'subscription_required') {
+          throw new Error(result.message || 'Active subscription required');
+        }
+        if (result.error === 'rate_limit_exceeded') {
+          throw new Error(result.message || 'Daily AI quota reached.');
+        }
+        throw new Error(result.message || 'Regenerate failed');
+      }
+
+      // Same passthrough as sendMessageToAI — meta, richData, usage.
+      const backendData = result.data || {};
+      const answer = backendData.message;
+      const meta = backendData.meta || null;
+      const richData = backendData.richData || null;
+      const usage = backendData.usage || null;
+
       await this.saveMessage({
-        chatId: chatId,
+        chatId,
         role: 'assistant',
         content: answer,
-        meta: null,
-        richData: null,
+        meta,
+        richData,
+        usage,
         timestamp: Date.now(),
       });
       chat.synced = true;
       await db.saveConversations(chats);
       await this._saveChatsToStorage(chats);
       this._cache.chats = chats;
-      return { text: answer, chatId: chatId, meta: null, richData: null };
+
+      return { text: answer, chatId, meta, richData, usage };
     } catch (err) {
-      ui.showToast(err.message, 'error');
+      console.error('regenerateResponse error:', err);
       throw err;
     }
   }
 
-  // ---- Other AI Actions (unchanged) ----
+  // ==================== SHARING ====================
+
+  /**
+   * Create a share link for a conversation.
+   */
+  async shareConversation(chatId, expiryHours = 24) {
+    if (!chatId) throw new Error('No conversation ID provided.');
+    requireOnline();
+    const token = getToken();
+
+    const result = await convexHttpClient.action(
+      'conversations/actions:shareConversation',
+      {
+        token,
+        conversationId: chatId,
+        expiryHours,
+      },
+    );
+
+    if (!result || !result.success) {
+      throw new Error(
+        (result && result.message) || 'Failed to create share link',
+      );
+    }
+
+    return result.data;
+  }
+
+  /**
+   * Fetch a conversation from a share token, for read-only display.
+   */
+  async getSharedConversation(shareToken) {
+    if (!shareToken) throw new Error('No share token provided.');
+    requireOnline();
+
+    const result = await convexHttpClient.action(
+      'conversations/queries:getSharedConversation',
+      { shareToken },
+    );
+
+    if (!result || !result.success) {
+      throw new Error(
+        (result && result.message) ||
+        'This share link may have expired or been revoked.',
+      );
+    }
+
+    const data = result.data || {};
+    const conversationMeta = data.conversation || {};
+    const messages = Array.isArray(data.messages) ? data.messages : [];
+
+    if (messages.length === 0) {
+      throw new Error('Shared conversation is empty.');
+    }
+
+    return {
+      ...conversationMeta,
+      messages,
+      nextCursor: data.nextCursor || null,
+      hasMore: data.hasMore === true,
+    };
+  }
+
+  // ==================== OTHER AI ACTIONS ====================
 
   async summarizeText(text) {
     requireOnline();
@@ -742,7 +965,7 @@ class AIEngine {
     }
   }
 
-  // ---- Persistence helpers ----
+  // ==================== PERSISTENCE HELPERS ====================
 
   async _saveChatsToStorage(chats) {
     utils.setLocalStorage('ai_chats', chats);
@@ -756,7 +979,7 @@ class AIEngine {
     this._currentChatId = null;
   }
 
-  // ---- File upload (stub) ----
+  // ==================== FILE UPLOAD (UI-ONLY STUB) ====================
 
   async uploadFile(file) {
     return new Promise((resolve) => {
@@ -773,18 +996,13 @@ class AIEngine {
     });
   }
 
-  // ---- Refresh chats from backend ----
+  // ==================== MISC ====================
 
   async refreshChats() {
     this._cache.chats = null;
     return this.loadChats();
   }
 
-  // ---- Utility ----
-
-  /**
-   * Returns the current active conversation ID.
-   */
   getCurrentChatId() {
     return this._currentChatId;
   }

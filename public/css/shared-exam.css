@@ -310,6 +310,31 @@ body {
 }
 .review-item.correct   { border-left: 3px solid var(--success); }
 .review-item.incorrect { border-left: 3px solid var(--danger);  }
+
+/* ---------- Question image in the shared-exam review ---------- */
+.shared-exam-image {
+    display: flex;
+    justify-content: center;
+    margin: 0.5rem 0;
+}
+
+.shared-exam-image img {
+    display: inline-block;
+    max-width: 100%;
+    max-height: 300px;
+    width: auto;
+    height: auto;
+    border-radius: var(--radius-small, 8px);
+    object-fit: contain;
+    background: var(--bg-secondary, #f5f5f5);
+    padding: 4px;
+    border: 1px solid var(--border, #e5e5e5);
+}
+
+@media (max-width: 480px) {
+    .shared-exam-image img { max-height: 220px; }
+}
+
 .review-header {
     display: flex;
     gap: 0.5rem;

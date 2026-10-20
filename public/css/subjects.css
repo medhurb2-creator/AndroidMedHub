@@ -401,6 +401,78 @@ main h1 {
 }
 .btn-study:hover { background: var(--accent-dark); }
 
+/* ── NEW: Slide View action states ──────────────────────────────────
+   The Slide View card reuses .subject-card, .subject-icon,
+   .progress-bar, .progress-fill, and .action-btn-sm — so its layout is
+   identical to every other core card. This block only differentiates
+   the three action buttons so their role is unambiguous:
+
+     • .slide-download-btn  — initial state. Filled accent, the only
+                              button in the card. Larger hit area.
+     • .slide-study-btn     — post-download. Filled accent, same weight
+                              as .slide-download-btn so the card's CTA
+                              visually persists across state changes.
+     • .slide-update-btn    — shown alongside Study when a newer zip is
+                              published. Outline accent (secondary),
+                              subtle pulse to draw the eye without
+                              stealing primary attention from Study.
+
+   The single bar in the card cycles through download % → extract % →
+   aggregate study % (progressMap) — the fill transition already
+   handled by .progress-fill makes each phase change feel continuous. */
+
+.slide-view-card .action-btn-sm {
+    min-height: 44px;
+    padding: 0.6rem 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+}
+
+/* Primary CTA (Download / Study Slides) — filled accent. */
+.slide-download-btn,
+.slide-study-btn {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+.slide-download-btn:hover,
+.slide-study-btn:hover {
+    background: var(--accent-dark);
+    color: #fff;
+    border-color: var(--accent-dark);
+}
+
+/* Secondary CTA (Update available) — outline accent. Hover flips to
+   filled so it reads as actionable without competing with Study at
+   rest. */
+.slide-update-btn {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+}
+.slide-update-btn:hover {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+
+/* Subtle attention pulse on the Update button — only when the OS has
+   not requested reduced motion. Uses var(--accent) for the glow so it
+   tracks the theme's accent colour automatically. */
+@media (prefers-reduced-motion: no-preference) {
+    .slide-update-btn {
+        animation: slide-update-glow 2.4s ease-in-out infinite;
+    }
+}
+@keyframes slide-update-glow {
+    0%, 100% { box-shadow: 0 0 0 0 transparent; }
+    50%      { box-shadow: 0 0 12px -2px var(--accent); }
+}
+
 /* ---------- Fixed footer ---------- */
 .app-footer {
     position: fixed;
@@ -745,4 +817,43 @@ main h1 {
 @media screen and (min-width: 480px) {
     .card-actions { gap: 0.3rem; }
     .action-btn-sm { font-size: 0.7rem; padding: 0.4rem 0.2rem; }
+}
+
+/* ---------- Slide View icon ----------
+   The Slide View card uses a real photograph (public/assets/images/
+   microscope.jpg) instead of a Font Awesome glyph. The base
+   .subject-icon is already a 64×64 flex-centered circle, so we only
+   need to:
+     • strip its padding so the image can reach the edges,
+     • position it relatively so the absolutely-positioned <img>
+       can cover it,
+     • let the <img> fill with object-fit: cover (center-crops the
+       source image — no distortion, no letterboxing),
+     • give the <img> its own border-radius: 50% so it renders as
+       a circle even if the parent ever loses border-radius.
+   The FA fallback sits at z-index 0 behind the image; if the image
+   fails to load, its onerror removes the <img> and the fallback
+   becomes visible. */
+
+.slide-view-card .subject-icon.slide-icon {
+    position: relative;
+    padding: 0;
+}
+
+.slide-view-card .slide-icon-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+    display: block;
+    z-index: 1;
+}
+
+.slide-view-card .slide-icon-fallback {
+    position: relative;
+    z-index: 0;
+    font-size: 1.8rem;
+    line-height: 1;
 }

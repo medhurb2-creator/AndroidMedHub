@@ -1,6 +1,7 @@
 // scripts/pages/profile.js
 import * as ui from '../ui.js';
 import * as router from '../router.js';
+import * as redirect from '../redirect.js';
 import * as auth from '../auth.js';
 import * as utils from '../utils.js';
 import * as validation from '../validation.js';
@@ -12,26 +13,93 @@ import * as contentStore from '../db/content-store.js';
 
 let $;
 
+// Module-scoped ref to the current institution dropdown controller so
+// destroy() and the state adapter can reach it. Null until
+// initInstitutionDropdown() runs.
+let _institutionController = null;
+
+// Module-scoped listener ref so destroy() can remove the online
+// handler we attach in init(). Without this, repeated navigations to
+// the profile page would stack listeners on `window`.
+let _onlineRefreshHandler = null;
+
+// Offline cache for the devices list. Stored as JSON under a single
+// key and scoped to a user id so that switching accounts on the same
+// browser never leaks another user's device list.
+const DEVICES_CACHE_KEY = 'profile_devices_cache_v1';
+
 export async function init(context) {
   $ = (sel) => context.root.querySelector(sel);
 
   ui.applyTheme();
 
-  // Check auth
+  // ── Auth gate ────────────────────────────────────────────────────
+  // Round-trip through login so the user comes back to the same tab
+  // with the same in-progress edits.
   if (!auth.checkAuth()) {
-    ui.showToast('Please log in first', 'warning');
-    router.navigateTo('login');
+    ui.showToast('Please log in to view your profile', 'warning');
     hideShimmer();
+    redirect.navigateWithReturn('login', 'auth_required');
     return;
   }
 
   const user = auth.getUser();
   if (!user) {
     ui.showToast('User data not found', 'error');
-    router.navigateTo('login');
     hideShimmer();
+    redirect.navigateWithReturn('login', 'auth_required');
     return;
   }
+
+  // ── State adapter ────────────────────────────────────────────────
+  // Registered after the auth gate. Captures the active tab and the
+  // institution dropdown's current selection (which lives in a
+  // closure inside initInstitutionDropdown, not in the DOM). Every
+  // form field with an id is handled by the automatic UI snapshot.
+  //
+  // The migration controller is deliberately NOT captured: if the
+  // user was mid-migration when the page was torn down, the
+  // in-flight loop's DOM refs are gone. Better to drop it and let
+  // the user restart from the storage tab.
+  redirect.registerStateAdapter('profile', {
+    capture: () => {
+      const activeTabBtn = document.querySelector('.tab-button.active');
+      const activeTabContent = document.querySelector('.tab-content.active');
+
+      return {
+        activeTabId: activeTabContent ? activeTabContent.id : null,
+        activeTabBtn: activeTabBtn ? activeTabBtn.dataset.tab : null,
+        selectedInstitution:
+          (_institutionController && _institutionController.getSelected()) || null,
+      };
+    },
+    restore: (data) => {
+      if (!data) return;
+
+      // Re-apply the institution dropdown selection. The controller
+      // exposes setSelected() which updates both the closure variable
+      // and the input's value.
+      if (data.selectedInstitution && _institutionController) {
+        try { _institutionController.setSelected(data.selectedInstitution); }
+        catch (err) { console.warn('[Profile] institution restore failed:', err); }
+      }
+
+      // Re-apply the active tab. Switch the button and the content.
+      if (data.activeTabBtn) {
+        const root = document.getElementById('app-root') || document;
+        root.querySelectorAll('.tab-content').forEach((el) => el.classList.remove('active'));
+        root.querySelectorAll('.tab-button').forEach((b) => b.classList.remove('active'));
+
+        const btn = root.querySelector(`.tab-button[data-tab="${data.activeTabBtn}"]`);
+        if (btn) btn.classList.add('active');
+
+        if (data.activeTabId) {
+          const tab = root.querySelector(`#${data.activeTabId}`);
+          if (tab) tab.classList.add('active');
+        }
+      }
+    },
+  });
 
   // Get cached subscription and compute actual active status
   let sub = null;
@@ -73,7 +141,12 @@ export async function init(context) {
     `;
     const changePlanBtn = $('#changePlanBtn');
     if (changePlanBtn) {
-      changePlanBtn.addEventListener('click', () => router.navigateTo('subscription'));
+      // Round-trip through subscription so a session expiry that
+      // surfaces mid-flow lands the user back here with the
+      // profile tab they were on.
+      changePlanBtn.addEventListener('click', () =>
+        redirect.navigateWithReturn('subscription', 'subscription_required')
+      );
     }
   } else {
     subEl.innerHTML = '<p>No active subscription. <a href="#" id="subscribeLink">Subscribe now</a></p>';
@@ -81,13 +154,23 @@ export async function init(context) {
     if (subscribeLink) {
       subscribeLink.addEventListener('click', (e) => {
         e.preventDefault();
-        router.navigateTo('subscription');
+        redirect.navigateWithReturn('subscription', 'subscription_required');
       });
     }
   }
 
-  // Load devices
+  // Load devices (with offline cache fallback)
   await loadDevices();
+
+  // Auto-refresh devices when coming back online. Registered once
+  // per page lifetime — destroy() removes it.
+  if (!_onlineRefreshHandler) {
+    _onlineRefreshHandler = () => {
+      // Only re-run if the devices tab actually exists in this page.
+      if ($('#devices-list')) loadDevices();
+    };
+    try { window.addEventListener('online', _onlineRefreshHandler); } catch { /* ignore */ }
+  }
 
   // Load preferences
   loadPreferences(user.preferences);
@@ -98,12 +181,6 @@ export async function init(context) {
   // Load storage info (Storage tab)
   await loadStorageInfo();
 
-  // Set device fingerprint display
-  const fpEl = $('#device-fingerprint');
-  if (fpEl) {
-    fpEl.textContent = security.getDeviceFingerprint() || '—';
-  }
-
   // Initialize institution dropdown
   initInstitutionDropdown();
 
@@ -112,6 +189,31 @@ export async function init(context) {
 
   // Hide shimmer
   hideShimmer();
+
+  // ── Self-consume of the return stack ─────────────────────────────
+  try {
+    const hasSnap = redirect.hasSnapshot();
+    if (hasSnap) {
+      const myUrl =
+        window.location.pathname +
+        (window.location.search || '') +
+        (window.location.hash || '');
+      const top = redirect.peekReturn();
+      if (top && top.url === myUrl) redirect.popReturn();
+    }
+  } catch (err) {
+    console.warn('[Profile] Return-stack cleanup failed:', err);
+  }
+
+  // ── Resume snapshot ──────────────────────────────────────────────
+  const snap = redirect.consumeSnapshot();
+  if (snap && (snap.ui || snap.page)) {
+    ui.showToast('Continuing where you left off', 'info', 1800);
+    console.log('[Profile] Resumed from redirect:', {
+      fields: Object.keys(snap.ui?.fields || {}).length,
+      pageState: snap.page,
+    });
+  }
 
   console.log('[Profile] Initialized');
 }
@@ -129,9 +231,17 @@ function hideShimmer() {
 }
 
 // ==================== INSTITUTION DROPDOWN ====================
+//
+// Reworked so the selected value is reachable from outside — the
+// state adapter needs to read and write it across a redirect.
+// Returns a controller with getSelected() / setSelected().
 function initInstitutionDropdown() {
   const input = $('#institution');
   const dropdown = $('#institution-dropdown');
+  if (!input || !dropdown) {
+    _institutionController = null;
+    return;
+  }
 
   const institutions = [
     'University of Nairobi (UoN)',
@@ -210,7 +320,7 @@ function initInstitutionDropdown() {
   ];
 
   const uniqueInstitutions = [...new Set(institutions)].sort();
-  let selectedInstitution = '';
+  let selectedInstitution = input.value || '';
 
   function renderDropdown(filter = '') {
     const filtered = filter ?
@@ -249,15 +359,27 @@ function initInstitutionDropdown() {
     renderDropdown(input.value);
   });
 
-  document.addEventListener('click', (e) => {
+  // Use a single listener guarded by a flag so re-init across
+  // navigations doesn't stack document-level handlers.
+  const onDocClick = (e) => {
     if (!input.contains(e.target) && !dropdown.contains(e.target)) {
       dropdown.classList.remove('show');
     }
-  });
+  };
+  document.addEventListener('click', onDocClick);
 
-  if (input.value) {
-    selectedInstitution = input.value;
-  }
+  // Expose a controller so the state adapter and destroy() can
+  // reach in.
+  _institutionController = {
+    getSelected: () => selectedInstitution,
+    setSelected: (val) => {
+      selectedInstitution = val || '';
+      input.value = selectedInstitution;
+    },
+    detach: () => {
+      document.removeEventListener('click', onDocClick);
+    },
+  };
 }
 
 // ==================== EVENT LISTENERS ====================
@@ -295,6 +417,18 @@ function attachEventListeners(context) {
   const deleteAccountBtn = $('#deleteAccountBtn');
   if (deleteAccountBtn) {
     deleteAccountBtn.addEventListener('click', deleteAccount);
+  }
+
+  // ── Devices tab ──────────────────────────────────────────────────
+  const refreshDevicesBtn = $('#refreshDevicesBtn');
+  if (refreshDevicesBtn) {
+    refreshDevicesBtn.addEventListener('click', () => {
+      if (!navigator.onLine) {
+        ui.showToast('You must be online to refresh devices', 'warning');
+        return;
+      }
+      loadDevices();
+    });
   }
 
   const logoutAllDevicesBtn = $('#logoutAllDevicesBtn');
@@ -421,59 +555,342 @@ async function changePassword() {
 }
 
 // ==================== DEVICE MANAGEMENT ====================
-async function loadDevices() {
-  const container = $('#devices-list');
-  try {
-    const devices = await security.getUserDevices?.() || [];
-    if (!devices || devices.length === 0) {
-      container.innerHTML = '<p class="no-data">No other devices.</p>';
-      return;
-    }
-    let html = '';
-    devices.forEach(dev => {
-      html += `
-        <div class="device-item ${dev.current ? 'current-device' : ''}">
-          <span class="device-icon">${dev.platform?.includes('Android') ? '📱' : '💻'}</span>
-          <span class="device-name">${dev.platform || 'Unknown'}</span>
-          <span class="device-last">Last used: ${utils.formatDate(dev.lastUsed)}</span>
-          ${dev.current ? '<span class="badge">Current</span>' : ''}
-          ${!dev.current ? `<button class="btn-small logout-device-btn" data-fingerprint="${dev.fingerprint}">Logout</button>` : ''}
-        </div>
-      `;
-    });
-    container.innerHTML = html;
+//
+// Source of truth: auth.listActiveDevices() → Convex
+// auth/actions:listActiveDevices → internal.auth.internal.getUserDevicesForUI.
+//
+// Result shape (from the backend):
+//   {
+//     devices: Array<{
+//       deviceId,    // stable dv_… identifier
+//       deviceName,  // pre-formatted — "Chrome on Windows", "Samsung Galaxy S23"
+//       platform,    // 'android' | 'ios' | 'web' | 'windows'
+//       lastSeen,    // ms timestamp
+//       isCurrent,   // true for this browser / device
+//       sessionId,   // most-recent live session for the device
+//       fingerprint, // legacy mirror of deviceId
+//     }>,
+//     maxDevices, devicesUsed, overLimit,
+//   }
+//
+// Offline behaviour:
+//   1. Online and fetch succeeds → cache the payload, render fresh data.
+//   2. Offline OR fetch fails → render cached payload with a
+//      "Showing saved devices · last updated X ago" note.
+//   3. Offline with no cache → render a local "this device only"
+//      fallback built from security.getCachedDeviceInfo().
+//
+// All writes (sign-out) require the backend, so buttons are disabled
+// while offline.
 
-    container.querySelectorAll('.logout-device-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        logoutDevice(btn.dataset.fingerprint);
-      });
-    });
-  } catch (error) {
-    container.innerHTML = '<p class="error">Failed to load devices.</p>';
+/** Human-friendly "how long ago" — "Just now", "2 hours ago", "Yesterday". */
+function formatRelativeTime(ts) {
+  if (!ts) return 'Never';
+  const diff = Date.now() - ts;
+  if (diff < 0) return 'Just now';
+  const sec = Math.floor(diff / 1000);
+  const min = Math.floor(sec / 60);
+  const hr  = Math.floor(min / 60);
+  const day = Math.floor(hr / 24);
+  if (sec < 60) return 'Just now';
+  if (min < 60) return `${min} minute${min === 1 ? '' : 's'} ago`;
+  if (hr  < 24) return `${hr} hour${hr === 1 ? '' : 's'} ago`;
+  if (day === 1) return 'Yesterday';
+  if (day < 7)   return `${day} days ago`;
+  if (day < 30)  return `${Math.floor(day / 7)} week${Math.floor(day / 7) === 1 ? '' : 's'} ago`;
+  return utils.formatDate(ts);
+}
+
+/** Emoji for the platform — phone for mobile, laptop otherwise. */
+function deviceIcon(platform) {
+  const p = String(platform || '').toLowerCase();
+  if (p === 'android' || p === 'ios') return '📱';
+  return '💻';
+}
+
+// ---------- Offline cache ----------
+
+function readDevicesCache(userId) {
+  if (!userId) return null;
+  try {
+    const raw = utils.getLocalStorage(DEVICES_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (!parsed || parsed.userId !== userId || !parsed.payload) return null;
+    return parsed;
+  } catch {
+    return null;
   }
 }
 
-async function logoutDevice(fingerprint) {
-  if (await ui.showConfirmationDialog('Logout Device', 'Logout this device?')) {
+function writeDevicesCache(userId, payload) {
+  if (!userId || !payload) return;
+  try {
+    utils.setLocalStorage(DEVICES_CACHE_KEY, JSON.stringify({
+      userId,
+      payload,
+      cachedAt: Date.now(),
+    }));
+  } catch { /* quota / privacy mode — not fatal */ }
+}
+
+function clearDevicesCache() {
+  try { utils.removeLocalStorage(DEVICES_CACHE_KEY); } catch { /* ignore */ }
+}
+
+// ---------- Local-only fallback when offline + no cache ----------
+
+function buildLocalDisplayName(info) {
+  if (!info) return 'This device';
+  const browser = info.browser || info.model;
+  const os = info.osName;
+  if (browser && os && browser !== os) return `${browser} on ${os}`;
+  if (browser) return browser;
+  if (os) return os;
+  return 'This device';
+}
+
+async function buildLocalFallbackDevices() {
+  let deviceId = null;
+  let info = null;
+  try {
+    deviceId = security.getCachedDeviceId?.() || (await security.getDeviceId?.());
+    info = security.getCachedDeviceInfo?.() || (await security.getDeviceInfo?.());
+  } catch { /* ignore */ }
+
+  if (!deviceId) return null;
+
+  return {
+    devices: [{
+      deviceId,
+      deviceName: buildLocalDisplayName(info),
+      platform: (info?.platform || '').toLowerCase() || 'unknown',
+      lastSeen: Date.now(),
+      isCurrent: true,
+      sessionId: null,
+      fingerprint: deviceId,
+    }],
+    maxDevices: 1,
+    devicesUsed: 1,
+    overLimit: false,
+  };
+}
+
+// ---------- Render ----------
+
+async function loadDevices() {
+  const container = $('#devices-list');
+  const summaryEl = $('#devices-summary');
+  const logoutAllBtn = $('#logoutAllDevicesBtn');
+  if (!container) return;
+
+  const user = auth.getUser();
+  const userId = user?._id || null;
+
+  container.innerHTML = '<p class="no-data">Loading devices…</p>';
+  if (summaryEl) summaryEl.textContent = '';
+
+  // ---- 1. Try live fetch ----
+  let payload = null;
+  let source = 'live';
+  let cachedAt = 0;
+
+  if (navigator.onLine) {
     try {
-      await security.logoutDevice?.(fingerprint);
-      ui.showToast('Device logged out', 'success');
-      loadDevices();
-    } catch (error) {
-      ui.showToast('Failed to logout device', 'error');
+      payload = await auth.listActiveDevices();
+      if (payload && userId) writeDevicesCache(userId, payload);
+    } catch (err) {
+      console.warn('[Profile] listActiveDevices failed, falling back:', err);
+      payload = null;
     }
+  }
+
+  // ---- 2. Fall back to cache ----
+  if (!payload) {
+    const cache = readDevicesCache(userId);
+    if (cache) {
+      payload = cache.payload;
+      source = 'cache';
+      cachedAt = cache.cachedAt || 0;
+    }
+  }
+
+  // ---- 3. Local-only fallback ----
+  if (!payload) {
+    payload = await buildLocalFallbackDevices();
+    if (payload) {
+      source = 'local';
+    }
+  }
+
+  // ---- Give up gracefully ----
+  if (!payload) {
+    container.innerHTML =
+      '<p class="error">Couldn’t load devices. Tap Refresh to try again.</p>';
+    return;
+  }
+
+  const devices    = payload.devices    || [];
+  const maxDevices = payload.maxDevices ?? 1;
+  const used       = payload.devicesUsed ?? devices.length;
+  const otherCount = devices.filter(d => !d.isCurrent).length;
+  const offline    = !navigator.onLine || source !== 'live';
+
+  // Summary line.
+  if (summaryEl) {
+    if (devices.length === 0) {
+      summaryEl.textContent = 'No devices are currently signed in.';
+    } else if (used === 1) {
+      summaryEl.textContent = 'Only this device is signed in.';
+    } else {
+      summaryEl.textContent =
+        `You’re signed in on ${used} of ${maxDevices} allowed device${maxDevices === 1 ? '' : 's'}.`;
+    }
+
+    if (source === 'cache') {
+      summaryEl.textContent +=
+        ` · Showing saved devices, last updated ${formatRelativeTime(cachedAt).toLowerCase()}.`;
+    } else if (source === 'local') {
+      summaryEl.textContent +=
+        ' · Offline — showing this device only.';
+    }
+  }
+
+  // Bulk sign-out button state.
+  if (logoutAllBtn) {
+    logoutAllBtn.disabled = otherCount === 0 || offline;
+    logoutAllBtn.title = offline
+      ? 'You must be online to sign out other devices'
+      : otherCount === 0
+        ? 'No other devices to sign out'
+        : '';
+  }
+
+  if (devices.length === 0) {
+    container.innerHTML =
+      '<p class="no-data">No devices are currently signed in.</p>';
+    return;
+  }
+
+  // ---- Render cards ----
+  container.innerHTML = '';
+
+  for (const dev of devices) {
+    const icon   = deviceIcon(dev.platform);
+    const name   = dev.deviceName || 'Unknown device';
+    const when   = formatRelativeTime(dev.lastSeen);
+    const isCur  = !!dev.isCurrent;
+
+    const card = document.createElement('div');
+    card.className = 'device-item' + (isCur ? ' current-device' : '');
+
+    // Info row: icon + name + meta
+    const info = document.createElement('div');
+    info.className = 'device-info';
+
+    const iconEl = document.createElement('span');
+    iconEl.className = 'device-icon';
+    iconEl.textContent = icon;
+    info.appendChild(iconEl);
+
+    const text = document.createElement('div');
+    text.className = 'device-text';
+
+    const nameEl = document.createElement('div');
+    nameEl.className = 'device-name';
+    nameEl.textContent = name;
+    text.appendChild(nameEl);
+
+    const meta = document.createElement('div');
+    meta.className = 'device-meta';
+    meta.textContent = isCur
+      ? `This device · Active ${when.toLowerCase()}`
+      : `Last active ${when.toLowerCase()}`;
+    text.appendChild(meta);
+
+    info.appendChild(text);
+    card.appendChild(info);
+
+    // Action bar (horizontal)
+    const actions = document.createElement('div');
+    actions.className = 'device-actions-bar';
+
+    if (isCur) {
+      const badge = document.createElement('span');
+      badge.className = 'badge badge-current';
+      badge.textContent = 'Current device';
+      actions.appendChild(badge);
+    } else {
+      const signOutBtn = document.createElement('button');
+      signOutBtn.type = 'button';
+      signOutBtn.className = 'btn-danger btn-small';
+      signOutBtn.textContent = 'Sign out';
+      signOutBtn.dataset.deviceId = dev.deviceId;
+      signOutBtn.disabled = offline;
+      if (offline) {
+        signOutBtn.title = 'You must be online to sign out devices';
+      }
+      signOutBtn.addEventListener('click', () => logoutDevice(dev.deviceId));
+      actions.appendChild(signOutBtn);
+    }
+
+    card.appendChild(actions);
+    container.appendChild(card);
+  }
+}
+
+async function logoutDevice(deviceId) {
+  if (!deviceId) {
+    ui.showToast('Device identifier missing', 'error');
+    return;
+  }
+
+  if (!navigator.onLine) {
+    ui.showToast('You must be online to sign out a device', 'warning');
+    return;
+  }
+
+  const ok = await ui.showConfirmationDialog(
+    'Sign out this device',
+    'That device will be signed out right away. You’ll need to sign in again on it.'
+  );
+  if (!ok) return;
+
+  try {
+    await auth.removeOtherDevice(deviceId);
+    ui.showToast('Device signed out', 'success');
+    await loadDevices();
+  } catch (err) {
+    ui.showToast(err.message || 'Couldn’t sign that device out', 'error');
   }
 }
 
 async function logoutAllDevices() {
-  if (await ui.showConfirmationDialog('Logout All Devices', 'Logout from all other devices? (you will stay logged in here)')) {
-    try {
-      await security.logoutAllOtherDevices?.();
-      ui.showToast('All other devices logged out', 'success');
-      loadDevices();
-    } catch (error) {
-      ui.showToast('Operation failed', 'error');
-    }
+  if (!navigator.onLine) {
+    ui.showToast('You must be online to sign out other devices', 'warning');
+    return;
+  }
+
+  const otherCount = $('#devices-list')
+    ?.querySelectorAll('.device-item:not(.current-device)').length || 0;
+
+  if (otherCount === 0) {
+    ui.showToast('No other devices to sign out', 'info');
+    return;
+  }
+
+  const ok = await ui.showConfirmationDialog(
+    'Sign out other devices',
+    `Sign out of every device except this one (${otherCount} device${otherCount === 1 ? '' : 's'})?`
+  );
+  if (!ok) return;
+
+  try {
+    await auth.removeOtherDevices();
+    ui.showToast('Signed out from other devices', 'success');
+    await loadDevices();
+  } catch (err) {
+    ui.showToast(err.message || 'Couldn’t sign out other devices', 'error');
   }
 }
 
@@ -709,6 +1126,13 @@ async function deleteAccount() {
     try {
       await auth.deleteAccount(password);
       ui.hideLoading();
+      // auth.deleteAccount navigates internally. Clear the redirect
+      // chain so the fresh session doesn't inherit a return URL
+      // pointing at a now-deleted profile.
+      try { redirect.clearReturns(); }   catch { /* ignore */ }
+      try { redirect.clearSnapshots(); } catch { /* ignore */ }
+      // Wipe cached device list — the account is gone.
+      clearDevicesCache();
     } catch (error) {
       ui.hideLoading();
       ui.showToast(error.message || 'Deletion failed. Please try again.', 'error');
@@ -754,6 +1178,12 @@ async function deleteAccount() {
 
 // Module-scoped abort controller so Cancel can stop an in-flight
 // migration. Null when no migration is running.
+//
+// NOTE: this is intentionally NOT captured by the state adapter — a
+// migration is tied to the live DOM of the running page. If the page
+// is torn down, the migration loop's DOM refs are gone and restoring
+// it would just produce errors. Better to abort and let the user
+// restart from the storage tab.
 let _migrationController = null;
 
 /**
@@ -1170,6 +1600,24 @@ async function deleteAllData() {
 
 // ==================== DESTROY ====================
 export function destroy() {
+  // Unregister the state adapter so a subsequent page load does not
+  // inherit a stale closure over this page's DOM.
+  try { redirect.unregisterStateAdapter('profile'); } catch { /* ignore */ }
+
+  // Detach the document-level click listener registered by the
+  // institution dropdown. Without this, repeated navigations to the
+  // profile page would stack listeners on `document`.
+  if (_institutionController) {
+    try { _institutionController.detach(); } catch { /* ignore */ }
+    _institutionController = null;
+  }
+
+  // Remove the online listener registered by init().
+  if (_onlineRefreshHandler) {
+    try { window.removeEventListener('online', _onlineRefreshHandler); } catch { /* ignore */ }
+    _onlineRefreshHandler = null;
+  }
+
   // Abort any in-flight migration when the page is torn down so its
   // loop does not keep running against a detached DOM.
   if (_migrationController) {
