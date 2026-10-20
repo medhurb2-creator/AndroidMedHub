@@ -205,29 +205,7 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
         // else as-is. Clearing that flag tells the system to draw
         // light (white) icons. The opposite call — passing the flag in
         // both positions — would draw dark icons for a light theme.
-        //
-        // NOTE on the constant: WindowInsetsControllerCompat
-        // .APPEARANCE_LIGHT_STATUS_BARS is the modern, non-deprecated
-        // name for this bit — but it was introduced in androidx.core
-        // 1.5.0, and some dependency in the graph (a Capacitor plugin,
-        // Firebase, or social-login) pins androidx.core below that
-        // floor. That pin makes the release build fail with
-        //
-        //     cannot find symbol
-        //     variable APPEARANCE_LIGHT_STATUS_BARS
-        //
-        // WindowInsetsCompat.APPEARANCE_LIGHT_STATUS_BARS is the same
-        // constant on the older class — same numeric value (8), same
-        // semantics, present in every androidx.core version since
-        // 1.1.0. Using the alias keeps the code compiling regardless
-        // of the resolved version. If a future cleanup pins
-        // androidx.core ≥ 1.5.0 at the project root, this can revert
-        // to the non-deprecated WindowInsetsControllerCompat form.
         WindowInsetsControllerCompat insetsController =
-                WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
-
-        // Pass false to draw light (white) icons for the dark initial window background (#0b1120)
-        insetsController.setAppearanceLightStatusBars(false);WindowInsetsControllerCompat insetsController =
                 WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
 
         // Pass false to draw light (white) icons for the dark initial window background (#0b1120)
