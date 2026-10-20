@@ -226,10 +226,12 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
         WindowInsetsControllerCompat insetsController =
                 WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
 
-        @SuppressWarnings("deprecation")
-        final int lightStatusBars = WindowInsetsControllerCompat.APPEARANCE_LIGHT_STATUS_BARS;
+        // Pass false to draw light (white) icons for the dark initial window background (#0b1120)
+        insetsController.setAppearanceLightStatusBars(false);WindowInsetsControllerCompat insetsController =
+                WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
 
-        insetsController.setSystemBarsAppearance(0, lightStatusBars);
+        // Pass false to draw light (white) icons for the dark initial window background (#0b1120)
+        insetsController.setAppearanceLightStatusBars(false);
 
         // ── Storage bridge ──────────────────────────────────────────────
         //
