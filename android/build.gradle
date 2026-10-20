@@ -27,3 +27,45 @@ allprojects {
 task clean(type: Delete) {
     delete rootProject.buildDir
 }
+
+// =========================================================================
+// Dependency resolution guards — enforced for every subproject
+// =========================================================================
+//
+// Runs AFTER every module's own build.gradle has been evaluated, so a
+// `configurations.all { force … }` declared inside app/build.gradle or
+// capacitor.build.gradle cannot override this. That is exactly why the
+// previous in-module force block failed: app/build.gradle applied its
+// own strategy, then capacitor.build.gradle applied more, and whichever
+// touched androidx.core last won — sometimes below the 1.5.0 floor.
+//
+// What this protects:
+//
+//   androidx.core:core — WindowInsetsControllerCompat
+//     .APPEARANCE_LIGHT_STATUS_BARS was introduced in 1.5.0. Below that
+//     floor, MainActivity would fail with
+//
+//         error: cannot find symbol
+//         variable APPEARANCE_LIGHT_STATUS_BARS
+//
+//     MainActivity currently uses the deprecated alias on
+//     WindowInsetsCompat (present since 1.1.0), so the build compiles
+//     either way — but a future cleanup that switches back to the
+//     modern constant must not regress. The force guarantees 1.13.0.
+//
+// Nothing here overrides the review/update/install-referrer versions —
+// those are declared explicitly in app/build.gradle and have no
+// transitive conflicts.
+//
+// To verify after a change:
+//   ./gradlew :app:dependencies --configuration releaseCompileClasspath | grep androidx.core
+//
+// Expected: androidx.core:core:1.13.0 in the resolved list, not 1.4.0
+// or whatever a plugin tried to pin.
+subprojects {
+    configurations.all {
+        resolutionStrategy {
+            force 'androidx.core:core:1.13.0'
+        }
+    }
+}

@@ -62,25 +62,25 @@ dependencies {
 
     // ── androidx.core — REQUIRED EXPLICITLY ─────────────────────────
     //
-    // MainActivity calls WindowInsetsControllerCompat.setSystemBarsAppearance()
-    // with the APPEARANCE_LIGHT_STATUS_BARS constant. That constant was
-    // added in androidx.core 1.5.0; before that the symbol does not
-    // exist and compileReleaseJavaWithJavac fails with
+    // Declares the direct dependency so a version is on the graph even
+    // before resolution runs. The MINIMUM version is enforced by the
+    // subprojects { configurations.all { force … } } block in the
+    // PROJECT-ROOT build.gradle — not here. A force rule declared in
+    // this module file runs BEFORE `apply from: 'capacitor.build.gradle'`
+    // below, and anything that file (or the root project) applies
+    // afterward can override it. That is why the previous in-module
+    // `configurations.all` block did not actually pin 1.13.0 and the
+    // release build still failed with
     //
     //     cannot find symbol: variable APPEARANCE_LIGHT_STATUS_BARS
     //
-    // Nothing in the current dependency graph pulls androidx.core in
-    // with a guaranteed minimum, so a plugin pinning an old version
-    // (or a stale transitive resolution) silently breaks the build.
-    // Declaring it here fixes the resolved version at 1.13.0 — well
-    // above the 1.5.0 floor, stable, and compatible with every
-    // Capacitor 6 plugin currently in use.
+    // Moving the force to root level means it runs last and wins.
     //
-    // If a future plugin forces androidx.core below 1.5.0 (via a
-    // strict version), the `force` block at the bottom of this file
-    // wins. Do not remove that block without re-running
-    //   ./gradlew :app:dependencies --configuration releaseCompileClasspath | grep androidx.core
-    // to verify the resolved version.
+    // MainActivity currently uses WindowInsetsCompat
+    // .APPEARANCE_LIGHT_STATUS_BARS (the deprecated alias) so this
+    // build compiles regardless of the resolved version — but keeping
+    // the resolution consistent prevents a future cleanup from
+    // re-introducing the same failure.
     implementation "androidx.core:core:1.13.0"
 
     implementation project(':capacitor-android')
@@ -102,21 +102,6 @@ dependencies {
 
     // Google Play Install Referrer (deferred deep links)
     implementation "com.android.installreferrer:installreferrer:2.2"
-}
-
-// ── Resolution guards ───────────────────────────────────────────────
-//
-// Defence in depth: if any plugin — present or future — tries to pull
-// androidx.core below the version that exposes APPEARANCE_LIGHT_STATUS_BARS
-// (1.5.0), or play-services-tasks below the version the review helper
-// compiles against, force the floor. Without these guards a single
-// misbehaving plugin can silently break the release build after a
-// dependency refresh, and the failure surfaces as a confusing
-// "cannot find symbol" instead of a version conflict.
-configurations.all {
-    resolutionStrategy {
-        force "androidx.core:core:1.13.0"
-    }
 }
 
 apply from: 'capacitor.build.gradle'
