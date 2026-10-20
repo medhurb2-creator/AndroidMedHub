@@ -227,7 +227,7 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
                 WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
 
         @SuppressWarnings("deprecation")
-        final int lightStatusBars = WindowInsetsCompat.APPEARANCE_LIGHT_STATUS_BARS;
+        final int lightStatusBars = WindowInsetsControllerCompat.APPEARANCE_LIGHT_STATUS_BARS;
 
         insetsController.setSystemBarsAppearance(0, lightStatusBars);
 
