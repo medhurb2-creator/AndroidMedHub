@@ -1036,21 +1036,13 @@ _addListener(els.toggleViewBtn, 'click', () => {
     });
   }
 
-  // ── Search button ──────────────────────────────────────────────────────
+// ── Search button ──────────────────────────────────────────────────────
   if (els.searchBtn) {
     _addListener(els.searchBtn, 'click', () => {
-      if (hasSidebar) {
-        if (_isSidebarOpen() && els.outlineDrawer && els.outlineDrawer.dataset.panel === 'search') {
-          _closeSidebar();
-        } else {
-          _openSidebar(core, 'search');
-        }
-      } else {
-        // Legacy inline mode.
-        updateSearchBarState();
-        if (!_isSearchOpen()) {
-          try { core.getSearch().clear(); } catch { /* ignore */ }
-        }
+      // Always trigger the inline PDF text search bar below the header
+      updateSearchBarState();
+      if (!_isSearchOpen()) {
+        try { core.getSearch().clear(); } catch { /* ignore */ }
       }
     });
   }

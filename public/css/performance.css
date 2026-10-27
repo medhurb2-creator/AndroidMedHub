@@ -253,20 +253,81 @@
 /* ---------- Weak areas ---------- */
 .performance-page #weak-areas-list ul {
     list-style: none;
-    margin-bottom: 0.75rem;
+    margin: 0 0 0.75rem;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
 }
 .performance-page #weak-areas-list li {
-    padding: 0.5rem 0;
-    border-bottom: 1px dashed var(--border);
+    padding: 0.55rem 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-small);
+    background: var(--bg-secondary);
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    font-size: var(--font-base);
+    box-sizing: border-box;
+}
+
+/* Row 1: topic + score */
+.performance-page #weak-areas-list .wa-main {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: var(--font-base);
+    gap: 0.5rem;
 }
-.performance-page #weak-areas-list .topic { font-weight: 500; }
-.performance-page #weak-areas-list .score {
+.performance-page #weak-areas-list .topic {
     font-weight: 600;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.performance-page #weak-areas-list .score {
+    font-weight: 700;
     color: var(--danger);
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Row 2: priority badge + engine chip */
+.performance-page #weak-areas-list .wa-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem 0.5rem;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+.performance-page #weak-areas-list .wa-priority {
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 0.1rem 0.5rem;
+    border-radius: 20px;
+    line-height: 1.4;
+    flex-shrink: 0;
+}
+.performance-page #weak-areas-list .wa-priority-high {
+    background: var(--danger);
+    color: #fff;
+}
+.performance-page #weak-areas-list .wa-priority-medium {
+    background: var(--warning);
+    color: #fff;
+}
+.performance-page #weak-areas-list .wa-priority-low {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+}
+.performance-page #weak-areas-list .wa-engine {
+    font-variant-numeric: tabular-nums;
+    line-height: 1.4;
 }
 
 /* Scoped override of common's .btn-small — was turning every page's
@@ -1595,6 +1656,164 @@
         animation: none;
         background: var(--shimmer-base);
     }
+}
+
+/* ================================================================
+   INSIGHTS TAB (new — 2026-02) — additive only
+   Tab container #insights-tab holds two cards:
+     #medvix-insights   (engine analysis — snapshot summary + lists)
+     .recommendations-card (personalized recommendations)
+   Optimised for DENSITY — this tab is meant to be read, not scrolled
+   endlessly. Tight margins, small paddings, compact list items.
+   ================================================================ */
+
+/* Header + intro inset (inline HTML uses margin with 0 horizontal,
+   so padding is the only override path). */
+.performance-page #insights-tab > h2 {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    font-size: var(--font-heading);
+    margin-bottom: 0.25rem;
+}
+.performance-page #insights-tab > p {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    line-height: 1.35;
+}
+
+/* Cards in the tab — normalise margin so both sit tight under each
+   other with a compact 0.6rem gap. */
+.performance-page #insights-tab .card {
+    margin: 0 0.5rem 0.6rem;
+    padding: 0.75rem 0.85rem;      /* tighter than the 1rem default */
+}
+.performance-page #insights-tab .card:last-child {
+    margin-bottom: 0.5rem;
+}
+
+/* ---- MedVix Insights card header ---- */
+.performance-page #medvix-insights > .card-header {
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 0.6rem;
+}
+.performance-page #medvix-insights > .card-header h2 {
+    font-size: 1.05rem;             /* smaller than --font-heading */
+    margin: 0;
+}
+
+/* ---- Body content emitted by renderMedVixInsights ---- */
+
+/* Empty / warm-up state */
+.performance-page #medvix-insights-body .no-data {
+    color: var(--text-muted);
+    text-align: center;
+    padding: 0.5rem 0.25rem;
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+
+/* Stat strip — inline chips, wraps naturally, no wasted vertical space */
+.performance-page #medvix-insights-body .medvix-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.9rem;
+    background: var(--bg-secondary);
+    padding: 0.5rem 0.65rem;
+    border-radius: var(--radius-small);
+    color: var(--text-primary);
+    font-size: 0.8rem;
+    line-height: 1.35;
+    margin-bottom: 0.6rem;
+}
+.performance-page #medvix-insights-body .medvix-stats strong {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+/* Section headers (Retention Risk / Focus Concepts / Suggested Reviews) */
+.performance-page #medvix-insights-body h3 {
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-secondary);
+    margin: 0.55rem 0 0.3rem;
+    padding-bottom: 0.15rem;
+}
+
+/* Lists — compact, no bullets, accent-border cards.
+   `!important` on padding-left overrides the inline padding-left:1.2rem
+   that the JS renderer emits. */
+.performance-page #medvix-insights-body ul {
+    padding-left: 0 !important;
+    margin: 0 0 0.5rem;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+.performance-page #medvix-insights-body ul li {
+    font-size: 0.82rem;
+    line-height: 1.35;
+    color: var(--text-primary);
+    padding: 0.35rem 0.6rem;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-small);
+    border-left: 2px solid var(--accent);
+    box-sizing: border-box;
+}
+
+/* Action row emitted as inline-flex by JS */
+.performance-page #medvix-insights-body button {
+    padding: 0.35rem 0.8rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    border-radius: var(--radius-small);
+    cursor: pointer;
+    min-height: 34px;
+    transition: opacity 0.2s, background 0.2s;
+    box-sizing: border-box;
+}
+.performance-page #medvix-start-adaptive {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+}
+.performance-page #medvix-start-adaptive:hover:not(:disabled) {
+    opacity: 0.85;
+}
+.performance-page #medvix-start-adaptive:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.performance-page #medvix-refresh {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+}
+.performance-page #medvix-refresh:hover {
+    background: var(--border);
+}
+
+/* ---- Recommendations card (inside Insights tab) ---- */
+/* Override the standalone .recommendations-card horizontal margin —
+   the tab-level #insights-tab .card rule already handles insets. */
+.performance-page #insights-tab .recommendations-card {
+    margin-left: 0.5rem;
+    margin-right: 0.5rem;
+}
+.performance-page #insights-tab .recommendations-card h2 {
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+}
+/* Keep recommendation list items tighter than the default .card list */
+.performance-page #insights-tab #recommendations-list li {
+    padding: 0.4rem 0;
+    font-size: 0.85rem;
+    line-height: 1.4;
 }
 
 /* ---------- Real-content gate ----------

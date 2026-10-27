@@ -1,34 +1,26 @@
 /**
  * MedVix Unified PDF Engine v7.0
  * File 8 of 8 — Isolated Off-Thread WASM Engine
- * ─────────────────────────────────────────────────────────────────────────────
- *
- * Uses the manual createTypstCompiler API rather than the $typst snippet.
- *
- * Why manual:
- *   The snippet performs its own WebAssembly.compileStreaming fetch, which
- *   requires an exact Content-Type: application/wasm. That check fails in
- *   environments where Vite serves the file with a different MIME type,
- *   producing an opaque "Failed to fetch".
- *
- *   The manual API lets us:
- *     1. Fetch the WASM bytes ourselves.
- *     2. Compile them with WebAssembly.compile (no MIME check).
- *     3. Hand the pre-compiled Module to the compiler via getModule.
- *     4. Recursively extract the PDF bytes from whatever wrapper shape
- *        the library's compile() returns.
- *
- * Message contract
- * ────────────────
- *   IN   { id: number, typstMarkup: string }
- *   OUT  { id, success: true,  pdfBuffer: Uint8Array }       (transferred)
- *   OUT  { id, success: false, error: string, diagnostics }  (on failure)
- * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { createTypstCompiler, loadFonts } from '@myriaddreamin/typst.ts';
-
+import * as typst from '@myriaddreamin/typst.ts';
 import { getFontManifest } from './assets.js';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 0. GLOBAL FETCH INTERCEPTOR (Monkey-Patch)
+// ═══════════════════════════════════════════════════════════════════════════
+const originalFetch = globalThis.fetch;
+
+globalThis.fetch = async function(url, options) {
+  const urlStr = typeof url === 'string' ? url : (url && url.url ? url.url : '');
+  
+  if (urlStr.includes('cdn.jsdelivr.net') || urlStr.includes('unpkg.com')) {
+    console.warn('[pdf-engine/worker] Blocked external CDN request:', urlStr);
+    return new Response(null, { status: 404, statusText: "Not Found" });
+  }
+  
+  return originalFetch.apply(this, arguments);
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. Constants
@@ -38,7 +30,11 @@ const LOG_PREFIX = '[pdf-engine/worker]';
 const MAIN_FILE_PATH = '/main.typ';
 const MAX_DIAGNOSTICS = 50;
 const MAX_EXTRACT_DEPTH = 6;
-const WASM_URL = '/wasm/typst_ts_web_compiler_bg.wasm';
+
+const BASE_URL = (import.meta.env && import.meta.env.BASE_URL) || '/';
+const base = BASE_URL.endsWith('/') ? BASE_URL : BASE_URL + '/';
+
+const WASM_URL = `${base}wasm/typst_ts_web_compiler_bg.wasm`;
 const WASM_MAGIC = [0x00, 0x61, 0x73, 0x6D];
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -56,14 +52,8 @@ let cachedWasmModule = null;
 self.onmessage = async (ev) => {
   const msg = ev && ev.data;
 
-  if (!msg || typeof msg !== 'object') {
-    warn('Received a non-object message — dropped');
-    return;
-  }
-  if (typeof msg.id !== 'number') {
-    warn('Received a message without a numeric id — cannot correlate; dropped');
-    return;
-  }
+  if (!msg || typeof msg !== 'object') return;
+  if (typeof msg.id !== 'number') return;
   if (typeof msg.typstMarkup !== 'string') {
     postFailure(msg.id, new Error('typstMarkup must be a string'), []);
     return;
@@ -96,29 +86,26 @@ function getCompiler() {
 }
 
 async function initializeCompiler() {
-  info('Initializing Typst compiler…');
+  console.info(`${LOG_PREFIX} Initializing Typst compiler…`);
 
   cachedFontBytes = await fetchAllFonts();
   cachedWasmModule = await loadWasmModule();
 
   let compiler;
   try {
-    compiler = createTypstCompiler();
+    compiler = typst.createTypstCompiler();
   } catch (err) {
-    throw new Error(
-      `createTypstCompiler() failed: ${err && err.message ? err.message : err}`
-    );
+    throw new Error(`createTypstCompiler() failed: ${err.message || err}`);
   }
 
-  // loadFonts() takes ONE argument: an array of UserFont objects.
-  //   UserFont = ArrayBuffer | Uint8Array | { font: ArrayBuffer | Uint8Array; name?: string }
   const userFonts = cachedFontBytes.map(bytes => ({ font: bytes }));
 
   try {
     await compiler.init({
       getModule: () => cachedWasmModule,
+      disableDefaultFontAssets: true,
       beforeBuild: [
-        loadFonts(userFonts)
+        typst.loadFonts(userFonts)
       ]
     });
   } catch (err) {
@@ -129,7 +116,7 @@ async function initializeCompiler() {
     );
   }
 
-  info('Typst compiler ready.');
+  console.info(`${LOG_PREFIX} Typst compiler ready.`);
   return compiler;
 }
 
@@ -138,26 +125,16 @@ async function loadWasmModule() {
   try {
     response = await fetch(WASM_URL);
   } catch (err) {
-    throw new Error(
-      `Failed to fetch WASM from ${WASM_URL}: ${describeError(err)}. ` +
-      `Check that public/wasm/typst_ts_web_compiler_bg.wasm exists ` +
-      `(run: npm run sync-wasm).`
-    );
+    throw new Error(`Failed to fetch WASM from ${WASM_URL}: ${describeError(err)}.`);
   }
 
   if (!response.ok) {
-    throw new Error(
-      `WASM fetch returned HTTP ${response.status} from ${WASM_URL}. ` +
-      `The file is not being served at the expected path.`
-    );
+    throw new Error(`WASM fetch returned HTTP ${response.status} from ${WASM_URL}.`);
   }
 
   const bytes = await response.arrayBuffer();
   if (!bytes || bytes.byteLength === 0) {
     throw new Error(`WASM response from ${WASM_URL} was empty (0 bytes)`);
-  }
-  if (bytes.byteLength < 4) {
-    throw new Error(`WASM file too small to be valid (${bytes.byteLength} bytes)`);
   }
 
   const head = new Uint8Array(bytes, 0, 4);
@@ -165,29 +142,25 @@ async function loadWasmModule() {
     head[0] !== WASM_MAGIC[0] || head[1] !== WASM_MAGIC[1] ||
     head[2] !== WASM_MAGIC[2] || head[3] !== WASM_MAGIC[3]
   ) {
-    throw new Error(
-      `WASM file does not start with the WASM magic number. ` +
-      `First 4 bytes: [${head[0]}, ${head[1]}, ${head[2]}, ${head[3]}]. ` +
-      `Server may be serving an HTML fallback.`
-    );
+    throw new Error(`WASM file does not start with the WASM magic number.`);
   }
 
   try {
     return await WebAssembly.compile(bytes);
   } catch (err) {
-    throw new Error(
-      `WebAssembly.compile failed (${bytes.byteLength.toLocaleString()} bytes): ` +
-      `${describeError(err)}`
-    );
+    throw new Error(`WebAssembly.compile failed: ${describeError(err)}`);
   }
 }
 
 async function fetchAllFonts() {
   const manifest = getFontManifest();
+  
   const fetched = await Promise.allSettled(
-    manifest.map(spec =>
-      fetchArrayBuffer(spec.url).then(bytes => ({ spec, bytes }))
-    )
+    manifest.map(spec => {
+      const cleanPath = String(spec.url).replace(/^\/+/, '');
+      const fontUrl = spec.url.startsWith('http') ? spec.url : base + cleanPath;
+      return fetchArrayBuffer(fontUrl).then(bytes => ({ spec, bytes }));
+    })
   );
 
   const out = [];
@@ -201,11 +174,9 @@ async function fetchAllFonts() {
       continue;
     }
     if (spec.required) {
-      throw new Error(
-        `Required font missing (${label}): ${describeError(result.reason)}`
-      );
+      throw new Error(`Required font missing (${label}): ${describeError(result.reason)}`);
     }
-    warn(`Optional font missing (${label}): ${describeError(result.reason)}`);
+    console.warn(`${LOG_PREFIX} Optional font missing (${label})`);
   }
 
   if (out.length === 0) {
@@ -222,9 +193,7 @@ async function runCompile(compiler, markup, diagnostics) {
   try {
     await compiler.addSource(MAIN_FILE_PATH, markup);
   } catch (err) {
-    throw new Error(
-      `Failed to register source at ${MAIN_FILE_PATH}: ${err && err.message ? err.message : err}`
-    );
+    throw new Error(`Failed to register source: ${err.message || err}`);
   }
 
   let result;
@@ -238,9 +207,23 @@ async function runCompile(compiler, markup, diagnostics) {
     if (Array.isArray(diagnostics) && structured.length > 0) {
       for (const d of structured) diagnostics.push(d);
     }
-    throw new Error(
-      `Typst compile failed: ${err && err.message ? err.message : String(err)}`
-    );
+    throw new Error(`Typst compile failed: ${err.message || String(err)}`);
+  }
+
+  if (result && result.hasError) {
+    if (Array.isArray(result.diagnostics)) {
+      for (const d of result.diagnostics) diagnostics.push(d);
+    }
+
+    // 🚨 DIAGNOSTIC LOGGING 🚨
+    // This will print the exact syntax error and the generated code to the console.
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error('🚨 TYPST MARKUP ERROR 🚨');
+    console.error('Diagnostics:', JSON.stringify(result.diagnostics, null, 2));
+    console.error('Generated Markup:', markup);
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    throw new Error('Typst compile error: Document contains markup errors. Check browser console.');
   }
 
   return extractBytes(result);
@@ -248,42 +231,25 @@ async function runCompile(compiler, markup, diagnostics) {
 
 function extractBytes(value, depth = 0) {
   if (depth > MAX_EXTRACT_DEPTH) {
-    throw new Error(
-      `Compile result nested deeper than ${MAX_EXTRACT_DEPTH} levels`
-    );
+    throw new Error(`Compile result nested deeper than ${MAX_EXTRACT_DEPTH} levels`);
   }
 
-  if (value === null || value === undefined) {
-    throw new Error(`Compiler returned ${value}`);
-  }
+  if (value === null || value === undefined) throw new Error(`Compiler returned ${value}`);
   if (value instanceof Uint8Array) return value;
   if (value instanceof ArrayBuffer) return new Uint8Array(value);
 
   if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'number') {
     return new Uint8Array(value);
   }
-  if (typeof value !== 'object') {
-    throw new Error(
-      `Compiler returned ${typeof value}, expected binary`
-    );
-  }
+  if (typeof value !== 'object') throw new Error(`Compiler returned ${typeof value}, expected binary`);
 
-  // wasm-bindgen Result pattern: { ok: boolean, value?: T, error?: E }
   if ('ok' in value && typeof value.ok === 'boolean') {
-    if (!value.ok) {
-      throw new Error(
-        `Typst compile error: ${describeError(value.error || value.err || 'compile failed')}`
-      );
-    }
-    if (value.value !== undefined && value.value !== null) {
-      return extractBytes(value.value, depth + 1);
-    }
+    if (!value.ok) throw new Error(`Typst compile error: ${describeError(value.error || value.err || 'compile failed')}`);
+    if (value.value !== undefined && value.value !== null) return extractBytes(value.value, depth + 1);
     throw new Error('Result is marked ok but contains no value');
   }
 
-  if ('ok' in value && value.ok !== undefined && value.ok !== null) {
-    return extractBytes(value.ok, depth + 1);
-  }
+  if ('ok' in value && value.ok !== undefined && value.ok !== null) return extractBytes(value.ok, depth + 1);
   if ('err' in value && value.err !== undefined && value.err !== null && value.err !== false) {
     throw new Error(`Typst compile error: ${describeError(value.err)}`);
   }
@@ -302,19 +268,7 @@ function extractBytes(value, depth = 0) {
     }
   }
 
-  for (const accessor of ['result', 'value', 'data', 'pdf']) {
-    if (typeof value[accessor] === 'function') {
-      try {
-        return extractBytes(value[accessor](), depth + 1);
-      } catch (err) {
-        if (err && err.message && err.message.startsWith('Typst compile error')) throw err;
-      }
-    }
-  }
-
-  throw new Error(
-    `Compiler returned an unrecognized result shape. ${describeShape(value)}`
-  );
+  throw new Error(`Compiler returned an unrecognized result shape. ${describeShape(value)}`);
 }
 
 function describeShape(obj) {
@@ -323,21 +277,7 @@ function describeShape(obj) {
   if (typeof obj !== 'object') return `type=${typeof obj}`;
   try {
     const keys = Object.keys(obj).slice(0, 12);
-    if (keys.length === 0) {
-      const proto = Object.getPrototypeOf(obj);
-      return `ctor=${(proto && proto.constructor && proto.constructor.name) || 'Object'}, ownKeys=[]`;
-    }
-    const parts = keys.map(k => {
-      const v = obj[k];
-      if (v === null) return `${k}=null`;
-      if (v === undefined) return `${k}=undefined`;
-      if (v instanceof Uint8Array) return `${k}=Uint8Array(${v.length})`;
-      if (v instanceof ArrayBuffer) return `${k}=ArrayBuffer(${v.byteLength})`;
-      if (Array.isArray(v)) return `${k}=Array(${v.length})`;
-      if (typeof v === 'object') return `${k}=${(v.constructor && v.constructor.name) || 'Object'}`;
-      return `${k}=${typeof v}`;
-    });
-    return `keys=[${parts.join(', ')}]`;
+    return `keys=[${keys.join(', ')}]`;
   } catch {
     return 'shape=uninspectable';
   }
@@ -352,7 +292,7 @@ function extractDiagnosticsFromError(err) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 6. Message posting
+// 6. Message posting & Utilities
 // ═══════════════════════════════════════════════════════════════════════════
 
 function postSuccess(id, u8) {
@@ -370,10 +310,6 @@ function postFailure(id, err, diagnostics) {
   });
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// 7. Utilities
-// ═══════════════════════════════════════════════════════════════════════════
-
 async function fetchArrayBuffer(url) {
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching ${url}`);
@@ -388,17 +324,3 @@ function describeError(err) {
   if (err.message) return err.message;
   try { return String(err); } catch { return 'unprintable error'; }
 }
-
-function warn(message) {
-  try { console.warn(LOG_PREFIX, message); } catch { /* ignore */ }
-}
-
-function info(message) {
-  if (self.__pdfEngineDebug === true) {
-    try { console.log(LOG_PREFIX, message); } catch { /* ignore */ }
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// 8. Ready
-// ═══════════════════════════════════════════════════════════════════════════

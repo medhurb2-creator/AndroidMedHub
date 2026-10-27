@@ -964,22 +964,6 @@ export class MemoryManager {
 // 4. SEARCH MANAGER
 // ============================================================================
 
-/**
- * Full-text search, worker-backed when the flag is on and main-thread when
- * it is off. Owns the match list, the current match index, the highlight
- * overlays, and the search panel's results list.
- *
- * Highlight overlays are anchored over a rendered page's slot:
- *   • The slot is found by [data-page="n"] inside .page-container.
- *   • If the slot is still a .cover (not yet rendered), no highlights are
- *     drawn — there is no visible content to highlight.
- *   • The layer is absolutely positioned inside .page-container, sized and
- *     offset to match the slot's exact rendered geometry.
- *
- * Rect coordinates are stored at page-local scale-1 coordinates; they are
- * multiplied by `state.scale` at display time so highlights stay aligned
- * across zoom changes without recomputing.
- */
 export class SearchManager {
   /**
    * @param {import('./core.js').ViewerCore} core
@@ -990,14 +974,13 @@ export class SearchManager {
     /** @private */ this._flags = flags;
 
     /** @private @type {string} */ this._query = '';
-    /** @private */ this._caseSensitive = false;
-    /** @private */ this._wholeWord = false;
 
     /** @private @type {Array<{ pageNum: number, text: string, rects: any[] }>} */
     this._matches = [];
     /** @private */ this._currentIndex = -1;
 
     /** @private @type {ReturnType<typeof debounce>|null} */ this._searchDebounce = null;
+    /** @private @type {ReturnType<typeof debounce>|null} */ this._progressiveDebounce = null;
     /** @private @type {AbortController|null} */ this._abortController = null;
     /** @private @type {Map<number, HTMLElement>} */ this._highlightLayer = new Map();
     /** @private */ this._progress = { scanned: 0, total: 0, startedAt: 0 };
@@ -1010,25 +993,24 @@ export class SearchManager {
   // ── Public ────────────────────────────────────────────────────────────────
 
   /**
-   * Run a search. Resolves with the match count. Aborts any prior search.
-   * Never rejects.
+   * Run a search progressively from page 1 forward.
    *
    * @param {string} query
-   * @param {{ caseSensitive?: boolean, wholeWord?: boolean }} [options]
    * @returns {Promise<number>}
    */
-  async search(query, options) {
+  async search(query) {
     if (this._destroyed) return 0;
 
     this.cancel();
 
     const q = typeof query === 'string' ? query.trim() : '';
     this._query = q;
-    this._caseSensitive = !!(options && options.caseSensitive);
-    this._wholeWord = !!(options && options.wholeWord);
+
+    this._matches = [];
+    this._currentIndex = -1;
+    this._clearHighlights();
 
     if (!q) {
-      this._clearInternal();
       this._emitCleared();
       this._renderResultsList();
       return 0;
@@ -1036,70 +1018,45 @@ export class SearchManager {
 
     const controller = new AbortController();
     this._abortController = controller;
-    this._progress = { scanned: 0, total: this._getNumPages(), startedAt: Date.now() };
+    const totalPages = this._getNumPages();
+    this._progress = { scanned: 0, total: totalPages, startedAt: Date.now() };
 
     try {
       this._core.getState().set('searchQuery', q);
-      this._core.getState().set('searchCaseSensitive', this._caseSensitive);
-      this._core.getState().set('searchWholeWord', this._wholeWord);
-      this._core.getBus().emit(Events.SEARCH_STARTED, {
-        query: q,
-        caseSensitive: this._caseSensitive,
-        wholeWord: this._wholeWord,
-      });
+      this._core.getBus().emit(Events.SEARCH_STARTED, { query: q });
     } catch { /* ignore */ }
 
-    let matches = [];
     try {
-      if (this._flags.useWorker) {
-        matches = await this._searchViaWorker(q, controller.signal);
-      } else {
-        matches = await this._searchMainThread(q, controller.signal);
-      }
+      // Scan sequentially from page 1 to totalPages to find matches progressively
+      await this._searchProgressiveFromPageOne(q, totalPages, controller.signal);
     } catch (err) {
       if (!isAbortError(err) && CONFIG.DEBUG_VIEWER) {
         // eslint-disable-next-line no-console
         console.warn('[SearchManager] Search failed:', err);
       }
-      matches = [];
     }
 
     if (controller.signal.aborted || this._destroyed) {
       return 0;
     }
 
-    this._matches = matches;
-    this._currentIndex = matches.length > 0 ? 0 : -1;
-
-    try {
-      this._core.getState().set('searchMatches', matches);
-      this._core.getState().set('currentMatchIndex', this._currentIndex);
-      this._core.getBus().emit(Events.SEARCH_COMPLETED, {
-        count: matches.length,
-        matches,
-        currentIndex: this._currentIndex,
-      });
-    } catch { /* ignore */ }
-
+    this._syncSearchState();
     this._renderResultsList();
-    if (matches.length > 0) this.jumpTo(0);
-    return matches.length;
+    return this._matches.length;
   }
 
   /**
    * Debounced search. Called by ui-internal on input.
-   *
    * @param {string} query
-   * @param {{ caseSensitive?: boolean, wholeWord?: boolean }} [options]
    * @returns {void}
    */
-  searchDebounced(query, options) {
+  searchDebounced(query) {
     if (!this._searchDebounce) {
-      this._searchDebounce = debounce((q, o) => {
-        this.search(q, o).catch(() => { /* ignore */ });
+      this._searchDebounce = debounce((q) => {
+        this.search(q).catch(() => { /* ignore */ });
       }, CONFIG.SEARCH_DEBOUNCE_MS);
     }
-    this._searchDebounce(query, options);
+    this._searchDebounce(query);
   }
 
   /** @returns {void} */
@@ -1153,14 +1110,16 @@ export class SearchManager {
   /** @returns {void} */
   clear() {
     this.cancel();
-    this._clearInternal();
+    this._matches = [];
+    this._currentIndex = -1;
+    this._query = '';
+    this._clearHighlights();
     this._emitCleared();
     this._renderResultsList();
   }
 
   /**
-   * Render highlight overlays for every page with a rendered canvas. Called
-   * on RENDER_COMPLETE (page-scoped) and SCALE_APPLIED (all pages).
+   * Render highlight overlays for pages with a rendered canvas.
    *
    * @param {number} [onlyPageNum]
    * @returns {void}
@@ -1206,12 +1165,10 @@ export class SearchManager {
         this._highlightLayer.set(pageNum, layer);
       }
 
-      const containerRect = container.getBoundingClientRect();
-      const slotRect = slot.getBoundingClientRect();
-      layer.style.left = (slotRect.left - containerRect.left) + 'px';
-      layer.style.top = (slotRect.top - containerRect.top) + 'px';
-      layer.style.width = slotRect.width + 'px';
-      layer.style.height = slotRect.height + 'px';
+      layer.style.left = slot.offsetLeft + 'px';
+      layer.style.top = slot.offsetTop + 'px';
+      layer.style.width = slot.offsetWidth + 'px';
+      layer.style.height = slot.offsetHeight + 'px';
 
       layer.innerHTML = '';
 
@@ -1219,12 +1176,17 @@ export class SearchManager {
         const isActive = match === currentMatch;
         for (const rect of match.rects) {
           const el = document.createElement('div');
-          el.className = isActive ? CONFIG.SEARCH_HIGHLIGHT_CLASS : 'search-highlight';
+          el.className = isActive ? (CONFIG.SEARCH_HIGHLIGHT_CLASS || 'search-highlight active') : 'search-highlight';
           el.style.position = 'absolute';
           el.style.left = (rect.x * scale) + 'px';
           el.style.top = (rect.y * scale) + 'px';
           el.style.width = (rect.width * scale) + 'px';
           el.style.height = (rect.height * scale) + 'px';
+          
+          el.style.backgroundColor = isActive ? 'rgba(255, 255, 0, 0.45)' : 'rgba(0, 0, 255, 0.25)';
+          el.style.border = isActive ? '1px solid rgba(200, 200, 0, 0.8)' : '1px solid rgba(0, 0, 200, 0.3)';
+          el.style.borderRadius = '3px';
+          
           layer.appendChild(el);
         }
       }
@@ -1232,8 +1194,7 @@ export class SearchManager {
   }
 
   /**
-   * Render the search panel into the given container. Called by the factory
-   * when the drawer's panel switches to "search".
+   * Render the simplified search panel into the drawer container.
    *
    * @param {HTMLElement|null} container
    * @returns {void}
@@ -1245,20 +1206,25 @@ export class SearchManager {
 
     const header = document.createElement('div');
     header.className = 'search-panel-header';
+    header.style.display = 'flex';
+    header.style.alignItems = 'center';
+    header.style.gap = '4px';
+    header.style.padding = '8px';
+    header.style.borderBottom = '1px solid var(--border-color, #e0e0e0)';
 
     const input = document.createElement('input');
     input.type = 'text';
-    input.placeholder = 'Find in document…';
+    input.placeholder = 'Search...';
     input.className = 'search-panel-input';
     input.value = this._query || '';
     input.setAttribute('autocomplete', 'off');
     input.setAttribute('spellcheck', 'false');
+    input.style.flex = '1';
+    input.style.padding = '6px';
+    input.style.minWidth = '0';
 
     input.addEventListener('input', () => {
-      const q = input.value || '';
-      const cs = caseToggle.checked;
-      const ww = wholeToggle.checked;
-      this.searchDebounced(q, { caseSensitive: cs, wholeWord: ww });
+      this.searchDebounced(input.value || '');
     });
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
@@ -1272,43 +1238,34 @@ export class SearchManager {
       }
     });
 
-    const options = document.createElement('div');
-    options.className = 'search-panel-options';
+    const btnStyle = 'background: transparent; border: none; font-size: 16px; cursor: pointer; padding: 4px 8px; border-radius: 4px;';
+    
+    const upBtn = document.createElement('button');
+    upBtn.textContent = '↑';
+    upBtn.style.cssText = btnStyle;
+    upBtn.addEventListener('click', () => this.previous());
 
-    const caseLabel = document.createElement('label');
-    caseLabel.className = 'search-panel-toggle';
-    const caseToggle = document.createElement('input');
-    caseToggle.type = 'checkbox';
-    caseToggle.checked = this._caseSensitive;
-    caseToggle.addEventListener('change', () => {
-      const q = input.value || '';
-      if (q) this.searchDebounced(q, { caseSensitive: caseToggle.checked, wholeWord: wholeToggle.checked });
+    const downBtn = document.createElement('button');
+    downBtn.textContent = '↓';
+    downBtn.style.cssText = btnStyle;
+    downBtn.addEventListener('click', () => this.next());
+
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '✕';
+    closeBtn.style.cssText = btnStyle;
+    closeBtn.addEventListener('click', () => {
+      input.value = '';
+      this.clear();
+      try {
+        const drawer = document.getElementById('viewer-outline-drawer');
+        if (drawer) drawer.classList.remove('open');
+      } catch { /* ignore */ }
     });
-    caseLabel.appendChild(caseToggle);
-    caseLabel.appendChild(document.createTextNode(' Aa'));
-
-    const wholeLabel = document.createElement('label');
-    wholeLabel.className = 'search-panel-toggle';
-    const wholeToggle = document.createElement('input');
-    wholeToggle.type = 'checkbox';
-    wholeToggle.checked = this._wholeWord;
-    wholeToggle.addEventListener('change', () => {
-      const q = input.value || '';
-      if (q) this.searchDebounced(q, { caseSensitive: caseToggle.checked, wholeWord: wholeToggle.checked });
-    });
-    wholeLabel.appendChild(wholeToggle);
-    wholeLabel.appendChild(document.createTextNode(' “”'));
-
-    options.appendChild(caseLabel);
-    options.appendChild(wholeLabel);
-
-    const count = document.createElement('div');
-    count.className = 'search-panel-count';
-    count.textContent = this._formatCount();
 
     header.appendChild(input);
-    header.appendChild(options);
-    header.appendChild(count);
+    header.appendChild(upBtn);
+    header.appendChild(downBtn);
+    header.appendChild(closeBtn);
 
     const resultsList = document.createElement('div');
     resultsList.className = 'search-panel-results';
@@ -1333,13 +1290,98 @@ export class SearchManager {
       try { this._searchDebounce.cancel(); } catch { /* ignore */ }
       this._searchDebounce = null;
     }
-    for (const [, layer] of this._highlightLayer) {
-      try { layer.remove(); } catch { /* ignore */ }
+    if (this._progressiveDebounce) {
+      try { this._progressiveDebounce.cancel(); } catch { /* ignore */ }
+      this._progressiveDebounce = null;
     }
-    this._highlightLayer.clear();
-    this._clearInternal();
+    this._clearHighlights();
     this._panelContainer = null;
     this._resultsList = null;
+  }
+
+  // ── Progressive Page-by-Page Search Execution ─────────────────────────────
+
+  /** @private */
+  async _searchProgressiveFromPageOne(query, totalPages, signal) {
+    const regex = buildSearchRegex(query);
+    if (!regex) return;
+
+    for (let i = 1; i <= totalPages; i++) {
+      if (signal.aborted) throw createAbortError('Search cancelled');
+
+      // Yield control every few pages to preserve memory and keep UI responsive
+      if (i % SEARCH_YIELD_INTERVAL === 0) {
+        this._emitProgress(i, totalPages);
+        await new Promise((r) => setTimeout(r, 0));
+      }
+
+      let items;
+      try {
+        items = await this._getTextItems(i);
+      } catch {
+        continue;
+      }
+      if (!items || items.length === 0) continue;
+
+      const viewport = await this._getViewportAtScale1(i);
+      if (!viewport) continue;
+
+      const fullText = items.map((it) => (it && typeof it.str === 'string' ? it.str : '')).join('');
+      if (!fullText) continue;
+
+      regex.lastIndex = 0;
+      let m;
+      let foundOnThisPage = false;
+      while ((m = regex.exec(fullText)) !== null) {
+        const rects = computeRectsForMatch(
+          { matchStart: m.index, matchEnd: m.index + m[0].length },
+          items,
+          viewport,
+        );
+        if (rects.length > 0) {
+          this._matches.push({ pageNum: i, text: m[0], rects });
+          foundOnThisPage = true;
+        }
+        if (m[0].length === 0) regex.lastIndex++;
+      }
+
+      if (foundOnThisPage) {
+        // If this is the very first match found across the document, jump/focus immediately
+        if (this._currentIndex === -1 && this._matches.length > 0) {
+          this._currentIndex = 0;
+          this._focusCurrent();
+        }
+
+        this.renderHighlights(i);
+        this._triggerProgressiveUpdate();
+      }
+    }
+
+    this._emitProgress(totalPages, totalPages);
+  }
+
+  /** @private */
+  _triggerProgressiveUpdate() {
+    if (!this._progressiveDebounce) {
+      this._progressiveDebounce = debounce(() => {
+        this._syncSearchState();
+        this._renderResultsList();
+      }, 200);
+    }
+    this._progressiveDebounce();
+  }
+
+  /** @private */
+  _syncSearchState() {
+    try {
+      this._core.getState().set('searchMatches', this._matches);
+      this._core.getState().set('currentMatchIndex', this._currentIndex);
+      this._core.getBus().emit(Events.SEARCH_COMPLETED, {
+        count: this._matches.length,
+        matches: this._matches,
+        currentIndex: this._currentIndex,
+      });
+    } catch { /* ignore */ }
   }
 
   // ── Results list rendering ────────────────────────────────────────────────
@@ -1355,7 +1397,6 @@ export class SearchManager {
       empty.className = 'search-panel-empty';
       empty.textContent = this._query ? 'No matches' : 'Type to search';
       list.appendChild(empty);
-      this._updateCountEl();
       return;
     }
 
@@ -1405,154 +1446,9 @@ export class SearchManager {
         active.scrollIntoView({ block: 'nearest' });
       }
     } catch { /* ignore */ }
-
-    this._updateCountEl();
   }
 
-  /** @private */
-  _updateCountEl() {
-    const container = this._panelContainer;
-    if (!container) return;
-    const count = container.querySelector('.search-panel-count');
-    if (!count) return;
-    count.textContent = this._formatCount();
-  }
-
-  /** @private @returns {string} */
-  _formatCount() {
-    if (this._matches.length === 0) {
-      return this._query ? '0/0' : '';
-    }
-    const idx = this._currentIndex >= 0 ? this._currentIndex + 1 : 1;
-    return `${idx}/${this._matches.length}`;
-  }
-
-  // ── Worker path ───────────────────────────────────────────────────────────
-
-  /** @private */
-  async _searchViaWorker(query, signal) {
-    const workers = this._core.getWorkers();
-    if (!workers || !workers.ensureSearchWorker || !workers.postToSearch) {
-      return this._searchMainThread(query, signal);
-    }
-
-    let workerHandle;
-    try {
-      workerHandle = await workers.ensureSearchWorker();
-    } catch (err) {
-      if (err && err.code === 'WORKER_DISABLED') {
-        return this._searchMainThread(query, signal);
-      }
-      return this._searchMainThread(query, signal);
-    }
-    if (!workerHandle || signal.aborted) return [];
-
-    try { await workers.postToSearch('clear', {}, { signal }); } catch { /* ignore */ }
-
-    const total = this._getNumPages();
-    for (let i = 1; i <= total; i++) {
-      if (signal.aborted) throw createAbortError('Search cancelled');
-      const items = await this._getTextItems(i);
-      if (!items) continue;
-      const fullText = items.map((it) => (it && typeof it.str === 'string' ? it.str : '')).join('');
-      try {
-        await workers.postToSearch('index-page', {
-          pageNum: i,
-          fullText,
-          itemCount: items.length,
-        }, { signal });
-      } catch (err) {
-        if (isAbortError(err)) throw err;
-      }
-    }
-
-    if (signal.aborted) throw createAbortError('Search cancelled');
-
-    let rawResult;
-    try {
-      rawResult = await workers.postToSearch('search', {
-        query,
-        options: { caseSensitive: this._caseSensitive, wholeWord: this._wholeWord },
-        pages: Array.from({ length: total }, (_, i) => i + 1),
-      }, { signal });
-    } catch (err) {
-      if (isAbortError(err)) throw err;
-      return [];
-    }
-
-    if (signal.aborted) return [];
-
-    const rawMatches = rawResult && Array.isArray(rawResult.matches) ? rawResult.matches : [];
-
-    const finalMatches = [];
-    for (const raw of rawMatches) {
-      if (signal.aborted) throw createAbortError('Search cancelled');
-      const items = await this._getTextItems(raw.pageNum);
-      if (!items) continue;
-      const viewport = await this._getViewportAtScale1(raw.pageNum);
-      if (!viewport) continue;
-      const rects = computeRectsForMatch(
-        { matchStart: raw.matchStart, matchEnd: raw.matchEnd },
-        items,
-        viewport,
-      );
-      if (rects.length > 0) {
-        finalMatches.push({ pageNum: raw.pageNum, text: raw.text, rects });
-      }
-    }
-    return finalMatches;
-  }
-
-  // ── Main-thread path ──────────────────────────────────────────────────────
-
-  /** @private */
-  async _searchMainThread(query, signal) {
-    const regex = buildSearchRegex(query, this._caseSensitive, this._wholeWord);
-    if (!regex) return [];
-
-    const total = this._getNumPages();
-    const matches = [];
-    let scanned = 0;
-
-    for (let i = 1; i <= total; i++) {
-      if (signal.aborted) throw createAbortError('Search cancelled');
-      scanned = i;
-
-      if (i % SEARCH_PROGRESS_INTERVAL === 0) {
-        this._emitProgress(scanned, total);
-        await new Promise((r) => setTimeout(r, 0));
-      }
-
-      let items;
-      try { items = await this._getTextItems(i); } catch { continue; }
-      if (!items || items.length === 0) continue;
-
-      const viewport = await this._getViewportAtScale1(i);
-      if (!viewport) continue;
-
-      const fullText = items.map((it) => (it && typeof it.str === 'string' ? it.str : '')).join('');
-      if (!fullText) continue;
-
-      regex.lastIndex = 0;
-      let m;
-      while ((m = regex.exec(fullText)) !== null) {
-        const rects = computeRectsForMatch(
-          { matchStart: m.index, matchEnd: m.index + m[0].length },
-          items,
-          viewport,
-        );
-        if (rects.length > 0) {
-          matches.push({ pageNum: i, text: m[0], rects });
-        }
-        if (m[0].length === 0) regex.lastIndex++;
-      }
-    }
-
-    this._emitProgress(total, total);
-    return matches;
-  }
-
-  // ── Focus / navigation ────────────────────────────────────────────────────
+  // ── Focus / navigation ────────────────────────────────────────────────    
 
   /** @private */
   _focusCurrent() {
@@ -1613,10 +1509,7 @@ export class SearchManager {
   }
 
   /** @private */
-  _clearInternal() {
-    this._matches = [];
-    this._currentIndex = -1;
-    this._query = '';
+  _clearHighlights() {
     for (const [, layer] of this._highlightLayer) {
       try { layer.innerHTML = ''; } catch { /* ignore */ }
     }
@@ -1661,16 +1554,14 @@ export class SearchManager {
 // ============================================================================
 
 /**
- * Build a regex from a query string.
+ * Build a simple, case-insensitive regex from a query string.
  * @private
  */
-function buildSearchRegex(query, caseSensitive, wholeWord) {
+function buildSearchRegex(query) {
   if (!query) return null;
   const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = wholeWord ? `\\b${escaped}\\b` : escaped;
-  const flags = caseSensitive ? 'g' : 'gi';
   try {
-    return new RegExp(pattern, flags);
+    return new RegExp(escaped, 'gi');
   } catch {
     return null;
   }
@@ -1730,10 +1621,6 @@ function computeRectsForMatch(match, items, viewport) {
 // 5. OUTLINE MANAGER
 // ============================================================================
 
-/**
- * Renders the document outline as a collapsible tree into the sidebar's
- * "outline" panel and translates item clicks into PAGE_JUMP_REQUESTED events.
- */
 export class OutlineManager {
   /** @param {import('./core.js').ViewerCore} core */
   constructor(core) {
@@ -1741,13 +1628,15 @@ export class OutlineManager {
     /** @private @type {any[]} */ this._items = [];
     /** @private @type {HTMLElement|null} */ this._drawerElement = null;
     /** @private */ this._empty = true;
+    /** @private */ this._filterText = '';
+    /** @private @type {HTMLElement|null} */ this._treeContainer = null;
   }
-
-  // ── Public ────────────────────────────────────────────────────────────────
 
   /** @param {any[]|null} items @returns {void} */
   build(items) {
-    this._items = Array.isArray(items) ? items : [];
+    if (items !== undefined) {
+      this._items = Array.isArray(items) ? items : [];
+    }
     this._empty = this._items.length === 0;
 
     const drawer = this._getDrawer();
@@ -1761,28 +1650,50 @@ export class OutlineManager {
       empty.className = 'outline-empty';
       empty.textContent = 'No outline available';
       drawer.appendChild(empty);
-      this._emitReady(0);
+      try { this._core.getBus().emit(Events.OUTLINE_READY, { count: 0 }); } catch { /* ignore */ }
       return;
     }
 
-    const root = document.createElement('div');
-    root.className = 'outline-root';
-    root.appendChild(this._renderItems(this._items, 0));
-    drawer.appendChild(root);
+    const filterContainer = document.createElement('div');
+    filterContainer.className = 'outline-filter-container';
+    filterContainer.style.padding = '10px';
+    filterContainer.style.borderBottom = '1px solid var(--border-color, #e0e0e0)';
+    
+    const filterInput = document.createElement('input');
+    filterInput.type = 'text';
+    filterInput.className = 'outline-filter-input';
+    filterInput.placeholder = 'Filter outline...';
+    filterInput.value = this._filterText;
+    filterInput.style.width = '100%';
+    filterInput.style.padding = '6px 8px';
+    filterInput.style.boxSizing = 'border-box';
+    
+    filterInput.addEventListener('input', (e) => {
+      this._filterText = (e.target.value || '').toLowerCase();
+      this._updateTree();
+    });
 
-    this._emitReady(this._items.length);
+    filterContainer.appendChild(filterInput);
+    drawer.appendChild(filterContainer);
+
+    this._treeContainer = document.createElement('div');
+    this._treeContainer.className = 'outline-tree-container';
+    this._treeContainer.style.overflowY = 'auto';
+    this._treeContainer.style.height = 'calc(100% - 55px)'; 
+    drawer.appendChild(this._treeContainer);
+
+    this._updateTree();
+    try { this._core.getBus().emit(Events.OUTLINE_READY, { count: this._items.length }); } catch { /* ignore */ }
   }
 
   /** @returns {void} */
-  rebuild() {
-    this.build(this._items);
-  }
+  rebuild() { this.build(); }
 
   /** @param {HTMLElement|null} container @returns {void} */
   renderPanel(container) {
     if (!container) return;
     this._drawerElement = container;
-    this.build(this._items);
+    this.build();
   }
 
   /** @returns {void} */
@@ -1805,17 +1716,17 @@ export class OutlineManager {
     if (drawer) drawer.innerHTML = '';
     this._items = [];
     this._empty = true;
+    this._filterText = '';
+    this._treeContainer = null;
   }
 
-/** @param {any} dest @returns {Promise<void>} */
-async navigateToDest(dest) {
+  /** @param {any} dest @returns {Promise<void>} */
+  async navigateToDest(dest) {
     if (!dest) return;
     const engine = this._core.getEngine();
     if (!engine) return;
     try {
       let resolvedDest = dest;
-
-      // If the destination is a named destination (string), resolve it via the engine first
       if (typeof dest === 'string') {
         if (typeof engine.getDestination === 'function') {
           resolvedDest = await engine.getDestination(dest);
@@ -1823,28 +1734,16 @@ async navigateToDest(dest) {
           resolvedDest = await engine._pdfDoc.getDestination(dest);
         }
       }
-
-      // Extract the page reference object if resolvedDest is a destination array [ref, ...]
       let pageRef = resolvedDest;
-      if (Array.isArray(resolvedDest)) {
-        pageRef = resolvedDest[0];
-      }
+      if (Array.isArray(resolvedDest)) pageRef = resolvedDest[0];
 
       if (typeof engine.getPageIndex !== 'function') return;
       const index = await engine.getPageIndex(pageRef);
       if (typeof index !== 'number' || index < 0) return;
       
       const pageNum = index + 1;
-      this._core.getBus().emit(Events.PAGE_JUMP_REQUESTED, {
-        pageNum,
-        reason: 'outline',
-      });
-    } catch (err) {
-      if (CONFIG.DEBUG_VIEWER) {
-        // eslint-disable-next-line no-console
-        console.warn('[OutlineManager] Failed to resolve destination:', err);
-      }
-    }
+      this._core.getBus().emit(Events.PAGE_JUMP_REQUESTED, { pageNum, reason: 'outline' });
+    } catch (err) {}
   }
 
   /** @returns {void} */
@@ -1853,33 +1752,56 @@ async navigateToDest(dest) {
     this._drawerElement = null;
   }
 
-  // ── Internal ──────────────────────────────────────────────────────────────
-
   /** @private @returns {HTMLElement|null} */
   _getDrawer() {
-    if (this._drawerElement && this._drawerElement.isConnected) {
-      return this._drawerElement;
-    }
+    if (this._drawerElement && this._drawerElement.isConnected) return this._drawerElement;
     try {
       const el = document.getElementById('viewer-outline-drawer');
       this._drawerElement = el;
       return el;
-    } catch {
-      return null;
-    }
+    } catch { return null; }
   }
 
-  /**
-   * Recursively render an outline level. Returns the <ul> for that level;
-   * the caller attaches it to the DOM (root) or to a hidden container that
-   * a disclosure triangle toggles.
-   *
-   * @private
-   * @param {any[]} items
-   * @param {number} level
-   * @returns {HTMLUListElement}
-   */
-  _renderItems(items, level) {
+  /** @private */
+  _updateTree() {
+    if (!this._treeContainer) return;
+    this._treeContainer.innerHTML = '';
+
+    const filtered = this._filterItems(this._items, this._filterText);
+
+    if (filtered.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'outline-empty';
+      empty.textContent = 'No matches found';
+      empty.style.padding = '16px';
+      this._treeContainer.appendChild(empty);
+      return;
+    }
+
+    const root = document.createElement('div');
+    root.className = 'outline-root';
+    const isFiltering = !!this._filterText;
+    root.appendChild(this._renderItems(filtered, 0, isFiltering));
+    this._treeContainer.appendChild(root);
+  }
+
+  /** @private */
+  _filterItems(items, query) {
+    if (!query) return items;
+    const filtered = [];
+    for (const item of items) {
+      const titleMatches = item.title && item.title.toLowerCase().includes(query);
+      const children = this._filterItems(item.items || [], query);
+
+      if (titleMatches || children.length > 0) {
+        filtered.push(Object.assign({}, item, { items: children }));
+      }
+    }
+    return filtered;
+  }
+
+  /** @private */
+  _renderItems(items, level, forceExpand = false) {
     const ul = document.createElement('ul');
     ul.className = 'outline-list';
     const safeLevel = Math.min(level, 3);
@@ -1891,7 +1813,6 @@ async navigateToDest(dest) {
       li.className = `outline-item level-${safeLevel}`;
 
       const hasChildren = Array.isArray(item.items) && item.items.length > 0;
-
       const row = document.createElement('div');
       row.className = 'outline-row';
 
@@ -1899,13 +1820,13 @@ async navigateToDest(dest) {
         const toggle = document.createElement('button');
         toggle.type = 'button';
         toggle.className = 'outline-toggle';
-        toggle.setAttribute('aria-label', 'Toggle section');
-        toggle.textContent = level === 0 ? '▾' : '▸';
+        
+        const startExpanded = level === 0 || forceExpand;
+        toggle.textContent = startExpanded ? '▾' : '▸';
         row.appendChild(toggle);
 
-        const childUl = this._renderItems(item.items, level + 1);
+        const childUl = this._renderItems(item.items, level + 1, forceExpand);
         childUl.classList.add('outline-nested');
-        const startExpanded = level === 0;
         childUl.hidden = !startExpanded;
         toggle.setAttribute('aria-expanded', startExpanded ? 'true' : 'false');
 
@@ -1922,41 +1843,55 @@ async navigateToDest(dest) {
       } else {
         const spacer = document.createElement('span');
         spacer.className = 'outline-toggle-spacer';
-        spacer.setAttribute('aria-hidden', 'true');
         row.appendChild(spacer);
       }
 
       const label = document.createElement('button');
       label.type = 'button';
       label.className = 'outline-link';
-      label.textContent = item.title || 'Untitled';
+      
+      // Inject Blue Highlight for matches in the Outline
+      const title = item.title || 'Untitled';
+      if (forceExpand && this._filterText) {
+        const lowerTitle = title.toLowerCase();
+        const idx = lowerTitle.indexOf(this._filterText);
+        if (idx >= 0) {
+          const before = title.substring(0, idx);
+          const matchStr = title.substring(idx, idx + this._filterText.length);
+          const after = title.substring(idx + this._filterText.length);
+          
+          if (before) label.appendChild(document.createTextNode(before));
+          const mark = document.createElement('mark');
+          mark.textContent = matchStr;
+          mark.style.backgroundColor = 'rgba(0, 0, 255, 0.25)'; // Highlight blue
+          mark.style.color = 'inherit';
+          mark.style.borderRadius = '2px';
+          mark.style.padding = '0 2px';
+          label.appendChild(mark);
+          if (after) label.appendChild(document.createTextNode(after));
+        } else {
+          label.textContent = title;
+        }
+      } else {
+        label.textContent = title;
+      }
+
       label.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        this.navigateToDest(item.dest).catch(() => { /* ignore */ });
+        this.navigateToDest(item.dest).catch(() => {});
         try {
-          if (typeof window !== 'undefined' && window.innerWidth < 768) {
-            this.close();
-          }
-        } catch { /* ignore */ }
+          if (typeof window !== 'undefined' && window.innerWidth < 768) this.close();
+        } catch {}
       });
       row.appendChild(label);
 
       li.insertBefore(row, li.firstChild);
       ul.appendChild(li);
     }
-
     return ul;
   }
-
-  /** @private @param {number} count */
-  _emitReady(count) {
-    try {
-      this._core.getBus().emit(Events.OUTLINE_READY, { count });
-    } catch { /* ignore */ }
-  }
 }
-
 // ============================================================================
 // 6. MORE PANEL
 // ============================================================================

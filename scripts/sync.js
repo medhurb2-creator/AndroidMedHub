@@ -10,7 +10,7 @@ import { navigateTo } from './router.js';
 // ==================== CONSTANTS ====================
 
 const SYNC_INTERVAL_MS = 30 * 60 * 1000;     // 30 minutes (background check)
-const SYNC_COOLDOWN_MS = 60 * 60 * 1000;     // 1 hour (minimum time between full syncs)
+const SYNC_COOLDOWN_MS =24 * 60 * 60 * 1000;     // 1 hour (minimum time between full syncs)
 const SYNC_STATE_KEY = 'sync_state';
 const SYNC_TIMER_KEY = 'sync_timer';
 

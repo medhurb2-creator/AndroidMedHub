@@ -37,6 +37,25 @@ const _sharedImageUrls = new Set();
 export async function init(context) {
   $ = (sel) => context.root.querySelector(sel);
 
+  // ── Reset module-scope state from any previous exam session ────────
+  // In an SPA the module is cached across navigations, so these
+  // variables keep their values from the previous exam. Without this
+  // reset, `isFinished` stays `true` after the first exam — every
+  // subsequent exam's submit silently no-ops (`finishExam` returns
+  // early), and `currentQuestionIndex` may point at a stale index.
+  examMode = 'standard';
+  currentQuestionIndex = 0;
+  totalQuestions = 0;
+  isFinished = false;
+  if (timerInstance) { try { timerInstance.stop(); } catch { /* ignore */ } timerInstance = null; }
+  if (globalTimerInstance) { try { globalTimerInstance.stop(); } catch { /* ignore */ } globalTimerInstance = null; }
+  if (autoSaveInterval) { clearInterval(autoSaveInterval); autoSaveInterval = null; }
+  if (_currentImageUrl) { try { URL.revokeObjectURL(_currentImageUrl); } catch { /* ignore */ } _currentImageUrl = null; }
+  for (const url of _sharedImageUrls) { try { URL.revokeObjectURL(url); } catch { /* ignore */ } }
+  _sharedImageUrls.clear();
+  _imageGen = 0;
+  sheetState = 'closed';
+
   ui.applyTheme();
   const shimmer = $('#shimmer-overlay');
   const layouts = {
@@ -883,6 +902,7 @@ function renderQuestion() {
   updateProgress();
   if (isStd) updateNavGridStandard();
   else if (isRev) updateDashNavigatorRevision('rev-dash-progress');
+  updateNavButtons();
 }
 
 // ── SLIDE IMAGE: question-image renderer (standard & revision) ──
@@ -1019,8 +1039,19 @@ function nextQuestion() {
     renderQuestion();
     setTimeout(ensureFooterVisible, 100);
     resetTimerForCurrentQuestion();
-  } else if (examMode === 'standard' || examMode === 'revision') {
+    return;
+  }
+  // Revision mode: the Next button on the last question is relabelled
+  // "Submit Exam" — finishing directly is the intended behaviour there.
+  if (examMode === 'revision') {
     finishExam();
+    return;
+  }
+  // Standard mode: the Next button is hidden on the last question, but
+  // the ArrowRight keyboard shortcut can still fire this function.
+  // Route through the same confirmation the Submit button uses.
+  if (examMode === 'standard') {
+    promptAndFinish();
   }
 }
 function prevQuestion() {
@@ -1035,16 +1066,43 @@ async function finishExam() {
   if (isFinished) return;
   isFinished = true;
   ui.showLoading('Calculating results...');
+
+  // Split the try so we can distinguish a fatal endExam failure (stay on
+  // the exam room, let the user retry) from non-fatal post-processing
+  // (still navigate to results — the exam was already saved inside
+  // endExam before the enrichment step).
+  let results = null;
   try {
-    const results = await examEngine.endExam();
-    await db.saveExamResult(results);
-    ui.hideLoading();
-    ui.showToast('Exam completed!', 'success');
-    router.navigateTo('results', { examId: results.examId });
+    results = await examEngine.endExam();
   } catch (err) {
+    console.error('[ExamRoom] endExam failed:', err);
     ui.hideLoading();
-    ui.showToast('Error: ' + err.message, 'error');
-    router.navigateTo('subjects');
+    isFinished = false;  // allow retry
+    ui.showToast(
+      'Failed to submit exam: ' + (err && err.message ? err.message : 'unknown error'),
+      'error'
+    );
+    return;
+  }
+
+  // Best-effort safety save. endExam already persisted the result; this
+  // protects against a partial enrichment failure leaving the record in
+  // a half-written state.
+  try {
+    await db.saveExamResult(results);
+  } catch (saveErr) {
+    console.warn('[ExamRoom] Final save failed (non-fatal):', saveErr);
+  }
+
+  ui.hideLoading();
+  ui.showToast('Exam completed!', 'success');
+
+  try {
+    router.navigateTo('results', { examId: results.examId });
+  } catch (navErr) {
+    console.error('[ExamRoom] Navigation to results failed:', navErr);
+    ui.showToast('Result saved. Open Performance to view it.', 'info');
+    try { router.navigateTo('performance'); } catch { /* ignore */ }
   }
 }
 
@@ -1097,11 +1155,9 @@ function setupEventListeners() {
   $('#next-btn-std')?.addEventListener('click', nextQuestion);
   $('#prev-nav-std')?.addEventListener('click', prevQuestion);
   $('#next-nav-std')?.addEventListener('click', nextQuestion);
-  $('#submit-exam-btn')?.addEventListener('click', () => {
-    if (examMode === 'standard') {
-      ui.showConfirmationDialog('Submit Exam', 'Are you sure?', 'warning').then(ok => { if (ok) finishExam(); });
-    }
-  });
+  // Route Submit and keyboard-driven "Next on last question" through the
+  // same confirmation flow so behaviour is consistent.
+  $('#submit-exam-btn')?.addEventListener('click', promptAndFinish);
   $('#flag-btn-std')?.addEventListener('click', toggleFlag);
 
   // Revision mode buttons
@@ -1124,6 +1180,67 @@ function setupEventListeners() {
   // Fullscreen / distraction
   $('#fullscreen-btn')?.addEventListener('click', toggleFullscreen);
   $('#distraction-btn')?.addEventListener('click', toggleDistractionFree);
+}
+
+function updateNavButtons() {
+  if (examMode === 'shared') return;
+  const isStd = examMode === 'standard';
+  const isRev = examMode === 'revision';
+  if (!isStd && !isRev) return;
+
+  const atFirst = currentQuestionIndex === 0;
+  const atLast = currentQuestionIndex === totalQuestions - 1;
+
+  const prevBtns = [
+    document.getElementById(isStd ? 'prev-btn-std' : 'prev-btn-rev'),
+    isStd ? document.getElementById('prev-nav-std') : null,
+  ].filter(Boolean);
+
+  const nextBtns = [
+    document.getElementById(isStd ? 'next-btn-std' : 'next-btn-rev'),
+    isStd ? document.getElementById('next-nav-std') : null,
+  ].filter(Boolean);
+
+  // Hide "Previous" on the first question. `visibility: hidden` keeps the
+  // button occupying its slot so the Next button never jumps around as the
+  // user navigates between first/non-first questions.
+  for (const btn of prevBtns) {
+    btn.style.visibility = atFirst ? 'hidden' : '';
+    btn.setAttribute('aria-hidden', atFirst ? 'true' : 'false');
+    btn.tabIndex = atFirst ? -1 : 0;
+  }
+
+  // Standard mode: hide "Next" on the last question — Submit takes over.
+  // Revision mode: keep Next visible — it is relabelled "Submit Exam" there.
+  const hideNext = isStd && atLast;
+  for (const btn of nextBtns) {
+    btn.style.visibility = hideNext ? 'hidden' : '';
+    btn.setAttribute('aria-hidden', hideNext ? 'true' : 'false');
+    btn.tabIndex = hideNext ? -1 : 0;
+  }
+}
+
+async function promptAndFinish() {
+  if (examMode !== 'standard') return;
+  if (isFinished) return;
+
+  let ok = false;
+  try {
+    ok = await ui.showConfirmationDialog(
+      'Submit Exam',
+      'Are you sure? Unanswered questions will be marked wrong.',
+      'warning'
+    );
+  } catch (err) {
+    // If the dialog itself fails, do NOT auto-submit. Surface the
+    // failure so the button isn't a silent no-op.
+    console.error('[ExamRoom] Submit confirmation failed:', err);
+    ui.showToast('Could not open confirmation dialog. Please try again.', 'error');
+    return;
+  }
+  if (!ok) return;
+
+  await finishExam();
 }
 
 function updateProgress() {

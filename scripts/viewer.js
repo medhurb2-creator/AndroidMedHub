@@ -588,15 +588,20 @@ async function _loadDocumentIntoEmbedded(docId, fileType, title = 'Document', op
   window._activeLoadSession = loadSessionId;
 
   try {
+
     let blob = await content.getLocalFile(docId);
-    if (!blob) {
-      try { ui.showLoading('Downloading document...'); } catch { /* ignore */ }
-      const success = await content.downloadResource(docId);
-      try { ui.hideLoading(); } catch { /* ignore */ }
-      if (!success) throw new Error('Download failed');
-      blob = await content.getLocalFile(docId);
-      if (!blob) throw new Error('File not found after download');
-    }
+if (!blob) {
+  if (!navigator.onLine) {
+    // Optional: Call a content.js method here to remove the broken docId from the download manifest
+    throw new Error('File missing from device storage. Please delete and re-download when online.');
+  }
+  try { ui.showLoading('Downloading document...'); } catch { /* ignore */ }
+  const success = await content.downloadResource(docId);
+  try { ui.hideLoading(); } catch { /* ignore */ }
+  if (!success) throw new Error('Download failed');
+  blob = await content.getLocalFile(docId);
+  if (!blob) throw new Error('File not found after download');
+}
 
     const core = await _ensureCore();
     await core.loadDocument(blob, fileType, title, opts);

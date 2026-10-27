@@ -27,7 +27,7 @@ import * as contentStore from './db/content-store.js';
 import * as storage from './db/app-storage.js';
 
 const DB_NAME = 'MedExamDB';
-const DB_VERSION = 13; // bumped — blob storage split to disk + metadata
+const DB_VERSION = 14; // bumped — blob storage split to disk + metadata
 
 // ============================================================================
 // Internal storage namespaces
@@ -1309,6 +1309,100 @@ export async function clearChatHistory(userId) {
     }
 }
 
+// ==================== DISK/DB RECONCILIATION ====================
+// Solves the "Split-Brain" problem by making the native disk the source of truth.
+
+export async function syncDiskAndDatabase() {
+    if (!storage.isNativeStorageAvailable()) return;
+
+    try {
+        const filesStore = await getStore('files', 'readwrite');
+        const assetsStore = await getStore('publicAssets', 'readwrite');
+
+        // --- 1. Get all known IDs from IndexedDB ---
+        const knownFiles = await new Promise((resolve) => {
+            const req = filesStore.getAll();
+            req.onsuccess = () => resolve(req.result || []);
+        });
+        const knownAssets = await new Promise((resolve) => {
+            const req = assetsStore.getAll();
+            req.onsuccess = () => resolve(req.result || []);
+        });
+
+        const knownFileIds = new Set(knownFiles.map(f => f.id));
+        const knownAssetIds = new Set(knownAssets.map(a => a.key));
+
+        // --- 2. Prune "Ghost" Metadata (Files that vanished from disk/SD Card) ---
+        for (const record of knownFiles) {
+            // Ignore thumbnails (they live in cache, not in the item folder structure)
+            if (record.location === 'disk' && !record.id.startsWith('thumb_')) {
+                if (!contentStore.itemExists('files', 'blobs', record.id)) {
+                    console.log(`[DB] Pruning ghost file metadata: ${record.id}`);
+                    filesStore.delete(record.id);
+                    knownFileIds.delete(record.id);
+                }
+            }
+        }
+
+        for (const record of knownAssets) {
+            if (record.location === 'disk') {
+                if (!contentStore.itemExists('public-assets', 'assets', record.key)) {
+                    console.log(`[DB] Pruning ghost asset metadata: ${record.key}`);
+                    assetsStore.delete(record.key);
+                    knownAssetIds.delete(record.key);
+                }
+            }
+        }
+
+        // --- 3. Recover Orphaned Files (Files on disk missing from IDB) ---
+        const blobsDir = layout.collectionPath('files', 'blobs');
+        if (storage.exists(blobsDir)) {
+            const diskEntries = storage.listDirectory(blobsDir);
+            for (const entry of diskEntries) {
+                if (!entry.isDirectory) continue;
+                const fileId = entry.name;
+                
+                if (!knownFileIds.has(fileId) && contentStore.itemExists('files', 'blobs', fileId)) {
+                    console.log(`[DB] Recovering orphaned file: ${fileId}`);
+                    const size = storage.getSize(`${blobsDir}/${fileId}/blob.bin`);
+                    filesStore.put({
+                        id: fileId,
+                        location: 'disk',
+                        size: Math.max(0, size),
+                        mimeType: 'application/octet-stream',
+                        storedAt: entry.lastModified || Date.now(),
+                    });
+                }
+            }
+        }
+
+        // --- 4. Recover Orphaned Public Assets ---
+        const assetsDir = layout.collectionPath('public-assets', 'assets');
+        if (storage.exists(assetsDir)) {
+            const assetEntries = storage.listDirectory(assetsDir);
+            for (const entry of assetEntries) {
+                if (!entry.isDirectory) continue;
+                const assetId = entry.name;
+                
+                if (!knownAssetIds.has(assetId) && contentStore.itemExists('public-assets', 'assets', assetId)) {
+                    console.log(`[DB] Recovering orphaned public asset: ${assetId}`);
+                    const size = storage.getSize(`${assetsDir}/${assetId}/blob.bin`);
+                    assetsStore.put({
+                        key: assetId,
+                        location: 'disk',
+                        size: Math.max(0, size),
+                        mimeType: 'application/octet-stream',
+                        metadata: {}, 
+                        updatedAt: entry.lastModified || Date.now(),
+                    });
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('[DB] Failed to sync disk and database:', e);
+    }
+}
+
 // ==================== FILE BLOBS ====================
 //
 // Delegates blob storage to scripts/db/content-store.js when the native
@@ -2108,5 +2202,10 @@ export async function clearDatabase() {
     }
 }
 
-// Auto‑initialize
-initDatabase().catch(err => console.warn('[DB] Init failed, fallback to localStorage', err));
+// Auto‑initialize and sync
+initDatabase()
+    .then(() => {
+        // Run the split-brain recovery silently in the background
+        setTimeout(syncDiskAndDatabase, 2000); 
+    })
+    .catch(err => console.warn('[DB] Init failed, fallback to localStorage', err));

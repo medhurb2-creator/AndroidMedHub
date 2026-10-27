@@ -39,7 +39,7 @@ export async function init(context) {
       const user = auth.getUser();
       if (user) {
         // Logged in: go to agent application
-        router.navigateTo('agent-apply');
+        router.navigateTo('agent-registration');
       } else {
         // Not logged in: go to signup with agent flag
         router.navigateTo('signup?isAgent=true');

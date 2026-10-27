@@ -51,16 +51,16 @@ function normalizeIcon(icon) {
 
 // ==================== CORE SUBJECTS ====================
 const CORE_SUBJECTS = [
-  { id: 'anatomy',      name: 'Anatomy',      icon: 'fa-solid fa-bone',         color: '#FF6B6B', questions: 1245 },
-  { id: 'physiology',   name: 'Physiology',   icon: 'fa-solid fa-heart-pulse',  color: '#4ECDC4', questions: 1860 },
-  { id: 'biochemistry', name: 'Biochemistry', icon: 'fa-solid fa-flask',        color: '#45B7D1', questions: 1650 },
-  { id: 'histology',    name: 'Histology',    icon: 'fa-solid fa-microscope',   color: '#96CEB4', questions: 1365 },
+  { id: 'anatomy', name: 'Anatomy', icon: 'fa-solid fa-bone', color: '#FF6B6B', questions: 1245 },
+  { id: 'physiology', name: 'Physiology', icon: 'fa-solid fa-heart-pulse', color: '#4ECDC4', questions: 1860 },
+  { id: 'biochemistry', name: 'Biochemistry', icon: 'fa-solid fa-flask', color: '#45B7D1', questions: 1650 },
+  { id: 'histology', name: 'Histology', icon: 'fa-solid fa-microscope', color: '#96CEB4', questions: 1365 },
   // ── SLIDE: card sits between Histology and Embryology, per spec.
-  { id: 'slide-view',   name: 'Slide View',   icon: 'fa-solid fa-images',       color: '#6C5CE7', questions: 0, special: 'slide-view' },
-  { id: 'embryology',   name: 'Embryology',   icon: 'fa-solid fa-egg',          color: '#FFEAA7', questions: 1245 },
-  { id: 'pathology',    name: 'Pathology',    icon: 'fa-solid fa-disease',      color: '#DDA0DD', questions: 2250 },
-  { id: 'pharmacology', name: 'Pharmacology', icon: 'fa-solid fa-pills',        color: '#FDCB6E', questions: 1635 },
-  { id: 'microbiology', name: 'Microbiology', icon: 'fa-solid fa-bacteria',     color: '#E17055', questions: 1650 }
+  { id: 'slide-view', name: 'Slide View', icon: 'fa-solid fa-images', color: '#6C5CE7', questions: 0, special: 'slide-view' },
+  { id: 'embryology', name: 'Embryology', icon: 'fa-solid fa-egg', color: '#FFEAA7', questions: 1245 },
+  { id: 'pathology', name: 'Pathology', icon: 'fa-solid fa-disease', color: '#DDA0DD', questions: 2250 },
+  { id: 'pharmacology', name: 'Pharmacology', icon: 'fa-solid fa-pills', color: '#FDCB6E', questions: 1635 },
+  { id: 'microbiology', name: 'Microbiology', icon: 'fa-solid fa-bacteria', color: '#E17055', questions: 1650 }
 ];
 
 // ── SLIDE: accent used for the slide card's progress fill so all
@@ -279,13 +279,12 @@ function renderSubjects() {
   }
 
   if (subjectsToRender.length === 0) {
-    grid.innerHTML = `<p class="no-data" style="grid-column:1/-1;">${
-      activeView === 'core'
+    grid.innerHTML = `<p class="no-data" style="grid-column:1/-1;">${activeView === 'core'
         ? 'No core subjects available.'
         : searchQuery
           ? 'No subjects match your search.'
           : 'No additional subjects available.'
-    }</p>`;
+      }</p>`;
     return;
   }
 
@@ -416,8 +415,8 @@ function _hydrateSlideCard() {
 
 function _updateSlideCardUi(card, s) {
   const statusText = card.querySelector('#slide-status-text');
-  const fill       = card.querySelector('#slide-progress-fill');
-  const actions    = card.querySelector('#slide-actions');
+  const fill = card.querySelector('#slide-progress-fill');
+  const actions = card.querySelector('#slide-actions');
   if (!actions || !fill) return;
 
   // ── Phase 1 & 2: downloading / extracting ─────────────────────
@@ -428,9 +427,9 @@ function _updateSlideCardUi(card, s) {
         : 'Downloading slides…';
     }
     const pct = s.extracting ? s.extractProgress : s.progress;
-    fill.style.width      = pct + '%';
+    fill.style.width = pct + '%';
     fill.style.background = SLIDE_COLOR;
-    actions.innerHTML     = '';
+    actions.innerHTML = '';
     return;
   }
 
@@ -441,7 +440,7 @@ function _updateSlideCardUi(card, s) {
         ? 'Error: ' + s.error
         : 'Download study slides';
     }
-    fill.style.width      = '0%';
+    fill.style.width = '0%';
     fill.style.background = SLIDE_COLOR;
     actions.innerHTML = `
       <button class="action-btn-sm slide-download-btn" id="slide-download-btn">
@@ -461,11 +460,11 @@ function _updateSlideCardUi(card, s) {
   const slideIds = questions.getAllSlideSubjectIds();
   const aggregate = slideIds.length > 0
     ? Math.round(
-        slideIds.reduce((acc, id) => acc + (progressMap[id] || 0), 0) /
-        slideIds.length
-      )
+      slideIds.reduce((acc, id) => acc + (progressMap[id] || 0), 0) /
+      slideIds.length
+    )
     : 0;
-  fill.style.width      = aggregate + '%';
+  fill.style.width = aggregate + '%';
   fill.style.background = SLIDE_COLOR;
 
   // ── Update available: Study + Update ─────────────────────────
@@ -559,37 +558,7 @@ function setupFooterButtons(context) {
   });
 }
 
-// ==================== AVATAR OFFLINE CACHE ====================
-// Downloads the Google Profile image and saves it as a Base64 string in LocalStorage.
-async function cacheAvatarImage(url, userId) {
-  if (!url || !userId) return;
-  const cacheKey = `medvix_avatar_${userId}`;
-  
-  // Skip if already cached
-  if (localStorage.getItem(cacheKey)) return;
 
-  try {
-    // Fetch the image from Google's servers
-    const response = await fetch(url, { mode: 'cors' });
-    if (!response.ok) throw new Error('Network response was not ok');
-    
-    const blob = await response.blob();
-    
-    // Convert image blob to Base64 string
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      try {
-        localStorage.setItem(cacheKey, reader.result);
-        console.log('[Avatar] Cached successfully for offline use');
-      } catch (e) {
-        console.warn('[Avatar] LocalStorage quota exceeded', e);
-      }
-    };
-    reader.readAsDataURL(blob);
-  } catch (err) {
-    console.warn('[Avatar] Failed to cache image:', err);
-  }
-}
 
 // ==================== THEME / USER MENU ====================
 function setupUserMenu() {
@@ -600,7 +569,7 @@ function setupUserMenu() {
   const userDropdown = $('#userDropdown');
   const logoutBtn = $('#logoutBtn');
   const switchAccountBtn = $('#switchAccountBtn');
-  
+
   if (!userMenuBtn || !userDropdown) return;
 
   // --- 1. Populate Avatar (Image or Initial) ---
@@ -609,26 +578,23 @@ function setupUserMenu() {
   const avatarImg = $('#userAvatarImg');
 
   if (user) {
-    const userId = user._id || user.id;
-    const cacheKey = `medvix_avatar_${userId}`;
-    const cachedImage = localStorage.getItem(cacheKey);
     const imgUrl = user.picture || user.photoURL || user.avatar || user.avatarUrl;
-    
-    if (cachedImage) {
-      // Use offline-cached base64 image
-      avatarImg.src = cachedImage;
-      avatarImg.style.display = 'block';
-      avatarText.style.display = 'none';
-    } else if (imgUrl) {
-      // Use online image, then trigger background download for next time
+
+    if (imgUrl) {
+      // Use online image directly, rely on browser caching
       avatarImg.src = imgUrl;
       avatarImg.style.display = 'block';
       avatarText.style.display = 'none';
       
-      // Background download & save for offline use
-      cacheAvatarImage(imgUrl, userId);
+      // If the image fails to load (offline/broken link), revert to initials
+      avatarImg.onerror = () => {
+        avatarImg.style.display = 'none';
+        const nameStr = user.name || user.email || 'User';
+        avatarText.textContent = nameStr.charAt(0).toUpperCase();
+        avatarText.style.display = 'flex';
+      };
     } else {
-      // Fallback to Initial
+      // No image URL, use initials
       const nameStr = user.name || user.email || 'User';
       avatarText.textContent = nameStr.charAt(0).toUpperCase();
       avatarText.style.display = 'flex';
@@ -654,7 +620,7 @@ function setupUserMenu() {
   const performLogout = (redirectUrl) => {
     userDropdown.classList.remove('show');
     auth.logout();
-    try { redirect.clearReturns(); }   catch { /* ignore */ }
+    try { redirect.clearReturns(); } catch { /* ignore */ }
     try { redirect.clearSnapshots(); } catch { /* ignore */ }
     router.navigateTo(redirectUrl);
   };

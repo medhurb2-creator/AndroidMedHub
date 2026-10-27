@@ -24,7 +24,7 @@ const VERSION_KEY     = 'slideDataVersion';
 const LAST_CHECK_KEY  = 'slideDataLastCheck';
 const MANIFEST_KEY    = 'slideDataManifest';
 const IMAGE_IDS_KEY   = 'slideDataImageIds';
-const WEEKLY_MS       = 7 * 24 * 60 * 60 * 1000;
+const WEEKLY_MS       = 2 * 24 * 60 * 60 * 1000;
 const EXTRACT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes hard cap
 
 // ---------------------------------------------------------------- status

@@ -1,5 +1,5 @@
 // public/service-worker.js
-const CACHE_VERSION = 'v3.6'; // <--- Bumped for new assets
+const CACHE_VERSION = 'v3.7'; // <--- Bumped for new assets
 const CACHE_NAME = `medexam-${CACHE_VERSION}`;
 
 // ====== DECRYPTION KEY (MUST match encrypt-json.js) ======
@@ -106,11 +106,11 @@ const STATIC_ASSETS = [
     '/css/free-trial.css',
     '/css/locked.css',
     '/css/login.css',
-    '/css/notes.css',
+    
     '/css/notifications.css',
     '/css/offline.css',
     '/css/payment.css',
-    '/css/pdf-settings.css',
+   
     '/css/performance.css',
     '/css/privacy.css',
     '/css/profile.css',
@@ -133,7 +133,7 @@ const STATIC_ASSETS = [
     '/scripts/help.js',
     '/scripts/index.js',
     '/scripts/index2.js',
-    '/scripts/pdf-engine.js',
+    
     '/scripts/web.js',
 
     // ==========================================
@@ -149,11 +149,11 @@ const STATIC_ASSETS = [
     '/scripts/pages/free-trial.js',
     '/scripts/pages/locked.js',
     '/scripts/pages/login.js',
-    '/scripts/pages/notes.js',
+   
     '/scripts/pages/notifications.js',
     '/scripts/pages/offline.js',
     '/scripts/pages/payment.js',
-    '/scripts/pages/pdf-settings.js',
+   
     '/scripts/pages/performance.js',
     '/scripts/pages/privacy.js',
     '/scripts/pages/profile.js',
@@ -183,11 +183,11 @@ const STATIC_ASSETS = [
     '/pages/free-trial.html',
     '/pages/locked.html',
     '/pages/login.html',
-    '/pages/notes.html',
+    
     '/pages/notifications.html',
     '/pages/offline.html',
     '/pages/payment.html',
-    '/pages/pdf-settings.html',
+    
     '/pages/performance.html',
     '/pages/privacy.html',
     '/pages/profile.html',

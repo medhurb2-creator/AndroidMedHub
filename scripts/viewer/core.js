@@ -1274,8 +1274,17 @@ if (blob && typeof blob.size === 'number' && blob.size > capBytes) {
     this._clearViewerMainPreservingChrome();
 
     const container = document.createElement('div');
-    container.className = CONFIG.PAGE_CONTAINER_CLASS;
-    main.appendChild(container);
+container.className = CONFIG.PAGE_CONTAINER_CLASS;
+
+// Add these four lines to vertically and horizontally center the image
+container.style.display = 'flex';
+container.style.alignItems = 'center';
+container.style.justifyContent = 'center';
+container.style.minHeight = '100%';
+
+main.appendChild(container);
+
+
 
     const url = createObjectURL(blob);
     const img = document.createElement('img');

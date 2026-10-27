@@ -230,6 +230,21 @@ function hideShimmer() {
   }
 }
 
+// ==================== HELPER: FORMAT STUDY DURATION ====================
+// Matches the formatter in pages/performance.js so both surfaces agree.
+function formatStudyDuration(totalSeconds) {
+  const s = Math.max(0, Math.round(Number(totalSeconds) || 0));
+  if (s === 0) return '0h';
+  if (s < 60) return `${s}s`;
+  if (s < 3600) {
+    const m = Math.round(s / 60);
+    return m >= 60 ? '1h' : `${m}m`;
+  }
+  const h = s / 3600;
+  const rounded = Math.round(h * 10) / 10;
+  return Number.isInteger(rounded) ? `${rounded}h` : `${rounded.toFixed(1)}h`;
+}
+
 // ==================== INSTITUTION DROPDOWN ====================
 //
 // Reworked so the selected value is reachable from outside — the
@@ -946,12 +961,12 @@ async function loadStatistics() {
     });
 
     const avgScore = totalQuestions > 0 ? (totalCorrect / totalQuestions) * 100 : 0;
-    const totalHours = totalStudyTime > 0 ? Math.round(totalStudyTime / (1000 * 60 * 60) * 10) / 10 : 0;
+    const totalSeconds = Math.round(totalStudyTime / 1000);
 
     $('#total-exams').textContent = totalExams || 0;
     $('#total-questions').textContent = totalQuestions || 0;
     $('#avg-score').textContent = avgScore ? `${Math.round(avgScore)}%` : '—';
-    $('#study-time').textContent = totalHours ? `${totalHours}h` : '0h';
+    $('#study-time').textContent = formatStudyDuration(totalSeconds);
 
     await db.saveUserStatistics({
       totalExams,
@@ -968,7 +983,10 @@ async function loadStatistics() {
       $('#total-exams').textContent = cached.totalExams || 0;
       $('#total-questions').textContent = cached.totalQuestions || 0;
       $('#avg-score').textContent = cached.averageScore ? `${cached.averageScore}%` : '—';
-      $('#study-time').textContent = cached.totalStudyTime ? `${Math.round(cached.totalStudyTime / 60)}h` : '0h';
+      // cached.totalStudyTime is stored in MILLISECONDS (see the
+      // saveUserStatistics() call above); convert to seconds for display.
+      const cachedSeconds = Math.round((cached.totalStudyTime || 0) / 1000);
+      $('#study-time').textContent = formatStudyDuration(cachedSeconds);
     }
   }
 }

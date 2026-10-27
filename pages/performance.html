@@ -85,9 +85,10 @@
     <main>
       <h1>Performance Analytics</h1>
 
-      <!-- Tabs (5) -->
+      <!-- Tabs (6) -->
       <div class="tabs" id="tabsContainer">
         <button class="tab-button active" data-tab="summary-tab">📊 Summary</button>
+        <button class="tab-button" data-tab="insights-tab">🧠 Insights</button>
         <button class="tab-button" data-tab="subjects-tab">📚 Subjects</button>
         <button class="tab-button" data-tab="downloaded-tab">📥 Downloaded</button>
         <button class="tab-button" data-tab="planner-tab">📅 Planner</button>
@@ -152,7 +153,31 @@
             <button id="weakStudyBtn" class="btn-small">Study Weak Areas</button>
           </div>
         </div>
+      </div>
 
+      <!-- ─── INSIGHTS TAB (NEW) ─── -->
+      <div id="insights-tab" class="tab-content">
+        <h2 style="margin:0.5rem 0 0.75rem 0;">🧠 Learning Insights</h2>
+        <p style="color:var(--text-muted);font-size:0.85rem;margin:0 0 1rem 0;">
+          Personalized analysis from the on-device learning engine — offline, deterministic, uncertainty-aware.
+        </p>
+
+        <!-- ─── MEDVIX LEARNING INSIGHTS (engine-narrated) ───
+             Populated by renderMedVixInsights() in performance.js.
+             Declared explicitly so the initial paint is stable —
+             JS finds it via getElementById('medvix-insights'). -->
+        <div class="card" id="medvix-insights">
+          <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
+            <h2 style="margin:0;">📈 Engine Analysis</h2>
+            <span style="font-size:0.7rem;color:var(--text-muted);">Local engine · offline · truthful</span>
+          </div>
+          <div class="card-body" id="medvix-insights-body">
+            <p class="no-data">Analysing your history...</p>
+          </div>
+        </div>
+
+        <!-- ─── PERSONALIZED RECOMMENDATIONS ───
+             Populated by renderRecommendations() in performance.js. -->
         <div class="card recommendations-card">
           <h2>🎯 Personalized Recommendations</h2>
           <div id="recommendations-list"></div>
@@ -204,18 +229,8 @@
                 </select>
                 <input id="tt-time" type="text" placeholder="08:00–10:00"
                   style="padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--bg-secondary); color:var(--text-primary); width:140px;">
-                <input id="tt-subject" type="text" placeholder="Subject"
-                  style="padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--bg-secondary); color:var(--text-primary); width:120px;">
-                <select id="tt-color"
-                  style="padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--bg-secondary); color:var(--text-primary);">
-                  <option value="anatomy">Anatomy</option>
-                  <option value="physiology">Physiology</option>
-                  <option value="biochemistry">Biochemistry</option>
-                  <option value="revision">Revision</option>
-                  <option value="mcq">MCQ</option>
-                  <option value="pathology">Pathology</option>
-                  <option value="pharmacology">Pharmacology</option>
-                </select>
+                <input id="tt-subject" type="text" placeholder="Subject / activity"
+                  style="padding:0.4rem 0.6rem; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--bg-secondary); color:var(--text-primary); flex:1; min-width:140px;">
                 <button id="addTimetableBtn"
                   style="padding:0.4rem 1rem; background:var(--accent); color:#fff; border:none; border-radius:var(--radius-sm); cursor:pointer;">+
                   Add</button>
@@ -299,10 +314,7 @@
             <div class="planner-module">
               <h3>🔔 Study Reminders</h3>
               <div class="reminder-list" id="reminder-list">
-                <div class="reminder-item"><span class="icon">⏰</span> Anatomy starts in 15 minutes.</div>
-                <div class="reminder-item"><span class="icon">🎯</span> Today's Goal: <span class="goal-badge">Study 3
-                    hours</span></div>
-                <div class="reminder-item"><span class="icon">📝</span> Revision reminder: Review Histology</div>
+                <div class="reminder-item"><span class="icon">⏳</span> Loading reminders…</div>
               </div>
             </div>
           </div>
@@ -447,6 +459,7 @@
 
               <div class="quick-links">
                 <div class="quick-link" data-tab="summary-tab">Subject Performance <span class="arrow">→</span></div>
+                <div class="quick-link" data-tab="insights-tab">Learning Insights <span class="arrow">→</span></div>
                 <div class="quick-link" data-tab="subjects-tab">Exam History <span class="arrow">→</span></div>
                 <div class="quick-link" data-tab="planner-tab">Study Planner <span class="arrow">→</span></div>
               </div>
@@ -493,9 +506,9 @@
               </div>
 
               <div class="ai-summary">
-                <div class="title">🤖 AI Recommendation</div>
+                <div class="title">🧠 Learning Insights</div>
                 <div class="body" id="ai-recommendation-body">
-                  Complete more exams to get personalized AI recommendations!
+                  Answer a few questions to unlock personalized learning insights.
                 </div>
               </div>
             </div>
@@ -693,9 +706,9 @@
               <button id="copyProfileBtn" class="share-btn-secondary">🔗 Copy Profile Link</button>
 
               <div class="ai-summary" style="margin-top:1.5rem;">
-                <div class="title">🤖 Academic Summary</div>
+                <div class="title">🧠 Learning Summary</div>
                 <div class="body" id="academic-summary-body">
-                  Complete more exams to get your AI summary!
+                  Answer a few questions to unlock your learning summary.
                 </div>
               </div>
             </div>
@@ -721,7 +734,7 @@
         <button class="footer-btn" data-route="profile" title="Profile">👤
           <span>Profile</span>
         </button>
-        
+
       </div>
     </main>
   </div>

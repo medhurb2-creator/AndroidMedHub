@@ -1,33 +1,6 @@
 /**
  * MedVix Unified PDF Engine v7.0
  * File 7 of 8 — AST-to-Typst Markup Compiler
- * ─────────────────────────────────────────────────────────────────────────────
- *
- * The only file in the engine that knows what a "note", "exam", "MCQ sheet",
- * "answer key", or "analytics report" is. It translates a validated AST
- * (from File 2) into a complete Typst source string, composing:
- *
- *   • File 4's design tokens         ( `#let` bindings )
- *   • File 5's master frame          ( `#set page(...)` + running chrome )
- *   • File 6's visual components     ( cards, tables, notices, MCQ grids, ... )
- *   • File 3's loaded assets         ( logo, QR )
- *
- * Public API
- * ──────────
- *   compileDocumentToTypst(type, data) → string
- *   COMPILERS                          → frozen map of type → function
- *   COMPILER_TYPES                     → frozen list of supported type keys
- *   CompileError                       → typed error with .details
- *
- * Guarantees
- * ──────────
- *   • Pure          — no DOM, no fetch, no side effects.
- *   • Deterministic — same AST → byte-identical Typst source.
- *   • Trusting      — reads AST fields assuming File 2 already sanitized them.
- *   • Non-mutating  — never writes to the AST or any parameter.
- *   • Registry-safe — rejects unknown types with a structured error.
- *   • Self-checking — verifies every schema in File 2 has a compiler.
- * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import * as C                              from './components.js';
@@ -118,8 +91,6 @@ function buildSetup(docTypeKey) {
   try {
     logoBase64 = getLogoBase64();
   } catch (err) {
-    // File 1 guarantees assets are loaded before File 7 runs.
-    // If this fires, it is a bug in File 1's orchestration, not in the AST.
     throw new CompileError(
       'Logo unavailable — loadAssets() must resolve before compileDocumentToTypst()',
       { cause: err }
@@ -152,20 +123,19 @@ function buildEndPage(data) {
   try {
     qrBase64 = getQrBase64();
   } catch {
-    // Non-fatal — end page renders without a QR code.
     qrBase64 = '';
   }
 
   return C.endPage({
-    title:      data.endTitle    || 'Document Complete',
-    subtitle:   data.endSubtitle || '',
-    message:    data.endMessage  || '',
-    features:   Array.isArray(data.endFeatures) ? data.endFeatures : [],
-    ctaText:    data.ctaText     || '',
-    ctaUrl:     data.ctaUrl      || '',
+    title:      String(data.endTitle    || 'Document Complete'),
+    subtitle:   String(data.endSubtitle || ''),
+    message:    String(data.endMessage  || ''),
+    features:   Array.isArray(data.endFeatures) ? data.endFeatures.map(String) : [],
+    ctaText:    String(data.ctaText     || ''),
+    ctaUrl:     String(data.ctaUrl      || ''),
     qrBase64,
     copyright:  COPYRIGHT,
-    disclaimer: data.disclaimer  || ''
+    disclaimer: String(data.disclaimer  || '')
   });
 }
 
@@ -197,17 +167,13 @@ function studentInfoRow() {
 // ═══════════════════════════════════════════════════════════════════════════
 // 5. Per-type compilers
 // ═══════════════════════════════════════════════════════════════════════════
-//
-// Each compiler is a pure function `(data) => string`. It reads only the
-// fields declared in its schema in File 2, and it never mutates its input.
 
 // ── Notes ──────────────────────────────────────────────────────────────────
 
 function compileNotes(data) {
-  // First-page intro: subject/topic subtitle line + metadata grid.
   const subtitleParts = [];
-  if (data.subject) subtitleParts.push(data.subject);
-  if (data.topic)   subtitleParts.push(data.topic);
+  if (data.subject) subtitleParts.push(String(data.subject));
+  if (data.topic)   subtitleParts.push(String(data.topic));
   const subtitle = subtitleParts.join(' • ');
 
   const introParts = [];
@@ -217,17 +183,16 @@ function compileNotes(data) {
   }
   introParts.push(C.metaGrid({
     cells: [
-      { label: 'Owner',      value: data.owner  || 'Student' },
-      { label: 'Generated',  value: data.date   || '' },
-      { label: 'Subject',    value: data.subject || 'General' },
-      { label: 'Export ID',  value: data.id      || '' }
+      { label: 'Owner',      value: String(data.owner  || 'Student') },
+      { label: 'Generated',  value: String(data.date   || '') },
+      { label: 'Subject',    value: String(data.subject || 'General') },
+      { label: 'Export ID',  value: String(data.id      || '') }
     ],
     columns: 4
   }));
   introParts.push('#v(20pt)');
 
-  // Body: File 2 has already converted `data.content` HTML → Typst markup.
-  const body = data.content || '';
+  const body = String(data.content || '');
 
   return assemble([
     buildSetup('notes'),
@@ -245,40 +210,36 @@ function compileExam(data) {
     ? data.totalMarks
     : questions.length;
 
-  // Title block.
   const subtitleLine =
-    `${questions.length} Questions • ${totalMarks} Marks • ${data.difficulty || 'Moderate'} Difficulty`;
+    `${questions.length} Questions • ${totalMarks} Marks • ${String(data.difficulty || 'Moderate')} Difficulty`;
 
   const introParts = [];
-  introParts.push(C.docTitle({ title: data.title, subtitle: subtitleLine }));
+  introParts.push(C.docTitle({ title: String(data.title || ''), subtitle: subtitleLine }));
 
   if (data.studentInfo === true) {
     introParts.push(studentInfoRow());
   }
 
-  // Metadata table (4 rows, 2 columns).
   introParts.push(C.metaTable({
     rows: [
-      [{ label: 'Subject',        value: data.subject || 'Medical Science' },
-       { label: 'Topics',         value: data.topics  || '' }],
+      [{ label: 'Subject',        value: String(data.subject || 'Medical Science') },
+       { label: 'Topics',         value: String(data.topics  || '') }],
       [{ label: 'Questions',      value: String(questions.length) },
        { label: 'Total Marks',    value: String(totalMarks) }],
-      [{ label: 'Time Allowed',   value: data.duration  || '2 Hours' },
-       { label: 'Difficulty',     value: data.difficulty || 'Moderate' }],
-      [{ label: 'Date Generated', value: data.date || '' },
-       { label: 'Exam ID',        value: data.id   || '' }]
+      [{ label: 'Time Allowed',   value: String(data.duration  || '2 Hours') },
+       { label: 'Difficulty',     value: String(data.difficulty || 'Moderate') }],
+      [{ label: 'Date Generated', value: String(data.date || '') },
+       { label: 'Exam ID',        value: String(data.id   || '') }]
     ]
   }));
   introParts.push('#v(16pt)');
 
-  // Educational-use notice.
   introParts.push(C.noticeBox({
     title: 'Educational Use',
     body: 'This examination has been generated by MedVix for revision, practice and self-assessment. It is not an official institutional examination.'
   }));
   introParts.push('#v(16pt)');
 
-  // Instructions list.
   introParts.push('#text(size: font-size-md, weight: "bold", fill: brand-primary)[Instructions]');
   introParts.push('#v(6pt)');
   introParts.push(C.numberedList({
@@ -294,14 +255,13 @@ function compileExam(data) {
   introParts.push(C.divider());
   introParts.push('#v(16pt)');
 
-  // Body: one questionBlock per question.
   const bodyParts = [];
   for (const q of questions) {
     if (!q || !q.text) continue;
     bodyParts.push(C.questionBlock({
-      id: q.id,
-      text: q.text,
-      options: Array.isArray(q.options) ? q.options : [],
+      id: String(q.id || ''),
+      text: String(q.text),
+      options: Array.isArray(q.options) ? q.options.map(String) : [],
       marginBottomPt: 16
     }));
   }
@@ -321,11 +281,10 @@ function compileMcqSheet(data) {
 
   const introParts = [];
   introParts.push(C.docTitle({
-    title: data.title,
+    title: String(data.title || ''),
     subtitle: 'Mark one circle per question (A, B, C, D, or E)'
   }));
 
-  // Meta: studentInfo adds two extra rows.
   const rows = [];
   if (data.studentInfo === true) {
     rows.push([
@@ -334,13 +293,12 @@ function compileMcqSheet(data) {
     ]);
   }
   rows.push([
-    { label: 'Exam ID',         value: data.id || '' },
+    { label: 'Exam ID',         value: String(data.id || '') },
     { label: 'Total Questions', value: String(total) }
   ]);
   introParts.push(C.metaTable({ rows }));
   introParts.push('#v(16pt)');
 
-  // Instructions.
   introParts.push('#text(size: font-size-md, weight: "bold", fill: brand-primary)[Instructions]');
   introParts.push('#v(6pt)');
   introParts.push(C.bulletList({
@@ -352,7 +310,6 @@ function compileMcqSheet(data) {
   }));
   introParts.push('#v(12pt)');
 
-  // Body: the paginated MCQ grid.
   const body = C.mcqGrid({
     totalQuestions: total,
     optionLabels:   ['A', 'B', 'C', 'D', 'E'],
@@ -377,13 +334,13 @@ function compileAnswerKey(data) {
 
   const introParts = [];
   introParts.push(C.docTitle({
-    title: data.title,
-    subtitle: data.subtitle || ''
+    title: String(data.title || ''),
+    subtitle: String(data.subtitle || '')
   }));
 
   introParts.push(C.metaGrid({
     cells: [
-      { label: 'Subject',      value: data.subject || 'General' },
+      { label: 'Subject',      value: String(data.subject || 'General') },
       { label: 'Questions',    value: `${answers.length} Questions` },
       { label: 'Total Marks',  value: `${totalMarks} Marks` },
       { label: 'Document',     value: 'Answer Guide' }
@@ -396,10 +353,10 @@ function compileAnswerKey(data) {
   for (const a of answers) {
     if (!a) continue;
     bodyParts.push(C.answerBlock({
-      id: a.id,
-      question: a.question,
-      correctOption: a.correctOption,
-      explanation: a.explanation   // File 2 already normalized this shape
+      id: String(a.id || ''),
+      question: String(a.question || ''),
+      correctOption: String(a.correctOption || ''),
+      explanation: a.explanation
     }));
   }
 
@@ -412,18 +369,6 @@ function compileAnswerKey(data) {
 }
 
 // ── Analytics ──────────────────────────────────────────────────────────────
-
-/**
- * Analytics renders a two-page report followed by the end page.
- *
- *   • Page 1: metrics grid, insight, topic table (page-one slice).
- *   • Page 2: second topic table, second insight, chart placeholders.
- *   • End page.
- *
- * The layout structure is fixed; the content is data-driven. When the AST
- * supplies no metrics/topics/insights, the compiler falls back to a small
- * set of defaults so the document still renders a usable template.
- */
 
 const ANALYTICS_DEFAULT_METRICS = Object.freeze([
   Object.freeze({ label: 'Overall Rating',       value: '—' }),
@@ -449,37 +394,33 @@ function compileAnalytics(data) {
   const topics   = Array.isArray(data.topics)   ? data.topics   : [];
   const insights = Array.isArray(data.insights) && data.insights.length > 0 ? data.insights : [];
 
-  // ── Page 1: intro + first-page analytics content ────────────────────────
   const introParts = [];
   introParts.push(C.docTitle({
-    title: data.title || 'Student Performance Analytics',
+    title: String(data.title || 'Student Performance Analytics'),
     subtitle: 'Personal Learning Progress Overview'
   }));
 
   introParts.push(C.metaGrid({
-    cells: metrics.slice(0, 4).map(m => ({ label: m.label, value: m.value })),
+    cells: metrics.slice(0, 4).map(m => ({ label: String(m.label), value: String(m.value) })),
     columns: Math.max(1, Math.min(4, metrics.length))
   }));
   introParts.push('#v(24pt)');
 
-  // Progress Highlights section.
   introParts.push(`#text(size: font-size-lg, weight: "bold", fill: brand-primary)[Progress Highlights]`);
   introParts.push('#v(12pt)');
   introParts.push(C.chartPlaceholder({ label: '[ Performance Over Time Chart ]', heightPt: 120 }));
   introParts.push('#v(12pt)');
 
   const insight1 = insights[0] || { label: 'Insight', text: ANALYTICS_DEFAULT_INSIGHT_1 };
-  introParts.push(C.insightBox({ label: insight1.label || 'Insight', text: insight1.text }));
+  introParts.push(C.insightBox({ label: String(insight1.label || 'Insight'), text: String(insight1.text) }));
   introParts.push('#v(16pt)');
 
-  // Page-1 topic table.
   const page1Topics = topics.length > 0 ? topics.slice(0, 3) : ANALYTICS_DEFAULT_TOPICS_PAGE1;
   introParts.push(C.topicTable({
     columns: ['Topic', 'Questions', 'Accuracy', 'Trend'],
-    rows: page1Topics.map(t => [t.name, t.questions, t.accuracy, t.trend])
+    rows: page1Topics.map(t => [String(t.name), String(t.questions), String(t.accuracy), String(t.trend)])
   }));
 
-  // ── Page 2: second section of analytics ─────────────────────────────────
   const page2Parts = [];
   page2Parts.push(C.pageBreak());
   page2Parts.push(`#text(size: font-size-lg, weight: "bold", fill: brand-primary)[Topic Breakdown & Time Analysis]`);
@@ -491,7 +432,7 @@ function compileAnalytics(data) {
   if (page2Topics.length > 0) {
     page2Parts.push(C.topicTable({
       columns: ['Topic', 'Questions', 'Accuracy', 'Trend'],
-      rows: page2Topics.map(t => [t.name, t.questions, t.accuracy, t.trend])
+      rows: page2Topics.map(t => [String(t.name), String(t.questions), String(t.accuracy), String(t.trend)])
     }));
   } else {
     page2Parts.push(C.topicTable({
@@ -507,7 +448,7 @@ function compileAnalytics(data) {
   page2Parts.push('#v(12pt)');
 
   const insight2 = insights[1] || { label: 'Recommendation', text: ANALYTICS_DEFAULT_INSIGHT_2 };
-  page2Parts.push(C.insightBox({ label: insight2.label || 'Recommendation', text: insight2.text }));
+  page2Parts.push(C.insightBox({ label: String(insight2.label || 'Recommendation'), text: String(insight2.text) }));
   page2Parts.push('#v(12pt)');
 
   page2Parts.push(C.chartPlaceholder({ label: '[ Daily Streak Calendar / Heatmap ]', heightPt: 100 }));
@@ -534,14 +475,6 @@ export const COMPILERS = Object.freeze({
 
 export const COMPILER_TYPES = Object.freeze(Object.keys(COMPILERS));
 
-/**
- * Compile a validated AST into a complete Typst source string.
- *
- * @param {string} type   Document type key — must exist in COMPILERS.
- * @param {object} data   Frozen AST from File 2's validateDocData().
- * @returns {string}      Complete Typst markup ready for File 8.
- * @throws {CompileError} On unknown type or malformed input.
- */
 export function compileDocumentToTypst(type, data) {
   if (typeof type !== 'string' || type.length === 0) {
     throw new CompileError('Document type must be a non-empty string', { received: typeof type });
@@ -601,10 +534,3 @@ export function compileDocumentToTypst(type, data) {
     );
   }
 })();
-
-// ═══════════════════════════════════════════════════════════════════════════
-// 8. Ready
-// ═══════════════════════════════════════════════════════════════════════════
-
-// No logging, no side effects beyond the bijection check above. Every
-// compiler is pure and deterministic; the dispatcher is a strict router.

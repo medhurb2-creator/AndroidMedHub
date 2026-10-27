@@ -10,6 +10,7 @@ import * as sync from '../sync.js';
 //    distinguish slide from static subjects for URL construction.
 import * as questions from '../questions.js';
 import * as slideData from '../slide-data.js';
+import * as examEngine from '../exam-engine.js';
 
 let $;
 let currentExamId = null;
@@ -109,6 +110,14 @@ export async function init(context) {
       displayRecommendations(results.weakAreas);
       $('#recommendations').style.display = 'block';
     }
+
+    // ── ENGINE: compact post-exam insights (silently no-ops if empty)
+    try {
+      renderResultsInsights(results);
+    } catch (e) {
+      console.warn('[Results] renderResultsInsights failed (non-fatal):', e);
+    }
+
     if (results.questions && results.questions.length > 0) {
       // ── IMAGES: pass results.subject so the review-list image
       //    hydrator knows which subject's folder / slide namespace
@@ -373,6 +382,208 @@ function displayRecommendations(weakAreas) {
   });
   html += '</ul>';
   container.innerHTML = html;
+}
+
+// ==================== LEARNING INSIGHTS (compact, engine-backed) ====================
+
+function escapeHtml(str) {
+  if (typeof str !== 'string') return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function prettifyTopic(raw) {
+  if (!raw) return '';
+  return String(raw)
+    .replace(/[-_]/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function shortReviewTime(days) {
+  if (!Number.isFinite(days)) return '';
+  const d = Math.max(0, Math.round(days));
+  if (d <= 1) return 'tomorrow';
+  if (d <= 7) return `${d}d`;
+  return `${Math.round(d / 7)}w`;
+}
+
+/**
+ * Compact post-exam insights. Shows ONLY what this exam touched:
+ *   • session narration (one line from the narrator)
+ *   • a horizontal chip row of review timings
+ *   • a single-line misconception warning when applicable
+ *   • one CTA to practice the same concepts adaptively
+ *
+ * Silently no-ops if there is nothing genuinely useful to show.
+ */
+function renderResultsInsights(results) {
+  const container = $('#medvix-results-insights');
+  if (!container) return;
+
+  const medvix = results && results.medvix;
+  if (!medvix || !medvix.ingested) return;
+
+  const sessionNarration = medvix.sessionNarration || null;
+  const reviewPlans = medvix.reviewPlans || {};
+  const diagnostics = medvix.diagnostics || {};
+  const touched = new Set(medvix.conceptsTouched || []);
+
+  // Retention items — only for concepts THIS exam touched, sorted by urgency
+  const URGENCY_RANK = { high: 0, moderate: 1, low: 2 };
+  const reviewItems = Object.entries(reviewPlans)
+    .filter(([cid]) => touched.size === 0 || touched.has(cid))
+    .map(([conceptId, plan]) => ({ conceptId, ...plan }))
+    .filter(p => Number.isFinite(p.currentP))
+    .sort((a, b) => {
+      const ra = URGENCY_RANK[a.urgency] ?? 3;
+      const rb = URGENCY_RANK[b.urgency] ?? 3;
+      if (ra !== rb) return ra - rb;
+      return a.currentP - b.currentP;
+    })
+    .slice(0, 3);
+
+  // Misconception flags — only for concepts THIS exam touched
+  const misconceptionItems = Object.entries(diagnostics)
+    .filter(([cid, d]) =>
+      (touched.size === 0 || touched.has(cid)) &&
+      d.misconceptions && d.misconceptions.flagged === true
+    )
+    .slice(0, 2);
+
+  // Nothing useful? Hide entirely — no empty card, no wasted space.
+  if (!sessionNarration && reviewItems.length === 0 && misconceptionItems.length === 0) {
+    return;
+  }
+
+  const parts = [];
+
+  // 1. Session narration — one paragraph, no tagline above it
+  if (sessionNarration) {
+    parts.push(`<p class="insights-session">${escapeHtml(sessionNarration)}</p>`);
+  }
+
+  // 2. Review timeline — horizontal chips, wraps only on very narrow screens
+  if (reviewItems.length > 0) {
+    const chips = reviewItems.map(p => {
+      const [, rawTopic] = String(p.conceptId).split('::');
+      const topic = prettifyTopic(rawTopic || p.conceptId);
+      const when = shortReviewTime(p.nextReviewInDays);
+      const cls = p.urgency === 'high' ? 'urgent'
+                : p.urgency === 'moderate' ? 'warning' : 'fine';
+      const whenPart = when ? `<span class="insights-chip-when">${escapeHtml(when)}</span>` : '';
+      return `<span class="insights-chip insights-chip-${cls}">${escapeHtml(topic)}${whenPart}</span>`;
+    }).join('');
+    parts.push(`
+      <div class="insights-review-line">
+        <span class="insights-line-label">Review</span>${chips}
+      </div>
+    `);
+  }
+
+  // 3. Misconception warning — one line, only if any
+  if (misconceptionItems.length > 0) {
+    const topics = misconceptionItems.map(([cid]) => {
+      const [, rawTopic] = String(cid).split('::');
+      return prettifyTopic(rawTopic || cid);
+    }).join(', ');
+    parts.push(`
+      <p class="insights-misconception">
+        ⚠️ High-confidence errors on <strong>${escapeHtml(topics)}</strong>
+      </p>
+    `);
+  }
+
+  // 4. CTA — one compact button, only when there's something to retry
+  if (reviewItems.length > 0) {
+    parts.push(`
+      <div class="insights-actions">
+        <button id="medvix-retry-weak" class="btn-secondary" type="button">
+          Practice Weak Concepts
+        </button>
+      </div>
+    `);
+  }
+
+  container.innerHTML = `
+    <h2>🧠 What the Engine Saw</h2>
+    ${parts.join('')}
+  `;
+  container.style.display = 'block';
+
+  const retryBtn = document.getElementById('medvix-retry-weak');
+  if (retryBtn) {
+    retryBtn.addEventListener('click', () => retryWeakConcepts(retryBtn, results));
+  }
+}
+
+async function retryWeakConcepts(button, results) {
+  const originalLabel = button ? button.textContent : '';
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Preparing…';
+  }
+  try {
+    const medvix = results && results.medvix;
+    const plans = medvix && medvix.reviewPlans;
+    if (!plans) {
+      ui.showToast('Nothing to retry from this session.', 'info');
+      return;
+    }
+
+    const touched = new Set(medvix.conceptsTouched || []);
+    const URGENCY_RANK = { high: 0, moderate: 1, low: 2 };
+    const ranked = Object.entries(plans)
+      .filter(([cid]) => touched.size === 0 || touched.has(cid))
+      .map(([conceptId, plan]) => ({ conceptId, ...plan }))
+      .sort((a, b) => (URGENCY_RANK[a.urgency] ?? 3) - (URGENCY_RANK[b.urgency] ?? 3))
+      .slice(0, 5);
+
+    const bySubject = {};
+    for (const p of ranked) {
+      const [subject, topic] = String(p.conceptId).split('::');
+      if (!subject || !topic) continue;
+      if (!bySubject[subject]) bySubject[subject] = [];
+      bySubject[subject].push(topic);
+    }
+    const subjectKeys = Object.keys(bySubject);
+    if (subjectKeys.length === 0) {
+      ui.showToast('Could not determine target topics.', 'info');
+      return;
+    }
+
+    const targetSubject = subjectKeys.includes(results.subject)
+      ? results.subject
+      : subjectKeys[0];
+    const topics = bySubject[targetSubject] || [];
+
+    const config = await examEngine.buildAdaptiveExamConfig({
+      subject: targetSubject,
+      topics,
+      questionCount: 15,
+      preferredExamMode: 'standard',
+    });
+    examEngine.setExamConfig(config);
+
+    ui.showToast(`Adaptive session prepared · ${topics.length} topic(s)`, 'success');
+
+    try {
+      router.navigateTo('exam-settings');
+    } catch (e) {
+      console.warn('[Results] navigateTo("exam-settings") failed:', e);
+    }
+  } catch (e) {
+    console.error('[Results] retryWeakConcepts failed:', e);
+    ui.showToast('Could not prepare adaptive session.', 'error');
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalLabel || 'Practice Weak Concepts';
+    }
+  }
 }
 
 // ==================== DOWNLOAD EXAM ====================

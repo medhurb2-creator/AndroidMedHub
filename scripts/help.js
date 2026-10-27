@@ -78,10 +78,10 @@ const TUTORIALS = [
 
 export function renderHelp(container) {
     container.innerHTML = '';
-    
+
     const panel = document.createElement('div');
     panel.className = 'help-panel';
-    
+
     // Header
     const header = document.createElement('div');
     header.className = 'help-header';
@@ -90,7 +90,7 @@ export function renderHelp(container) {
         <button class="help-close" onclick="document.getElementById('helpOverlay').style.display='none'">✕</button>
     `;
     panel.appendChild(header);
-    
+
     // Search
     const search = document.createElement('input');
     search.type = 'text';
@@ -104,12 +104,12 @@ export function renderHelp(container) {
         });
     });
     panel.appendChild(search);
-    
+
     // FAQ
     const faqTitle = document.createElement('h3');
     faqTitle.textContent = 'Frequently Asked Questions';
     panel.appendChild(faqTitle);
-    
+
     FAQ.forEach(item => {
         const div = document.createElement('div');
         div.className = 'faq-item';
@@ -125,12 +125,12 @@ export function renderHelp(container) {
         });
         panel.appendChild(div);
     });
-    
+
     // Tutorials
     const tutTitle = document.createElement('h3');
     tutTitle.textContent = 'Quick Tutorials';
     panel.appendChild(tutTitle);
-    
+
     TUTORIALS.forEach(tut => {
         const div = document.createElement('div');
         div.className = 'faq-item';
@@ -148,22 +148,22 @@ export function renderHelp(container) {
         });
         panel.appendChild(div);
     });
-    
+
     // Contact
     const contactTitle = document.createElement('h3');
     contactTitle.textContent = 'Contact Support';
     panel.appendChild(contactTitle);
-    
+
     const contacts = document.createElement('div');
     contacts.className = 'help-contacts';
     contacts.innerHTML = `
-        <button onclick="window.location.href='mailto:felixappbuilder@gmail.com'">✉️ Email</button>
-        <button onclick="window.location.href='tel:+254746834527'">📱 Call</button>
-        <button onclick="window.open('https://wa.me/254746834527','_blank')">💬 WhatsApp</button>
+        <button onclick="window.location.href='mailto:support@medvix.co.ke'">✉️ Email</button>
+        <button onclick="window.location.href='tel:+254720420855'">📱 Call</button>
+        <button onclick="window.open('https://wa.me/254720420855','_blank')">💬 WhatsApp</button>
         <button onclick="window.open('https://forms.gle/your-form-link','_blank')">🐛 Report Bug</button>
     `;
     panel.appendChild(contacts);
-    
+
     // Release notes
     const notes = document.createElement('p');
     notes.style.marginTop = '1.5rem';
@@ -171,7 +171,7 @@ export function renderHelp(container) {
     notes.style.color = 'var(--text-muted)';
     notes.textContent = 'MedVix v1.0.0 • Built with ❤️ in Kenya';
     panel.appendChild(notes);
-    
+
     container.appendChild(panel);
 }
 

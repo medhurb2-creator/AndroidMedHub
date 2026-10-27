@@ -7,17 +7,21 @@ import * as utils from '../utils.js';
 import * as analytics from '../analytics.js';
 import * as db from '../db.js';
 import { convexHttpClient } from '../convex-client.js';
-import { PerformanceAI } from '../performance-ai.js';
+
 import * as performanceRating from '../performance-rating-v2.js';
 // ── IMAGE: needed to resolve slide-subject images from IndexedDB and
 //    distinguish slide from static subjects for URL construction.
 import * as questions from '../questions.js';
 import * as slideData from '../slide-data.js';
+// ── ENGINE: local adaptive learning intelligence + narration. Used to
+//    render the MedVix Insights card, enrich subject/weak cards with
+//    posterior mastery, and (optionally) launch an adaptive session.
+import * as medvix from '../medvix.js';
+import * as examEngine from '../exam-engine.js';
 
 let $;
 let analyticsData = null;
 let chartInstance = null;
-let performanceAI = null;
 
 // Module-scoped chart instances for academic charts
 const academicChartInstances = {};
@@ -27,10 +31,62 @@ const academicChartInstances = {};
 //    away with the modal still open.
 let _openReviewModal = null;
 
+// ── ENGINE: tracks whether the MedVix insights card has been rendered
+//    and a reference to the visibility listener so destroy() can detach.
+let _medvixRendered = false;
+let _medvixVisibilityListener = null;
+
 // ==================== HELPER: SET TEXT (early definition) ====================
 function setText(id, value) {
   const el = $(id);
   if (el) el.textContent = value ?? '';
+}
+
+
+// ==================== HELPER: ESCAPE HTML (for narrator / user text) ====================
+function escapeHtml(str) {
+  if (typeof str !== 'string') return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// ==================== HELPER: DISTINCT COLOR GENERATOR ====================
+// Generates an infinite sequence of distinct colors using the Golden Angle
+// (137.508 degrees) on the HSL color wheel. This ensures that even if you
+// have 50 subjects, no two colors will look the same.
+function getDistinctColor(index) {
+  const goldenAngle = 137.508;
+  const hue = (index * goldenAngle) % 360;
+  
+  // Vary saturation and lightness slightly to further separate hues
+  // that might naturally look similar.
+  const sat = 65 + (index % 3) * 10; // 65%, 75%, 85%
+  const light = 45 + (index % 2) * 10; // 45%, 55%
+  
+  return `hsl(${hue}, ${sat}%, ${light}%)`;
+}
+
+// ==================== HELPER: FORMAT STUDY DURATION ====================
+// Renders a total in seconds using the smallest sensible unit:
+//   < 60s   → "45s"
+//   < 60m   → "12m"
+//   >= 60m  → "1h" / "1.5h" / "22h"
+// Zero data is shown as "0h" to match the pre-existing stat-card style.
+function formatStudyDuration(totalSeconds) {
+  const s = Math.max(0, Math.round(Number(totalSeconds) || 0));
+  if (s === 0) return '0h';
+  if (s < 60) return `${s}s`;
+  if (s < 3600) {
+    const m = Math.round(s / 60);
+    return m >= 60 ? '1h' : `${m}m`;
+  }
+  const h = s / 3600;
+  const rounded = Math.round(h * 10) / 10;
+  return Number.isInteger(rounded) ? `${rounded}h` : `${rounded.toFixed(1)}h`;
 }
 
 // ==================== HELPER: NATIVE SHARE & FALLBACK ====================
@@ -39,21 +95,14 @@ function nativeShare(shareData) {
     title: shareData.title || 'MedVix',
     text: shareData.text || '',
     url: shareData.url || '',
-    dialogTitle: shareData.dialogTitle || 'Share'
+    dialogTitle: shareData.dialogTitle || 'Share',
   };
 
-  // 1. Prefer custom MedvixShare plugin
   if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.MedvixShare) {
-    window.Capacitor.Plugins.MedvixShare.share(data)
-      .catch(() => fallbackShare(data));
-  }
-  // 2. Fallback to Web Share API
-  else if (navigator.share) {
-    navigator.share(data)
-      .catch(() => fallbackShare(data));
-  }
-  // 3. Final fallback: copy to clipboard
-  else {
+    window.Capacitor.Plugins.MedvixShare.share(data).catch(() => fallbackShare(data));
+  } else if (navigator.share) {
+    navigator.share(data).catch(() => fallbackShare(data));
+  } else {
     fallbackShare(data);
   }
 }
@@ -62,11 +111,10 @@ function fallbackShare(shareData) {
   const url = shareData.url || shareData.text || '';
   if (!url) return;
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(url).then(() => {
-      ui.showToast('Link copied to clipboard!', 'success');
-    }).catch(() => {
-      fallbackCopy(url);
-    });
+    navigator.clipboard
+      .writeText(url)
+      .then(() => ui.showToast('Link copied to clipboard!', 'success'))
+      .catch(() => fallbackCopy(url));
   } else {
     fallbackCopy(url);
   }
@@ -87,7 +135,7 @@ function fallbackCopy(text) {
     } else {
       ui.showToast('Failed to copy link. Please copy manually.', 'error');
     }
-  } catch (e) {
+  } catch {
     ui.showToast('Failed to copy link. Please copy manually.', 'error');
   }
   document.body.removeChild(textarea);
@@ -99,14 +147,12 @@ export async function init(context) {
 
   ui.applyTheme();
 
-  // ── Auth gate ────────────────────────────────────────────────────
   if (!auth.checkAuth()) {
     ui.showToast('Please log in to view your performance', 'warning');
     redirect.navigateWithReturn('login', 'auth_required');
     return;
   }
 
-  // ── State adapter ────────────────────────────────────────────────
   redirect.registerStateAdapter('performance', {
     capture: () => {
       const activeTab = document.querySelector('.tab-content.active');
@@ -126,47 +172,40 @@ export async function init(context) {
         pendingAIPlan: window._lastAIPlan || null,
       };
     },
-
     restore: (data) => {
       if (!data) return;
-
       if (data.pendingAIPlan) {
         window._lastAIPlan = data.pendingAIPlan;
         const aiActions = document.getElementById('ai-actions');
         if (aiActions) aiActions.style.display = 'flex';
       }
-
       if (data.activeTabBtnId) {
         try { switchTab(data.activeTabBtnId); } catch { /* ignore */ }
       }
-
       if (data.plannerKey) {
-        document.querySelectorAll('.planner-btn').forEach(b => {
+        document.querySelectorAll('.planner-btn').forEach((b) => {
           b.classList.toggle('active', b.dataset.planner === data.plannerKey);
         });
-        document.querySelectorAll('.planner-module-container').forEach(el => {
+        document.querySelectorAll('.planner-module-container').forEach((el) => {
           el.classList.toggle('active', el.id === `planner-${data.plannerKey}`);
         });
       }
-
       if (data.academicKey) {
-        document.querySelectorAll('.academic-btn').forEach(b => {
+        document.querySelectorAll('.academic-btn').forEach((b) => {
           b.classList.toggle('active', b.dataset.academic === data.academicKey);
         });
-        document.querySelectorAll('.academic-module-container').forEach(el => {
+        document.querySelectorAll('.academic-module-container').forEach((el) => {
           el.classList.toggle('active', el.id === `academic-${data.academicKey}`);
         });
       }
-
       if (data.chartType) {
-        document.querySelectorAll('.chart-btn').forEach(b => {
+        document.querySelectorAll('.chart-btn').forEach((b) => {
           b.classList.toggle('active', b.dataset.chart === data.chartType);
         });
         try { renderChart(data.chartType); } catch { /* ignore */ }
       }
-
       if (data.leaderboardTab) {
-        document.querySelectorAll('.leaderboard-tabs button').forEach(b => {
+        document.querySelectorAll('.leaderboard-tabs button').forEach((b) => {
           b.classList.toggle('active', b.dataset.leaderboard === data.leaderboardTab);
         });
         try { renderLeaderboard(data.leaderboardTab); } catch { /* ignore */ }
@@ -210,13 +249,44 @@ export async function init(context) {
     renderActivityFeed(challengeHistoryData);
     renderGrowth(allResults, challengeHistoryData, performanceData);
 
+    // Avatar: explicit upload wins; fall back to backend picture URL;
+    // otherwise initials.
     const savedAvatar = localStorage.getItem('userAvatar');
-    if (savedAvatar) updateAvatar(savedAvatar);
+    const currentUser = auth.getUser();
+    const backendAvatar = currentUser
+      ? (currentUser.picture || currentUser.photoURL || currentUser.avatar || currentUser.avatarUrl)
+      : null;
+    updateAvatar(savedAvatar || backendAvatar || null);
 
     renderDownloadedExams();
     renderAllPlannerModules();
     setupPlannerButtons();
     setupAcademicButtons();
+
+    // ── ENGINE: render the MedVix Insights card (non-blocking).
+    //    The digest comes from the local engine — offline, ~20ms.
+    renderMedVixInsights(analyticsData).catch((e) =>
+      console.warn('[Performance] MedVix render failed:', e)
+    );
+
+    // Refresh the insights card when the user returns to the tab.
+    // The engine resets and replays all exams to pick up any sessions
+    // performed in another tab.
+    if (!_medvixVisibilityListener) {
+      _medvixVisibilityListener = async () => {
+        if (document.visibilityState !== 'visible') return;
+        if (!_medvixRendered) return;
+        try {
+          await medvix.reset();
+          _medvixRendered = false;
+          await renderMedVixInsights(analyticsData);
+        } catch (e) {
+          console.warn('[Performance] MedVix refresh on visibility failed:', e);
+          _medvixRendered = true;
+        }
+      };
+      document.addEventListener('visibilitychange', _medvixVisibilityListener);
+    }
   } catch (error) {
     console.error('[Performance] Error:', error);
     ui.showToast('Failed to load analytics', 'error');
@@ -226,50 +296,7 @@ export async function init(context) {
     if (realContent) realContent.classList.add('visible');
   }
 
-  // Initialize PerformanceAI only once
-  if (!performanceAI) {
-    performanceAI = new PerformanceAI({
-      onPlanGenerated: (planData) => {
-        const aiActions = $('#ai-actions');
-        if (aiActions) aiActions.style.display = 'flex';
-        window._lastAIPlan = planData;
-      },
-      onPlanAdopted: () => {
-        ui.showToast('Plan adopted successfully! All modules updated.', 'success');
-        renderAllPlannerModules();
-        const aiActions = $('#ai-actions');
-        if (aiActions) aiActions.style.display = 'none';
-      },
-      onPlanRegenerated: (planData) => {
-        const aiActions = $('#ai-actions');
-        if (aiActions) aiActions.style.display = 'flex';
-        window._lastAIPlan = planData;
-        ui.showToast('Plan regenerated!', 'info');
-      },
-      onPlanAmended: (planData) => {
-        const aiActions = $('#ai-actions');
-        if (aiActions) aiActions.style.display = 'flex';
-        window._lastAIPlan = planData;
-        ui.showToast('Plan amended successfully!', 'success');
-      },
-      onPlanCancelled: () => {
-        const aiActions = $('#ai-actions');
-        if (aiActions) aiActions.style.display = 'none';
-        const aiResult = $('#ai-result');
-        if (aiResult) aiResult.innerHTML = 'Plan cancelled.';
-        window._lastAIPlan = null;
-        ui.showToast('Plan cancelled.', 'info');
-      },
-      onAmendInputShow: () => {
-        const amendArea = $('#amend-area');
-        if (amendArea) amendArea.classList.add('visible');
-      },
-      onAmendInputHide: () => {
-        const amendArea = $('#amend-area');
-        if (amendArea) amendArea.classList.remove('visible');
-      },
-    });
-  }
+
 
   attachEventListeners(context);
 
@@ -304,20 +331,15 @@ function attachEventListeners(context) {
   const root = context.root && context.root.nodeType === 1 ? context.root : document;
 
   const themeToggle = $('#themeToggle');
-  if (themeToggle) {
-    themeToggle.addEventListener('click', ui.toggleTheme);
-  }
+  if (themeToggle) themeToggle.addEventListener('click', ui.toggleTheme);
 
   const notifBtn = $('#notifBtn');
-  if (notifBtn) {
-    notifBtn.addEventListener('click', () => router.navigateTo('notifications'));
-  }
+  if (notifBtn) notifBtn.addEventListener('click', () => router.navigateTo('notifications'));
 
   const tabs = root.querySelectorAll('.tab-button');
   tabs.forEach((btn) => {
     btn.addEventListener('click', function () {
-      const tabId = this.dataset.tab;
-      switchTab(tabId, root);
+      switchTab(this.dataset.tab, root);
     });
   });
 
@@ -353,24 +375,13 @@ function attachEventListeners(context) {
         el.classList.toggle('active', el.id === `planner-${key}`);
       });
       switch (key) {
-        case 'timetable':
-          renderTimetable();
-          break;
-        case 'topics':
-          renderTopics();
-          break;
-        case 'sessions':
-          renderSessions();
-          break;
-        case 'streaks':
-          renderStreaks();
-          break;
-        case 'exams':
-          renderExams();
-          break;
-        case 'checklist':
-          renderChecklist();
-          break;
+        case 'timetable': renderTimetable(); break;
+        case 'topics': renderTopics(); break;
+        case 'sessions': renderSessions(); break;
+        case 'streaks': renderStreaks(); break;
+        case 'exams': renderExams(); break;
+        case 'checklist': renderChecklist(); break;
+        case 'reminders': renderReminders(); break;
       }
     });
   });
@@ -447,9 +458,7 @@ function attachEventListeners(context) {
   if (copyProfileBtn) copyProfileBtn.addEventListener('click', copyProfileLink);
 
   const shareNativeBtn = $('#shareNativeBtn');
-  if (shareNativeBtn) {
-    shareNativeBtn.addEventListener('click', shareLinkViaNative);
-  }
+  if (shareNativeBtn) shareNativeBtn.addEventListener('click', shareLinkViaNative);
 
   const avatarUpload = $('#avatar-upload');
   if (avatarUpload) {
@@ -508,8 +517,14 @@ function renderSummary(summary) {
   if (totalQuestions) totalQuestions.textContent = summary.totalQuestions || 0;
   if (avgScore) avgScore.textContent = summary.averageScore ? `${summary.averageScore}%` : '—';
   if (totalTime) {
-    const totalHours = summary.totalStudyTime ? (summary.totalStudyTime / 60).toFixed(1) : '0';
-    totalTime.textContent = `${totalHours}h`;
+    // Prefer the raw seconds field — falls back to totalStudyTime (hours)
+    // for older cached analytics objects that predate the field.
+    let seconds = Number(summary.totalStudyTimeSeconds);
+    if (!Number.isFinite(seconds)) {
+      const hours = Number(summary.totalStudyTime);
+      seconds = Number.isFinite(hours) && hours > 0 ? Math.round(hours * 3600) : 0;
+    }
+    totalTime.textContent = formatStudyDuration(seconds);
   }
   if (bestScore) bestScore.textContent = summary.bestScore ? `${summary.bestScore}%` : '—';
 }
@@ -525,12 +540,24 @@ function renderSubjectMastery(subjectData) {
   let html = '<div class="subject-grid">';
   subjectData.forEach((s) => {
     const masteryClass = s.mastery || 'beginner';
+    // ── ENGINE: posterior mastery + retention, when available.
+    const hasEngine = Number.isFinite(s.engineMastery);
+    const engineMasteryPct = hasEngine ? Math.round(s.engineMastery * 100) : null;
+    const engineRetrievalPct = Number.isFinite(s.engineRetrieval)
+      ? Math.round(s.engineRetrieval * 100)
+      : null;
+    const engineLine = hasEngine
+      ? `<div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.25rem;">
+           Engine: ${engineMasteryPct}% mastery${engineRetrievalPct != null ? ` · ${engineRetrievalPct}% retention` : ''}
+         </div>`
+      : '';
     html += `
       <div class="subject-card mastery-${masteryClass}">
         <div class="subject-name">${s.subject}</div>
         <div class="subject-score">${s.percentage}%</div>
         <div class="subject-progress"><div class="progress-bar"><div class="progress-fill" style="width:${s.percentage}%;"></div></div></div>
         <div class="subject-stats">${s.correct}/${s.questions} · ⏱️ ${s.averageTime}s</div>
+        ${engineLine}
       </div>
     `;
   });
@@ -555,18 +582,54 @@ function renderWeakAreas(weakAreas) {
   const container = $('#weak-areas-list');
   if (!container) return;
   if (!weakAreas || weakAreas.length === 0) {
-    container.innerHTML =
-      '<p class="no-data">No weak areas identified. Keep up the great work!</p>';
+    container.innerHTML = '<p class="no-data">No weak areas identified. Keep up the great work!</p>';
     return;
   }
-  let html = '<ul>';
-  weakAreas.slice(0, 5).forEach((area) => {
-    html += `<li><span class="topic">${area.topic}</span> <span class="score">${Math.round(area.score)}%</span> – ${area.priority} priority</li>`;
-  });
-  html += '</ul>';
-  container.innerHTML = html;
+
+  // Restrict priority to known values — used as a CSS class suffix,
+  // so untrusted values cannot break the classname or inject markup.
+  const KNOWN_PRIORITIES = ['high', 'medium', 'low'];
+
+  const items = weakAreas.slice(0, 5).map((area) => {
+    const score = Math.round(area.score);
+    const priority = KNOWN_PRIORITIES.includes(area.priority)
+      ? area.priority
+      : 'medium';
+
+    // Engine metadata — only renders if the engine has data for this
+    // topic. Both values may be null, one may be null, both may be set.
+    const hasMastery = Number.isFinite(area.engineMastery);
+    const hasRetention = Number.isFinite(area.engineRetrieval);
+    let engineLine = '';
+    if (hasMastery || hasRetention) {
+      const parts = [];
+      if (hasMastery) {
+        parts.push(`Engine ${Math.round(area.engineMastery * 100)}%`);
+      }
+      if (hasRetention) {
+        parts.push(`Retention ${Math.round(area.engineRetrieval * 100)}%`);
+      }
+      engineLine = `<span class="wa-engine">${parts.join(' · ')}</span>`;
+    }
+
+    return `
+      <li>
+        <div class="wa-main">
+          <span class="topic">${escapeHtml(area.topic)}</span>
+          <span class="score">${score}%</span>
+        </div>
+        <div class="wa-meta">
+          <span class="wa-priority wa-priority-${priority}">${priority} priority</span>
+          ${engineLine}
+        </div>
+      </li>
+    `;
+  }).join('');
+
+  container.innerHTML = `<ul>${items}</ul>`;
 }
 
+// ── RENDER RECOMMENDATIONS (handles engine-generated types) ──
 function renderRecommendations(recs) {
   const container = $('#recommendations-list');
   if (!container) return;
@@ -574,9 +637,45 @@ function renderRecommendations(recs) {
     container.innerHTML = '<p class="no-data">No recommendations at this time.</p>';
     return;
   }
+  const typeMeta = {
+    retention_risk: { badge: '🔴', label: 'Retention risk', priority: 0 },
+    focus_subject: { badge: '🎯', label: 'Focus area', priority: 1 },
+    time_management: { badge: '⏱️', label: 'Time', priority: 2 },
+    consistency: { badge: '📅', label: 'Consistency', priority: 3 },
+    learning_insights: { badge: '🧠', label: 'Learning insights', priority: 4 },
+    info: { badge: 'ℹ️', label: 'Info', priority: 5 },
+  };
+  const sorted = [...recs].sort((a, b) => {
+    const pa = typeMeta[a.type]?.priority ?? 99;
+    const pb = typeMeta[b.type]?.priority ?? 99;
+    return pa - pb;
+  });
+
   let html = '<ul>';
-  recs.slice(0, 4).forEach((r) => {
-    html += `<li><strong>${r.type.replace('_', ' ')}:</strong> ${r.action}</li>`;
+  sorted.slice(0, 6).forEach((r) => {
+    const meta = typeMeta[r.type] || { badge: 'ℹ️', label: r.type || 'Note', priority: 99 };
+    const isEngine = r.source === 'medvix-local';
+    const sourceBadge = isEngine
+      ? '<span style="font-size:0.65rem;background:var(--accent);color:#fff;padding:0.05rem 0.35rem;border-radius:4px;margin-left:0.35rem;">Engine</span>'
+      : '';
+
+    // Text extraction: try action → message → insights (in priority order)
+    let bodyText = '';
+    if (typeof r.action === 'string') bodyText = r.action;
+    else if (typeof r.message === 'string') bodyText = r.message;
+    else if (typeof r.insights === 'string') bodyText = r.insights;
+
+    // learning_insights may also carry an array of recommendations
+    const extraLines = Array.isArray(r.recommendations) && r.recommendations.length > 0
+      ? `<div style="margin-top:0.25rem;font-size:0.85rem;color:var(--text-muted);">${escapeHtml(r.recommendations[0])}</div>`
+      : '';
+
+    html += `<li>
+      <span style="margin-right:0.35rem;">${meta.badge}</span>
+      <strong>${meta.label}:</strong> ${escapeHtml(bodyText)}
+      ${sourceBadge}
+      ${extraLines}
+    </li>`;
   });
   html += '</ul>';
   container.innerHTML = html;
@@ -594,26 +693,13 @@ function renderChart(type) {
   const ctx = chartEl.getContext('2d');
   let config = null;
   switch (type) {
-    case 'score':
-      config = getScoreTrendConfig();
-      break;
-    case 'weekly':
-      config = getWeeklyStudyConfig();
-      break;
-    case 'subject':
-      config = getSubjectMasteryConfig();
-      break;
-    case 'accuracy':
-      config = getAccuracyConfig();
-      break;
-    case 'time-dist':
-      config = getTimeDistributionConfig();
-      break;
-    case 'radar':
-      config = getRadarConfig();
-      break;
-    default:
-      config = getScoreTrendConfig();
+    case 'score': config = getScoreTrendConfig(); break;
+    case 'weekly': config = getWeeklyStudyConfig(); break;
+    case 'subject': config = getSubjectMasteryConfig(); break;
+    case 'accuracy': config = getAccuracyConfig(); break;
+    case 'time-dist': config = getTimeDistributionConfig(); break;
+    case 'radar': config = getRadarConfig(); break;
+    default: config = getScoreTrendConfig();
   }
   if (config) chartInstance = new Chart(ctx, config);
 }
@@ -623,10 +709,7 @@ function getScoreTrendConfig() {
   if (trends.length < 2) {
     return {
       type: 'line',
-      data: {
-        labels: ['No Data'],
-        datasets: [{ label: 'Score %', data: [0], borderColor: '#2563eb' }],
-      },
+      data: { labels: ['No Data'], datasets: [{ label: 'Score %', data: [0], borderColor: '#2563eb' }] },
       options: { responsive: true, maintainAspectRatio: false },
     };
   }
@@ -636,23 +719,19 @@ function getScoreTrendConfig() {
     type: 'line',
     data: {
       labels,
-      datasets: [
-        {
-          label: 'Score %',
-          data: scores,
-          borderColor: '#2563eb',
-          backgroundColor: 'rgba(37,99,235,0.1)',
-          tension: 0.2,
-          fill: true,
-        },
-      ],
+      datasets: [{
+        label: 'Score %',
+        data: scores,
+        borderColor: '#2563eb',
+        backgroundColor: 'rgba(37,99,235,0.1)',
+        tension: 0.2,
+        fill: true,
+      }],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      scales: {
-        y: { beginAtZero: true, max: 100, title: { display: true, text: 'Score %' } },
-      },
+      scales: { y: { beginAtZero: true, max: 100, title: { display: true, text: 'Score %' } } },
       plugins: { legend: { display: false } },
     },
   };
@@ -663,10 +742,7 @@ function getWeeklyStudyConfig() {
   if (trends.length < 2) {
     return {
       type: 'bar',
-      data: {
-        labels: ['No Data'],
-        datasets: [{ label: 'Study Time (min)', data: [0], backgroundColor: '#f59e0b' }],
-      },
+      data: { labels: ['No Data'], datasets: [{ label: 'Study Time (min)', data: [0], backgroundColor: '#f59e0b' }] },
       options: { responsive: true, maintainAspectRatio: false },
     };
   }
@@ -676,21 +752,12 @@ function getWeeklyStudyConfig() {
     type: 'bar',
     data: {
       labels,
-      datasets: [
-        {
-          label: 'Study Time (min)',
-          data: times,
-          backgroundColor: '#f59e0b',
-          borderRadius: 4,
-        },
-      ],
+      datasets: [{ label: 'Study Time (min)', data: times, backgroundColor: '#f59e0b', borderRadius: 4 }],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      scales: {
-        y: { beginAtZero: true, title: { display: true, text: 'Minutes' } },
-      },
+      scales: { y: { beginAtZero: true, title: { display: true, text: 'Minutes' } } },
       plugins: { legend: { display: false } },
     },
   };
@@ -701,10 +768,7 @@ function getSubjectMasteryConfig() {
   if (subjectData.length === 0) {
     return {
       type: 'bar',
-      data: {
-        labels: ['No Data'],
-        datasets: [{ label: 'Mastery %', data: [0], backgroundColor: '#2563eb' }],
-      },
+      data: { labels: ['No Data'], datasets: [{ label: 'Mastery %', data: [0], backgroundColor: '#2563eb' }] },
       options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y' },
     };
   }
@@ -715,24 +779,18 @@ function getSubjectMasteryConfig() {
     type: 'bar',
     data: {
       labels,
-      datasets: [
-        {
-          label: 'Mastery %',
-          data: values,
-          backgroundColor: values.map((v) =>
-            v >= 80 ? '#10b981' : v >= 60 ? '#f59e0b' : '#ef4444'
-          ),
-          borderRadius: 4,
-        },
-      ],
+      datasets: [{
+        label: 'Mastery %',
+        data: values,
+        backgroundColor: values.map((v) => (v >= 80 ? '#10b981' : v >= 60 ? '#f59e0b' : '#ef4444')),
+        borderRadius: 4,
+      }],
     },
     options: {
       indexAxis: 'y',
       responsive: true,
       maintainAspectRatio: false,
-      scales: {
-        x: { beginAtZero: true, max: 100, title: { display: true, text: 'Score %' } },
-      },
+      scales: { x: { beginAtZero: true, max: 100, title: { display: true, text: 'Score %' } } },
       plugins: { legend: { display: false } },
     },
   };
@@ -768,13 +826,13 @@ function getTimeDistributionConfig() {
   }
   const labels = subjectData.map((s) => s.subject);
   const times = subjectData.map((s) => s.time || s.questions || 10);
-  const colors = ['#2563eb', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
+  
+  // Generate unique colors for EVERY subject
+  const dynamicColors = labels.map((_, i) => getDistinctColor(i));
+
   return {
     type: 'doughnut',
-    data: {
-      labels,
-      datasets: [{ data: times, backgroundColor: colors.slice(0, labels.length) }],
-    },
+    data: { labels, datasets: [{ data: times, backgroundColor: dynamicColors }] },
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -788,10 +846,7 @@ function getRadarConfig() {
   if (subjectData.length < 3) {
     return {
       type: 'radar',
-      data: {
-        labels: ['No Data'],
-        datasets: [{ label: 'Mastery', data: [0], borderColor: '#2563eb' }],
-      },
+      data: { labels: ['No Data'], datasets: [{ label: 'Mastery', data: [0], borderColor: '#2563eb' }] },
       options: { responsive: true, maintainAspectRatio: false },
     };
   }
@@ -801,15 +856,13 @@ function getRadarConfig() {
     type: 'radar',
     data: {
       labels,
-      datasets: [
-        {
-          label: 'Mastery %',
-          data: values,
-          borderColor: '#2563eb',
-          backgroundColor: 'rgba(37,99,235,0.2)',
-          pointBackgroundColor: '#2563eb',
-        },
-      ],
+      datasets: [{
+        label: 'Mastery %',
+        data: values,
+        borderColor: '#2563eb',
+        backgroundColor: 'rgba(37,99,235,0.2)',
+        pointBackgroundColor: '#2563eb',
+      }],
     },
     options: {
       responsive: true,
@@ -833,7 +886,6 @@ function renderAcademicProfile(data) {
 
   const safeChallengeHistory = Array.isArray(challengeHistory) ? challengeHistory : [];
 
-  // Hero Card
   const name = user ? user.displayName || user.name || 'Student' : 'Guest';
   const year = user ? user.yearOfStudy || user.institution || 'Year 1' : 'Year 1';
   setText('#academic-name', name);
@@ -845,7 +897,6 @@ function renderAcademicProfile(data) {
   setText('#academic-mpre-score', Math.round(rating));
   setText('#academic-rank-label', `Rank ${rank.rank} · MPREv2`);
 
-  // Overview Stats
   const summary = analytics?.summary || {};
   const patterns = analytics?.studyPatterns || {};
   setText('#academic-exams', performance?.completedExams ?? 0);
@@ -853,13 +904,11 @@ function renderAcademicProfile(data) {
   setText('#academic-accuracy', summary.averageScore ? `${Math.round(summary.averageScore)}%` : '0%');
   setText('#academic-streak', patterns.streak ?? 0);
 
-  // MPRE Card
   setText('#academic-mpre-score-val', Math.round(rating));
   const stars = Math.min(5, Math.floor((rating - 100) / 400) + 1);
   setText('#academic-mpre-stars', '★'.repeat(Math.max(0, stars)) + '☆'.repeat(5 - Math.max(0, stars)));
   setText('#academic-mpre-rank', rank.label);
 
-  // MPRE Progress Bars
   const factors = computeAcademicFactors({
     rating,
     rank,
@@ -871,14 +920,8 @@ function renderAcademicProfile(data) {
   const progressContainer = $('#mpre-progress-bars');
   if (progressContainer) {
     const factorKeys = [
-      'Accuracy',
-      'Difficulty',
-      'Consistency',
-      'Speed',
-      'Improvement',
-      'Activity',
-      'Confidence',
-      'Stability',
+      'Accuracy', 'Difficulty', 'Consistency', 'Speed',
+      'Improvement', 'Activity', 'Confidence', 'Stability',
     ];
     let progressHtml = '';
     factorKeys.forEach((key) => {
@@ -893,7 +936,6 @@ function renderAcademicProfile(data) {
     progressContainer.innerHTML = progressHtml;
   }
 
-  // MPRE Timeline
   const timelineContainer = $('#mpre-timeline');
   if (timelineContainer) {
     const changes = getRatingChanges(safeChallengeHistory);
@@ -915,17 +957,18 @@ function renderAcademicProfile(data) {
     }
   }
 
-  // AI Recommendation
+  // ── ENGINE: AI Recommendation panel is now engine-narrated
+  //    (analytics.aiInsights.source === 'medvix-local').
   const aiRecEl = $('#ai-recommendation-body');
   if (aiRecEl) {
-    if (analytics?.aiInsights?.insights) {
-      aiRecEl.textContent = analytics.aiInsights.insights;
+    const txt = analytics?.aiInsights?.insights;
+    if (txt) {
+      aiRecEl.textContent = txt;
     } else {
-      aiRecEl.textContent = 'Complete more exams to get personalized AI recommendations!';
+      aiRecEl.textContent = 'Answer a few questions to unlock personalized learning insights.';
     }
   }
 
-  // Rank History
   const rankHistoryContainer = $('#rank-history-container');
   if (rankHistoryContainer) {
     const ranks = ['Seed', 'Aspire', 'Scholar', 'Proficient', 'Advanced', 'Expert', 'Elite', 'Master', 'Apex', 'Luminary'];
@@ -937,7 +980,6 @@ function renderAcademicProfile(data) {
       .join('');
   }
 
-  // Rival Spotlight
   const rivalTitle = $('#rival-title');
   const rivalSub = $('#rival-sub');
   if (rivalTitle && rivalSub && leaderboard.length) {
@@ -961,7 +1003,6 @@ function renderAcademicProfile(data) {
     }
   }
 
-  // Latest Badge
   const latestBadgeTitle = $('#latest-badge-title');
   const latestBadgeSub = $('#latest-badge-sub');
   const badgeIcon = document.querySelector('#latest-badge-container .icon');
@@ -978,7 +1019,6 @@ function renderAcademicProfile(data) {
     }
   }
 
-  // Badge Gallery
   const galleryContainer = $('#badge-gallery');
   if (galleryContainer) {
     const allBadges = [
@@ -995,17 +1035,16 @@ function renderAcademicProfile(data) {
       .join('');
   }
 
-  // Academic Summary
   const summaryBody = $('#academic-summary-body');
   if (summaryBody) {
-    if (analytics?.aiInsights?.insights) {
-      summaryBody.innerHTML = analytics.aiInsights.insights;
+    const txt = analytics?.aiInsights?.insights;
+    if (txt) {
+      summaryBody.innerHTML = escapeHtml(txt);
     } else {
-      summaryBody.textContent = 'Complete more exams to get your AI summary!';
+      summaryBody.textContent = 'Answer a few questions to unlock your learning summary.';
     }
   }
 
-  // Avatar Initials
   const initialsSpan = $('#avatar-initials');
   if (initialsSpan) {
     const displayName = user ? user.displayName || user.name || 'Student' : '?';
@@ -1025,7 +1064,7 @@ function computeAcademicFactors({ rating, rank, completedExams, summary, pattern
   const totalExams = completedExams || 0;
   const totalQuestions = summary?.totalQuestions || 0;
   const avgScore = summary?.averageScore || 0;
-  const totalTime = summary?.totalStudyTime || 0; // hours
+  const totalTime = summary?.totalStudyTime || 0;
 
   const accuracy = Math.min(100, Math.max(0, avgScore));
   const consistency = patterns?.consistency !== undefined ? Math.min(100, Math.max(0, patterns.consistency)) : 50;
@@ -1099,15 +1138,13 @@ function renderAcademicCharts({ factors, summary, analytics }) {
       type: 'radar',
       data: {
         labels,
-        datasets: [
-          {
-            label: 'MPREv2 Factors',
-            data: dataValues,
-            backgroundColor: 'rgba(37, 99, 235, 0.2)',
-            borderColor: '#2563eb',
-            pointBackgroundColor: '#2563eb',
-          },
-        ],
+        datasets: [{
+          label: 'MPREv2 Factors',
+          data: dataValues,
+          backgroundColor: 'rgba(37, 99, 235, 0.2)',
+          borderColor: '#2563eb',
+          pointBackgroundColor: '#2563eb',
+        }],
       },
       options: {
         responsive: true,
@@ -1122,12 +1159,14 @@ function renderAcademicCharts({ factors, summary, analytics }) {
   if (doughnutCanvas) {
     const labels = Object.keys(factors);
     const dataValues = Object.values(factors);
-    const colors = ['#2563eb', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
+    // Generate unique colors dynamically
+    const dynamicColors = dataValues.map((_, i) => getDistinctColor(i));
+    
     academicChartInstances.mpreDoughnut = new Chart(doughnutCanvas, {
       type: 'doughnut',
       data: {
         labels,
-        datasets: [{ data: dataValues, backgroundColor: colors.slice(0, dataValues.length), borderWidth: 0 }],
+        datasets: [{ data: dataValues, backgroundColor: dynamicColors, borderWidth: 0 }],
       },
       options: {
         responsive: true,
@@ -1250,22 +1289,14 @@ function renderGrowth(examResults, challengeHistory, performance) {
       const qMax = Math.max(...recentTrends.map((t) => t.questions || 0), 1);
       const hMax = Math.max(...recentTrends.map((t) => t.time || 0), 1);
       questionTrendContainer.innerHTML = recentTrends
-        .map(
-          (t) =>
-            `<div style="width:20px;height:${(t.questions / qMax) * 50 + 10}px;background:var(--accent);border-radius:2px;"></div>`
-        )
+        .map((t) => `<div style="width:20px;height:${(t.questions / qMax) * 50 + 10}px;background:var(--accent);border-radius:2px;"></div>`)
         .join('');
       hourTrendContainer.innerHTML = recentTrends
-        .map(
-          (t) =>
-            `<div style="width:20px;height:${(t.time / hMax) * 50 + 10}px;background:var(--warning);border-radius:2px;"></div>`
-        )
+        .map((t) => `<div style="width:20px;height:${(t.time / hMax) * 50 + 10}px;background:var(--warning);border-radius:2px;"></div>`)
         .join('');
     } else {
-      questionTrendContainer.innerHTML =
-        '<div style="color:var(--text-muted);font-size:0.8rem;">No data</div>';
-      hourTrendContainer.innerHTML =
-        '<div style="color:var(--text-muted);font-size:0.8rem;">No data</div>';
+      questionTrendContainer.innerHTML = '<div style="color:var(--text-muted);font-size:0.8rem;">No data</div>';
+      hourTrendContainer.innerHTML = '<div style="color:var(--text-muted);font-size:0.8rem;">No data</div>';
     }
   }
 }
@@ -1279,20 +1310,14 @@ function generateHeatmap(examResults) {
     date.setDate(date.getDate() - (days - 1 - i));
     const dateStr = date.toISOString().split('T')[0];
     const exam = examResults.find((e) => e.date?.startsWith(dateStr));
-    if (exam) {
-      cells.push({ active: true, semi: false });
-    } else {
-      cells.push({ active: false, semi: false });
-    }
+    cells.push({ active: !!exam, semi: false });
   }
   return cells;
 }
 
 // ==================== HELPER: GET RATING CHANGES ====================
 function getRatingChanges(challengeHistory) {
-  if (!Array.isArray(challengeHistory) || challengeHistory.length < 2) {
-    return [];
-  }
+  if (!Array.isArray(challengeHistory) || challengeHistory.length < 2) return [];
   const changes = [];
   for (const c of challengeHistory) {
     if (c.result && c.result.ratingBefore !== undefined && c.result.ratingAfter !== undefined) {
@@ -1307,6 +1332,241 @@ function getRatingChanges(challengeHistory) {
     }
   }
   return changes.slice(-5).reverse();
+}
+
+// ==================== MEDVIX LEARNING INSIGHTS (new) ====================
+
+function ensureMedVixContainer() {
+  let container = document.getElementById('medvix-insights');
+  if (container) return container;
+
+  // Prefer inserting right after the recommendations card
+  const recList = document.getElementById('recommendations-list');
+  if (recList) {
+    let card = recList;
+    while (card && card.parentNode && !card.className?.toString?.().includes('card')) {
+      card = card.parentNode;
+    }
+    if (card && card.className?.toString?.().includes('card') && card.parentNode) {
+      container = document.createElement('div');
+      container.id = 'medvix-insights';
+      container.className = card.className;
+      container.style.marginTop = '1rem';
+      card.parentNode.insertBefore(container, card.nextSibling);
+      return container;
+    }
+  }
+
+  // Fallback: append to real content or body
+  const root = document.getElementById('real-content') || document.body;
+  container = document.createElement('div');
+  container.id = 'medvix-insights';
+  container.className = 'card';
+  container.style.marginTop = '1rem';
+  root.appendChild(container);
+  return container;
+}
+
+async function renderMedVixInsights(analyticsSnapshot) {
+  if (_medvixRendered) return;
+  _medvixRendered = true;
+
+  const container = ensureMedVixContainer();
+  container.innerHTML = `
+    <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+      <h2 style="margin:0;">🧠 Learning Insights</h2>
+      <span style="font-size:0.7rem;color:var(--text-muted);">Local engine · offline · truthful</span>
+    </div>
+    <div class="card-body" id="medvix-insights-body">
+      <p class="no-data">Analysing your history...</p>
+    </div>
+  `;
+  const body = document.getElementById('medvix-insights-body');
+  if (!body) return;
+
+  let digest = null;
+  try {
+    digest = await analytics.getLearningDigest('friendly');
+  } catch (e) {
+    console.warn('[Performance] getLearningDigest failed:', e);
+  }
+
+  if (!digest || digest.evidenceCount === 0) {
+    body.innerHTML = `
+      <p class="no-data">
+        Answer a few questions and the learning engine will start reporting here —
+        mastery estimates, retention risks, and review targets, all computed on-device.
+      </p>
+    `;
+    return;
+  }
+
+  const totalConcepts = digest.totalConcepts || 0;
+  const evidenceCount = digest.evidenceCount || 0;
+  const avgMasteryPct = Number.isFinite(digest.averageMastery)
+    ? Math.round(digest.averageMastery * 100)
+    : null;
+  const brierVal = digest.brier?.value;
+
+  // Mode recommendation from the engine
+  let modeRec = null;
+  try {
+    modeRec = await analytics.getRecommendedMode({
+      budgetSec: 600,
+      subject: analyticsSnapshot?.subjectAnalysis?.[0]?.subject || null,
+    });
+  } catch { /* ignore */ }
+
+  const modeLabel = modeRec
+    ? modeRec.mode.replace(/_/g, ' ')
+    : 'broad curriculum revision';
+
+  const parts = [];
+
+  // ── Stat strip ──
+  parts.push(`
+    <div class="medvix-stats" style="display:flex;flex-wrap:wrap;gap:0.75rem 1.5rem;margin-bottom:1rem;font-size:0.9rem;">
+      <div><strong>${totalConcepts}</strong> concepts tracked</div>
+      <div><strong>${evidenceCount}</strong> observations</div>
+      ${avgMasteryPct != null ? `<div>Avg mastery <strong>${avgMasteryPct}%</strong></div>` : ''}
+      ${brierVal != null ? `<div>Calibration (Brier) <strong>${brierVal.toFixed(3)}</strong></div>` : ''}
+      <div>Suggested mode <strong>${escapeHtml(modeLabel)}</strong></div>
+    </div>
+  `);
+
+  // ── Retention risks ──
+  if (Array.isArray(digest.riskNarrations) && digest.riskNarrations.length > 0) {
+    parts.push('<h3 style="margin:0.75rem 0 0.4rem;font-size:1rem;">⚠️ Retention Risk</h3><ul style="padding-left:1.2rem;">');
+    for (const r of digest.riskNarrations) {
+      parts.push(`<li>${escapeHtml(r.narration.text)}</li>`);
+    }
+    parts.push('</ul>');
+  }
+
+  // ── Focus concepts ──
+  if (Array.isArray(digest.weakNarrations) && digest.weakNarrations.length > 0) {
+    parts.push('<h3 style="margin:0.75rem 0 0.4rem;font-size:1rem;">🎯 Focus Concepts</h3><ul style="padding-left:1.2rem;">');
+    for (const w of digest.weakNarrations) {
+      parts.push(`<li>${escapeHtml(w.narration.text)}</li>`);
+    }
+    parts.push('</ul>');
+  }
+
+  // ── Suggested reviews ──
+  if (Array.isArray(digest.targets) && digest.targets.length > 0) {
+    parts.push('<h3 style="margin:0.75rem 0 0.4rem;font-size:1rem;">📅 Suggested Reviews</h3><ul style="padding-left:1.2rem;">');
+    for (const t of digest.targets) {
+      parts.push(`<li>${escapeHtml(t.narration.text)}</li>`);
+    }
+    parts.push('</ul>');
+  }
+
+  // ── Action row ──
+  parts.push(`
+    <div style="display:flex;gap:0.5rem;margin-top:1rem;flex-wrap:wrap;">
+      <button id="medvix-start-adaptive" class="btn btn-primary" type="button">
+        Start Adaptive Session
+      </button>
+      <button id="medvix-refresh" class="btn btn-secondary" type="button">
+        Refresh Insights
+      </button>
+    </div>
+  `);
+
+  body.innerHTML = parts.join('');
+
+  // Wire the buttons
+  const startBtn = document.getElementById('medvix-start-adaptive');
+  if (startBtn) {
+    startBtn.addEventListener('click', () => prepareAdaptiveSession(startBtn));
+  }
+  const refreshBtn = document.getElementById('medvix-refresh');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', async () => {
+      try {
+        await medvix.reset();
+        _medvixRendered = false;
+        await renderMedVixInsights(analyticsSnapshot);
+      } catch (e) {
+        console.warn('[Performance] MedVix refresh failed:', e);
+        _medvixRendered = true;
+      }
+    });
+  }
+}
+
+/**
+ * Prepare an adaptive session: pick the top-reviewed concept's subject,
+ * build an engine-ranked config, stash it, and navigate to exam-config.
+ * If the config page is unavailable, the config is still stashed in
+ * sessionStorage so the flow can be completed manually.
+ */
+async function prepareAdaptiveSession(button) {
+  const originalLabel = button?.textContent;
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Preparing...';
+  }
+  try {
+    const targets = await analytics.getReviewTargets(3);
+    if (!targets || targets.length === 0) {
+      ui.showToast('Not enough data yet — take a few questions first.', 'info');
+      return;
+    }
+
+    // Group targets by subject
+    const bySubject = {};
+    for (const t of targets) {
+      if (!t.conceptId || !t.conceptId.includes('::')) continue;
+      const [subject, topic] = t.conceptId.split('::');
+      if (!bySubject[subject]) bySubject[subject] = [];
+      bySubject[subject].push(topic);
+    }
+    const subjects = Object.keys(bySubject);
+    if (subjects.length === 0) {
+      ui.showToast('Could not determine a target subject yet.', 'info');
+      return;
+    }
+    // Prefer subject with most review targets
+    const topSubject = subjects.sort(
+      (a, b) => bySubject[b].length - bySubject[a].length
+    )[0];
+    const topics = bySubject[topSubject];
+
+    const config = await examEngine.buildAdaptiveExamConfig({
+      subject: topSubject,
+      topics,
+      questionCount: 20,
+      preferredExamMode: 'standard',
+    });
+
+    // Stash so the exam-config / exam page can pick it up
+    try {
+      examEngine.setExamConfig(config);
+    } catch (e) {
+      console.warn('[Performance] setExamConfig failed:', e);
+    }
+
+    ui.showToast(
+      `Adaptive session prepared: ${topSubject} · ${topics.length} topic(s)`,
+      'success'
+    );
+
+    // exam-settings.js picks up the config via examEngine.getConfig().
+    try {
+      router.navigateTo('exam-settings');
+    } catch (e) {
+      console.warn('[Performance] navigateTo("exam-settings") failed:', e);
+    }
+  } catch (e) {
+    console.error('[Performance] prepareAdaptiveSession failed:', e);
+    ui.showToast('Could not prepare an adaptive session.', 'error');
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = originalLabel || 'Start Adaptive Session';
+    }
+  }
 }
 
 // ==================== DOWNLOADED EXAMS ====================
@@ -1362,7 +1622,6 @@ async function reviewDownloadedExam(examId) {
     return;
   }
 
-  // Safely parse exam data if it's a JSON string
   let examData = exam.data;
   if (typeof examData === 'string') {
     try {
@@ -1375,14 +1634,10 @@ async function reviewDownloadedExam(examId) {
   }
 
   const questionsList = examData && Array.isArray(examData.questions) ? examData.questions : [];
-  // ── IMAGE: subject is on both the saved record and the full exam
-  //    result. Prefer the parsed data (source of truth), fall back to
-  //    the summary field on the downloaded entry.
   const subject = (examData && examData.subject) || exam.subject || '';
   const totalQuestions = examData && examData.totalQuestions != null ? examData.totalQuestions : questionsList.length;
   const correctAnswers = examData && examData.correctAnswers != null ? examData.correctAnswers : 0;
 
-  // Safe date formatting
   const formatDateSafe = (date) => {
     try {
       return utils.formatDate ? utils.formatDate(date) : new Date(date).toLocaleDateString();
@@ -1393,8 +1648,8 @@ async function reviewDownloadedExam(examId) {
 
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
-  // Inline styles ensure the modal is always visible and centered, regardless of external CSS
-  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:9999;overflow-y:auto;padding:1rem;';
+  modal.style.cssText =
+    'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:9999;overflow-y:auto;padding:1rem;';
 
   let reviewHtml = '';
   if (questionsList.length > 0) {
@@ -1403,21 +1658,23 @@ async function reviewDownloadedExam(examId) {
       const userAnswerText = getOptionText(q.userAnswer, q.options);
       const correctAnswerText = getOptionText(q.correctAnswer, q.options);
       const explanationHtml = formatExplanation(q.explanation);
-
-      // ── IMAGE: empty slot keyed by index. The <img> is injected
-      //    asynchronously by hydrateModalReviewImages so no
-      //    user/zip-controlled string enters the HTML.
       const imageHtml = q.image
         ? `<div class="modal-review-image" data-q-idx="${idx}" style="text-align:center;margin:0.5rem 0;"></div>`
         : '';
-
       return `
         <div class="review-item ${isCorrect ? 'correct' : 'incorrect'}" style="margin-bottom:1rem;padding:1rem;border-radius:8px;background:var(--bg-secondary, #0f172a);border-left:4px solid ${isCorrect ? '#10b981' : '#ef4444'};">
           <div style="font-weight:600;margin-bottom:0.5rem;color:var(--text-primary, #fff);"><strong>Q${idx + 1}:</strong> ${q.question}</div>
           ${imageHtml}
-          <div style="font-size:0.85rem;color:var(--text-muted, #94a3b8);margin-bottom:0.5rem;">
-            <span style="color:${isCorrect ? '#10b981' : '#ef4444'};">Your answer: ${userAnswerText}</span> | 
-            <span style="color:#10b981;">Correct: ${correctAnswerText}</span>
+          <div style="font-size:0.85rem;color:var(--text-muted, #94a3b8);margin-bottom:0.5rem;display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;">
+            <span>
+              <span style="color:#60a5fa; font-weight:600;">Your answer:</span>
+              <span style="color:${isCorrect ? '#10b981' : '#ef4444'}; font-weight:500;">${userAnswerText}</span>
+            </span>
+            <span style="color:var(--border, #334155);">|</span>
+            <span>
+              <span style="color:#60a5fa; font-weight:600;">Correct:</span>
+              <span style="color:#10b981; font-weight:500;">${correctAnswerText}</span>
+            </span>
           </div>
           <div class="explanation" style="font-size:0.85rem;padding:0.5rem;background:var(--bg-card, #1e293b);border-radius:4px;color:var(--text-primary, #fff);">${explanationHtml}</div>
         </div>
@@ -1427,19 +1684,30 @@ async function reviewDownloadedExam(examId) {
     reviewHtml = '<p style="text-align:center;color:var(--text-muted);">No question data available for this exam.</p>';
   }
 
+  const pieDeg = exam.score * 3.6; // 100% = 360deg
+  
   modal.innerHTML = `
     <div class="modal review-modal" style="background:var(--bg-card, #1e293b);border-radius:12px;max-width:600px;width:100%;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 10px 25px rgba(0,0,0,0.5);">
-      <div class="modal-header" style="padding:1rem;border-bottom:1px solid var(--border, #334155);display:flex;justify-content:space-between;align-items:center;">
-        <h2 style="margin:0;font-size:1.1rem;color:var(--text-primary, #fff);">Exam Review: ${exam.subject} - ${Math.round(exam.score)}%</h2>
-        <button class="modal-close" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--text-primary, #fff);">&times;</button>
+      
+      <!-- Compact Header -->
+      <div class="modal-header" style="padding:0.75rem 1rem;border-bottom:1px solid var(--border, #334155);display:flex;justify-content:space-between;align-items:center;background:var(--bg-card, #1e293b);">
+        <h2 style="margin:0;font-size:1rem;color:var(--text-primary, #fff);font-weight:600;letter-spacing:0.02em;">Exam Review</h2>
+        <div style="display:flex;align-items:center;gap:0.75rem;">
+          <span style="font-size:0.85rem;color:var(--text-muted, #94a3b8);font-weight:500;background:var(--bg-secondary);padding:0.15rem 0.5rem;border-radius:20px;">${Math.round(exam.score)}%</span>
+          <button class="modal-close" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--text-primary, #fff);line-height:1;padding:0;margin-top:-2px;">&times;</button>
+        </div>
       </div>
+
       <div class="modal-body" style="padding:1rem;overflow-y:auto;flex:1;">
-        <div class="summary-card" style="display:flex;gap:1rem;margin-bottom:1rem;padding:1rem;background:var(--bg-secondary, #0f172a);border-radius:8px;">
-          <div class="score-circle" style="width:80px;height:80px;border-radius:50%;background:conic-gradient(var(--accent, #2563eb) ${exam.score}deg, #eee 0deg);display:flex;align-items:center;justify-content:center;font-weight:bold;color:var(--text-primary, #fff);">${Math.round(exam.score)}%</div>
-          <div style="color:var(--text-primary, #fff);">
-            <p style="margin:0.2rem 0;">Date: ${formatDateSafe(exam.date)}</p>
-            <p style="margin:0.2rem 0;">Questions: ${totalQuestions}</p>
-            <p style="margin:0.2rem 0;">Correct: ${correctAnswers}</p>
+        <div class="summary-card" style="display:flex;gap:1rem;margin-bottom:1rem;padding:1rem;background:var(--bg-secondary, #0f172a);border-radius:8px;align-items:center;">
+          
+          <!-- Fixed Pie Chart -->
+          <div class="score-circle" style="width:80px;height:80px;border-radius:50%;background:conic-gradient(var(--accent, #2563eb) ${pieDeg}deg, var(--border, #334155) 0deg);display:flex;align-items:center;justify-content:center;font-weight:bold;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.6);font-size:1.1rem;">${Math.round(exam.score)}%</div>
+          
+          <div style="color:var(--text-primary, #fff);font-size:0.9rem;">
+            <p style="margin:0.2rem 0;"><strong>Date:</strong> ${formatDateSafe(exam.date)}</p>
+            <p style="margin:0.2rem 0;"><strong>Questions:</strong> ${totalQuestions}</p>
+            <p style="margin:0.2rem 0;"><strong>Correct:</strong> ${correctAnswers}</p>
           </div>
         </div>
         <div id="modal-review-list" class="review-list">${reviewHtml}</div>
@@ -1449,10 +1717,8 @@ async function reviewDownloadedExam(examId) {
 
   document.body.appendChild(modal);
 
-  // ── IMAGE: track for teardown, then kick off hydration. Fire-and-forget
-  //    — the text is already visible; images stream in as blobs resolve.
   _openReviewModal = modal;
-  hydrateModalReviewImages(modal, subject, questionsList).catch(err =>
+  hydrateModalReviewImages(modal, subject, questionsList).catch((err) =>
     console.warn('[Performance] hydrateModalReviewImages failed:', err)
   );
 
@@ -1462,16 +1728,6 @@ async function reviewDownloadedExam(examId) {
   };
 }
 
-// ── IMAGE: modal image hydrator + cleanup ──
-//
-// Mirrors results.js's hydrateReviewImages. Same static-vs-slide split:
-//
-//   • static subject  → /data/images/{subject}/{filename}
-//   • slide subject   → Blob from IndexedDB → object-URL
-//
-// Object-URLs are tracked on the modal element itself (modal._objectUrls)
-// so _cleanupReviewModal can revoke them from any close path — button,
-// backdrop click, or page destroy while the modal is still open.
 async function hydrateModalReviewImages(modal, subject, questionsList) {
   if (!subject) return;
 
@@ -1522,8 +1778,6 @@ async function hydrateModalReviewImages(modal, subject, questionsList) {
   }
 }
 
-// Revoke every object-URL the modal minted, then remove it from the
-// DOM. Safe to call from any close path (button, backdrop, destroy).
 function _cleanupReviewModal(modal) {
   if (!modal) return;
   if (modal._objectUrls) {
@@ -1621,16 +1875,12 @@ function saveData(key, data) {
   localStorage.setItem(key, JSON.stringify(data));
 }
 
-function getToday() {
-  return new Date().toISOString().split('T')[0];
-}
-
+function getToday() { return new Date().toISOString().split('T')[0]; }
 function getYesterday() {
   const d = new Date();
   d.setDate(d.getDate() - 1);
   return d.toISOString().split('T')[0];
 }
-
 function getWeekStart() {
   const d = new Date();
   const day = d.getDay();
@@ -1638,24 +1888,60 @@ function getWeekStart() {
   const m = new Date(d.setDate(diff));
   return m.toISOString().split('T')[0];
 }
-
 function getDaysInMonth(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
   const year = d.getFullYear();
   const month = d.getMonth() + 1;
   return new Date(year, month, 0).getDate();
 }
-
 function formatTime(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
-
 function formatDateShort(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+// ── Timetable colours ────────────────────────────────────────────────
+// Any user-typed subject/activity gets a stable color. Two-tier:
+//   Tier 1 — known semantic subjects get their historical class.
+//   Tier 2 — every other subject name → deterministic HSL from Golden Angle.
+
+const KNOWN_SEMANTIC_COLORS = new Set([
+  'anatomy', 'physiology', 'biochemistry', 'revision',
+  'mcq', 'pathology', 'pharmacology',
+]);
+
+// Convert a string to a large integer index for the golden angle generator
+function _stringToIndex(str) {
+  let h = 0;
+  const s = String(str || '').trim().toLowerCase();
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h) * 17; // Multiply by prime to spread far across color wheel
+}
+
+function _renderSubjectTag(subject, storedColor) {
+  const safeText = escapeHtml(subject);
+  const normalizedSubject = String(subject || '').trim().toLowerCase();
+
+  // Tier 1: legacy known-semantic class (backward compat)
+  if (
+    typeof storedColor === 'string' &&
+    KNOWN_SEMANTIC_COLORS.has(storedColor) &&
+    storedColor === normalizedSubject
+  ) {
+    return `<span class="subject-tag ${storedColor}">${safeText}</span>`;
+  }
+
+  // Tier 2: Infinite distinct colors via Golden Angle generator
+  const colorIndex = _stringToIndex(subject);
+  const color = getDistinctColor(colorIndex);
+  return `<span class="subject-tag" style="background:${color}; color:#fff;">${safeText}</span>`;
 }
 
 function renderTimetable() {
@@ -1670,8 +1956,13 @@ function renderTimetable() {
     if (slots.length === 0) {
       html += `<div style="color:var(--text-muted);font-size:0.85rem;">No sessions</div>`;
     } else {
-      slots.forEach((s) => {
-        html += `<div class="timetable-slot"><span class="time">${s.time}</span><span class="subject-tag ${s.color}">${s.subject}</span></div>`;
+      slots.forEach((s, idx) => {
+        const tag = _renderSubjectTag(s.subject, s.color);
+        html += `
+          <div class="timetable-slot" style="display:flex; justify-content:space-between; align-items:center;">
+            <div><span class="time">${escapeHtml(s.time)}</span> ${tag}</div>
+            <button onclick="window.deleteTimetableSlot('${day}', ${idx})" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:1rem;padding:0 0.5rem;">&times;</button>
+          </div>`;
       });
     }
     html += `</div>`;
@@ -1679,20 +1970,31 @@ function renderTimetable() {
   container.innerHTML = html;
 }
 
+window.deleteTimetableSlot = function (day, idx) {
+  const data = loadData(LS_KEYS.timetable, {});
+  if (data[day] && data[day][idx]) {
+    data[day].splice(idx, 1);
+    saveData(LS_KEYS.timetable, data);
+    renderTimetable();
+    renderReminders();
+  }
+};
+
 function addTimetableSlot() {
   const day = $('#tt-day-select')?.value;
   const time = $('#tt-time')?.value.trim();
   const subject = $('#tt-subject')?.value.trim();
-  const color = $('#tt-color')?.value;
   if (!day || !time || !subject) {
     ui.showToast('Please fill in day, time and subject.', 'error');
     return;
   }
+
   const data = loadData(LS_KEYS.timetable, {});
   if (!data[day]) data[day] = [];
-  data[day].push({ time, subject, color });
+  data[day].push({ time, subject });
   saveData(LS_KEYS.timetable, data);
   renderTimetable();
+  renderReminders();
   const timeInput = $('#tt-time');
   const subjectInput = $('#tt-subject');
   if (timeInput) timeInput.value = '';
@@ -1768,9 +2070,7 @@ function renderSessions() {
   const today = getToday();
   const weekStart = getWeekStart();
 
-  let todayTotal = 0,
-    weekTotal = 0,
-    durations = [];
+  let todayTotal = 0, weekTotal = 0, durations = [];
   data.forEach((s) => {
     const d = s.start ? s.start.split('T')[0] : '';
     if (d === today) todayTotal += s.duration || 0;
@@ -1788,20 +2088,15 @@ function renderSessions() {
   if (ssAvg) ssAvg.textContent = avg + 'm';
 
   if (data.length === 0) {
-    container.innerHTML =
-      '<div style="color:var(--text-muted);font-size:0.85rem;">No sessions logged yet.</div>';
+    container.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;">No sessions logged yet.</div>';
     return;
   }
   let html = '';
-  data
-    .slice()
-    .reverse()
-    .slice(0, 10)
-    .forEach((s) => {
-      const startFmt = s.start ? formatTime(s.start) : '—';
-      const endFmt = s.end ? formatTime(s.end) : '—';
-      html += `<div class="entry"><span><strong>${s.subject}</strong> ${s.topic ? '– ' + s.topic : ''}</span><span>${startFmt}–${endFmt} (${s.duration || 0}m)</span></div>`;
-    });
+  data.slice().reverse().slice(0, 10).forEach((s) => {
+    const startFmt = s.start ? formatTime(s.start) : '—';
+    const endFmt = s.end ? formatTime(s.end) : '—';
+    html += `<div class="entry"><span><strong>${s.subject}</strong> ${s.topic ? '– ' + s.topic : ''}</span><span>${startFmt}–${endFmt} (${s.duration || 0}m)</span></div>`;
+  });
   container.innerHTML = html;
 }
 
@@ -1846,11 +2141,8 @@ function renderStreaks() {
   const studiedYesterday = sessions.some((s) => s.date === getYesterday());
 
   if (studiedToday && data.lastDate !== today) {
-    if (data.lastDate === getYesterday()) {
-      current += 1;
-    } else {
-      current = 1;
-    }
+    if (data.lastDate === getYesterday()) current += 1;
+    else current = 1;
     data.lastDate = today;
     if (current > longest) longest = current;
     data.current = current;
@@ -1886,8 +2178,7 @@ function renderExams() {
   if (!container) return;
   const data = loadData(LS_KEYS.exams, []);
   if (data.length === 0) {
-    container.innerHTML =
-      '<div style="color:var(--text-muted);font-size:0.9rem;">No exams added yet.</div>';
+    container.innerHTML = '<div style="color:var(--text-muted);font-size:0.9rem;">No exams added yet.</div>';
     return;
   }
   let html = '';
@@ -1936,15 +2227,30 @@ function renderChecklist() {
 
   const checklistText = $('#checklist-text');
   const checklistRing = $('#checklist-ring');
-  if (checklistText) checklistText.textContent = `${done} / ${total} completed`;
+  
+  if (checklistText) {
+    // Added "Clear All" button next to the completion text
+    checklistText.innerHTML = `${done} / ${total} completed 
+      ${total > 0 ? '<button id="clearChecklistBtn" style="margin-left:0.5rem;background:none;border:none;color:var(--danger);cursor:pointer;font-size:0.75rem;text-decoration:underline;">Clear All</button>' : ''}`;
+    
+    const clearBtn = document.getElementById('clearChecklistBtn');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => {
+        if (confirm('Are you sure you want to clear all tasks?')) {
+          saveData(LS_KEYS.checklist, []);
+          renderChecklist();
+        }
+      });
+    }
+  }
+
   if (checklistRing) {
     checklistRing.textContent = pct + '%';
     checklistRing.style.background = `conic-gradient(var(--accent) ${pct * 3.6}deg, var(--border) 0deg)`;
   }
 
   if (total === 0) {
-    container.innerHTML =
-      '<div style="color:var(--text-muted);font-size:0.9rem;">No tasks yet. Add one above.</div>';
+    container.innerHTML = '<div style="color:var(--text-muted);font-size:0.9rem;">No tasks yet. Add one above.</div>';
     return;
   }
   let html = '';
@@ -1989,60 +2295,194 @@ function renderAllPlannerModules() {
   renderStreaks();
   renderExams();
   renderChecklist();
+  renderReminders(); // <-- Added dynamic reminders generation
 }
 
-function setupPlannerButtons() {
-  // Already handled in attachEventListeners
-}
+function setupPlannerButtons() { /* handled in attachEventListeners */ }
+function setupAcademicButtons() { /* handled in attachEventListeners */ }
 
-function setupAcademicButtons() {
-  // Already handled in attachEventListeners
-}
 
-// ==================== AI PLANNER ====================
-function generateAIPlan() {
-  const examDate = $('#ai-exam-date')?.value;
-  const subjects = $('#ai-subjects')?.value.trim();
+// ==================== DYNAMIC REMINDERS ====================
+function renderReminders() {
+  const container = $('#reminder-list');
+  if (!container) return;
+
+  const reminders = [];
+  const now = new Date();
+  
+  // 1. Timetable Reminders for Today
+  const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const todayName = daysOfWeek[now.getDay()];
+  const timetable = loadData(LS_KEYS.timetable, {});
+  const todaySessions = timetable[todayName] || [];
+  
+  todaySessions.forEach(s => {
+    reminders.push({ icon: '⏰', text: `<strong>${s.subject}</strong> scheduled at ${s.time}` });
+  });
+
+  // 2. Upcoming Exams (within 14 days)
+  const exams = loadData(LS_KEYS.exams, []);
+  exams.forEach(e => {
+    const examDate = new Date(e.date + 'T00:00:00');
+    const diff = Math.ceil((examDate - now) / (1000 * 60 * 60 * 24));
+    if (diff >= 0 && diff <= 14) {
+      reminders.push({ icon: '🎯', text: `<strong>${e.name}</strong> is in ${diff} days!` });
+    }
+  });
+
+  // 3. Weak Areas / Revision
+  const weakAreas = analyticsData?.weakAreas || [];
+  if (weakAreas.length > 0) {
+    reminders.push({ icon: '📝', text: `Revision reminder: Focus on <strong>${weakAreas[0].topic}</strong>` });
+  }
+
+  // 4. Daily Goal
+  const patterns = analyticsData?.studyPatterns || {};
+  const goal = patterns.averageSessionTime ? Math.max(30, patterns.averageSessionTime * 2) : 60; 
+  reminders.push({ icon: '🔥', text: `Today's Goal: Study ${Math.round(goal / 60 * 10) / 10} hours` });
+
+  if (reminders.length === 0) {
+    container.innerHTML = `<div class="reminder-item"><span class="icon">☕</span> No upcoming reminders. Enjoy your day!</div>`;
+    return;
+  }
+
+  container.innerHTML = reminders.slice(0, 5).map(r => `
+    <div class="reminder-item"><span class="icon">${r.icon}</span> ${r.text}</div>
+  `).join('');
+}
+// ==================== AI PLANNER (local algorithm) ====================
+// Deterministic study-plan generator. No network, no LLM. Weak subjects
+// are prioritised on the first days, then the remaining days rotate
+// through all subjects. Rendered as a compact table so it fits in the
+// existing #ai-result container.
+
+function _parseAiInputs() {
+  const examDate = $('#ai-exam-date')?.value || '';
+  const subjectsStr = $('#ai-subjects')?.value.trim() || '';
   const hours = parseFloat($('#ai-hours')?.value) || 4;
-  const weak = $('#ai-weak')?.value.trim();
-  const preferred = $('#ai-time')?.value.trim();
+  const weakStr = $('#ai-weak')?.value.trim() || '';
 
-  if (!examDate || !subjects) {
+  const subjects = subjectsStr.split(',').map((s) => s.trim()).filter(Boolean);
+  const weak = weakStr.split(',').map((s) => s.trim()).filter(Boolean);
+
+  return { examDate, subjects, hours, weak };
+}
+
+function _renderAiPlan(plan) {
+  const { examDate, subjects, hours, weak } = plan;
+  const daysLeft = Math.max(
+    1,
+    Math.ceil((new Date(examDate) - new Date()) / (1000 * 60 * 60 * 24))
+  );
+
+  const parts = [];
+  parts.push(
+    `<h3 style="margin:0 0 0.5rem; font-size:1rem;">📚 ${daysLeft}-Day Study Plan</h3>`
+  );
+  parts.push(
+    `<p style="font-size:0.82rem; margin:0 0 0.75rem; color:var(--text-muted);">` +
+    `Goal: <strong>${hours} h/day</strong> · ${subjects.length} subject${subjects.length === 1 ? '' : 's'}` +
+    `</p>`
+  );
+
+  parts.push(
+    '<table style="width:100%; border-collapse:collapse; font-size:0.82rem;">' +
+    '<tr style="border-bottom:2px solid var(--border); text-align:left;">' +
+    '<th style="padding:0.35rem 0.5rem;">Day</th>' +
+    '<th style="padding:0.35rem 0.5rem;">Focus</th>' +
+    '<th style="padding:0.35rem 0.5rem;">Hours</th>' +
+    '</tr>'
+  );
+
+  const totalDaysToShow = Math.min(7, daysLeft);
+  for (let i = 1; i <= totalDaysToShow; i++) {
+    const date = new Date();
+    date.setDate(date.getDate() + i);
+    const dateStr = date.toLocaleDateString(undefined, {
+      weekday: 'short', month: 'short', day: 'numeric',
+    });
+
+    let focus = 'Mixed Revision';
+    if (weak.length > 0 && i <= weak.length) {
+      focus = `🎯 ${weak[i - 1]}`;
+    } else if (subjects.length > 0) {
+      focus = subjects[(i - 1) % subjects.length];
+    }
+
+    parts.push(
+      '<tr style="border-bottom:1px solid var(--border);">' +
+      `<td style="padding:0.35rem 0.5rem; font-weight:500;">${dateStr}</td>` +
+      `<td style="padding:0.35rem 0.5rem; color:var(--accent);">${escapeHtml(focus)}</td>` +
+      `<td style="padding:0.35rem 0.5rem;">${hours} h</td>` +
+      '</tr>'
+    );
+  }
+  parts.push('</table>');
+
+  if (daysLeft > totalDaysToShow) {
+    parts.push(
+      `<p style="font-size:0.75rem; color:var(--text-muted); margin-top:0.5rem;">` +
+      `…and ${daysLeft - totalDaysToShow} more day${daysLeft - totalDaysToShow === 1 ? '' : 's'}.` +
+      `</p>`
+    );
+  }
+
+  return parts.join('');
+}
+
+function generateAIPlan() {
+  const inputs = _parseAiInputs();
+
+  if (!inputs.examDate || inputs.subjects.length === 0) {
     ui.showToast('Please fill in at least exam date and subjects.', 'error');
     return;
   }
 
-  const result = performanceAI.generatePlan(examDate, subjects, hours, weak, preferred);
   const aiResult = $('#ai-result');
-  if (aiResult) aiResult.innerHTML = result.display;
-  if (result.success) {
-    const aiActions = $('#ai-actions');
-    if (aiActions) aiActions.style.display = 'flex';
-  }
+  if (aiResult) aiResult.innerHTML = _renderAiPlan(inputs);
+
+  const aiActions = $('#ai-actions');
+  if (aiActions) aiActions.style.display = 'flex';
+
+  window._lastAIPlan = inputs;
 }
 
 function adoptAIPlan() {
-  if (window._lastAIPlan) {
-    performanceAI.adoptPlan(window._lastAIPlan);
-  } else {
+  if (!window._lastAIPlan) {
     ui.showToast('No plan to adopt. Generate a plan first.', 'error');
+    return;
   }
+
+  // Persist as an exam countdown entry so it shows up in the Exams tab.
+  const { examDate, subjects } = window._lastAIPlan;
+  const exams = loadData(LS_KEYS.exams, []);
+  const exists = exams.some((e) => e.date === examDate);
+  if (!exists && examDate) {
+    exams.push({
+      name: subjects.join(' + ') || 'Study Plan',
+      date: examDate,
+    });
+    saveData(LS_KEYS.exams, exams);
+    renderExams();
+  }
+
+  ui.showToast('Plan adopted — exam added to countdown.', 'success');
+  const aiActions = $('#ai-actions');
+  if (aiActions) aiActions.style.display = 'none';
+  window._lastAIPlan = null;
 }
 
 function regenerateAIPlan() {
-  if (window._lastAIPlan) {
-    const result = performanceAI.regeneratePlan();
-    if (result) {
-      const aiResult = $('#ai-result');
-      if (aiResult) aiResult.innerHTML = result.display;
-    }
-  } else {
+  if (!window._lastAIPlan) {
     ui.showToast('No plan to regenerate. Generate a plan first.', 'error');
+    return;
   }
+  generateAIPlan();
 }
 
 function showAmendInput() {
-  performanceAI.showAmendInput();
+  const amendArea = $('#amend-area');
+  if (amendArea) amendArea.classList.add('visible');
 }
 
 function sendAmendment() {
@@ -2051,17 +2491,23 @@ function sendAmendment() {
     ui.showToast('Please describe your amendments.', 'error');
     return;
   }
-  const result = performanceAI.amendPlan(text);
-  if (result) {
-    const aiResult = $('#ai-result');
-    if (aiResult) aiResult.innerHTML = result.display;
-    const amendText = $('#amend-text');
-    if (amendText) amendText.value = '';
-  }
+  // The generator is deterministic, so amendments are recorded but
+  // the plan is regenerated from the same inputs. A future iteration
+  // could parse the text to alter weak-subject priority.
+  ui.showToast('Amendments recorded. Regenerating plan…', 'info');
+  const amendText = $('#amend-text');
+  if (amendText) amendText.value = '';
+  const amendArea = $('#amend-area');
+  if (amendArea) amendArea.classList.remove('visible');
+  generateAIPlan();
 }
 
 function cancelAIPlan() {
-  performanceAI.cancelPlan();
+  const aiActions = $('#ai-actions');
+  if (aiActions) aiActions.style.display = 'none';
+  const aiResult = $('#ai-result');
+  if (aiResult) aiResult.innerHTML = 'Enter your details and click Generate Plan.';
+  window._lastAIPlan = null;
 }
 
 // ==================== SHARE FUNCTIONS ====================
@@ -2070,7 +2516,7 @@ function shareAcademicProfile() {
     title: 'MedVix Academic Profile',
     text: 'Check out my academic performance on MedVix!',
     url: window.location.href,
-    dialogTitle: 'Share Profile'
+    dialogTitle: 'Share Profile',
   });
 }
 
@@ -2079,12 +2525,8 @@ function copyProfileLink() {
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard
       .writeText(url)
-      .then(() => {
-        ui.showToast('Profile link copied to clipboard!', 'success');
-      })
-      .catch(() => {
-        fallbackCopy(url);
-      });
+      .then(() => ui.showToast('Profile link copied to clipboard!', 'success'))
+      .catch(() => fallbackCopy(url));
   } else {
     fallbackCopy(url);
   }
@@ -2101,7 +2543,6 @@ function copyShareLink() {
     ui.showToast('No link to copy.', 'error');
     return;
   }
-
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard
       .writeText(url)
@@ -2119,41 +2560,47 @@ async function shareLinkViaNative() {
     return;
   }
   const url = linkInput.value;
-
   nativeShare({
     title: 'MedVix Exam',
     text: 'Check out this MedVix exam!',
-    url: url,
-    dialogTitle: 'Share Exam'
+    url,
+    dialogTitle: 'Share Exam',
   });
-
-  // Optionally close the share modal after triggering share
   const shareModal = $('#share-modal');
-  if (shareModal) {
-    setTimeout(() => { shareModal.style.display = 'none'; }, 500);
-  }
+  if (shareModal) setTimeout(() => { shareModal.style.display = 'none'; }, 500);
 }
 
 // ==================== AVATAR ====================
-function updateAvatar(dataUrl) {
+// Resolution order (highest priority first):
+//   1. localStorage `userAvatar` — user explicitly uploaded this file
+//      via the avatar-upload input on this page.
+//   2. Backend picture URL — user.picture / photoURL / avatar / avatarUrl.
+//      Same source the subjects page uses for the header avatar.
+//   3. Initials fallback.
+//
+// Image errors (offline, 404, blocked) fall through to initials so the
+// page never shows a broken <img> icon.
+function updateAvatar(url) {
   const img = $('#avatar-img');
   const initials = $('#avatar-initials');
-  if (img && initials) {
-    if (dataUrl) {
-      img.src = dataUrl;
-      img.style.display = 'block';
-      initials.style.display = 'none';
-    } else {
+  if (!img || !initials) return;
+
+  if (url) {
+    img.onerror = () => {
       img.style.display = 'none';
       initials.style.display = 'flex';
-    }
+    };
+    img.src = url;
+    img.style.display = 'block';
+    initials.style.display = 'none';
+  } else {
+    img.style.display = 'none';
+    initials.style.display = 'flex';
   }
 }
 
 // ==================== DESTROY ====================
 export function destroy() {
-  // Unregister the state adapter so a subsequent page load does not
-  // inherit a stale closure over this page's DOM.
   try { redirect.unregisterStateAdapter('performance'); } catch { /* ignore */ }
 
   if (chartInstance) {
@@ -2165,11 +2612,15 @@ export function destroy() {
     delete academicChartInstances[key];
   }
 
-  // ── IMAGE: tear down any review modal that's still open, revoking
-  //    its object-URLs first so the blobs can be GC'd. Fixes a
-  //    pre-existing leak: the modal is appended to document.body,
-  //    outside the page root, so the page manager doesn't remove it.
   if (_openReviewModal) {
     _cleanupReviewModal(_openReviewModal);
   }
+
+  // ── ENGINE: remove the visibility listener and drop the engine cache.
+  if (_medvixVisibilityListener) {
+    try { document.removeEventListener('visibilitychange', _medvixVisibilityListener); } catch { /* ignore */ }
+    _medvixVisibilityListener = null;
+  }
+  try { medvix.reset(); } catch { /* ignore */ }
+  _medvixRendered = false;
 }

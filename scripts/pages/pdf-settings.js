@@ -496,6 +496,13 @@ async function handleGenerate() {
       return;
     }
 
+    // ── Resolve Active Config (Respect Decoded Code) ───────────────────
+    const activeSubject = window._decodedConfig ? window._decodedConfig.subject : config.subject;
+    const activeTopicIds = window._decodedConfig ? window._decodedConfig.topicIds : config.topics.map(t => t.id);
+    const activeTopicNames = window._decodedConfig 
+      ? $('#pdf-topic-names').textContent 
+      : config.topics.map(t => t.name).join(', ');
+
     // ── Seed resolution ────────────────────────────────────────────────
     let seed = parseInt(btn.dataset.seed, 10);
     if (isNaN(seed) || seed === 0) {
@@ -505,8 +512,8 @@ async function handleGenerate() {
 
     // ── Fetch + shuffle questions ──────────────────────────────────────
     const rawQuestions = await questions.getQuestionsForExam({
-      subject: config.subject,
-      topics: config.topics,
+      subject: activeSubject,
+      topics: activeTopicIds,
       questionCount: numQuestions
     });
 
@@ -549,8 +556,7 @@ async function handleGenerate() {
 
     // ── Common metadata ────────────────────────────────────────────────
     const isoDate = new Date().toISOString().slice(0, 10);
-    const topicIds = config.topics.map(t => t.id);
-    const examCode = encodeExamCode(config.subject, topicIds, seed, numQuestions);
+    const examCode = encodeExamCode(activeSubject, activeTopicIds, seed, numQuestions);
 
     // ── Compose payloads for each selected document type ───────────────
     const payloads = [];
@@ -560,9 +566,9 @@ async function handleGenerate() {
         type: 'exam',
         data: {
           id: examCode,
-          title: `${config.subject} – Practice Exam`,
-          subject: config.subject,
-          topics: config.topics.map(t => t.name).join(', '),
+          title: `${activeSubject} – Practice Exam`,
+          subject: activeSubject,
+          topics: activeTopicNames,
           difficulty: 'Moderate',
           duration: `${Math.ceil(numQuestions * 1.2)} minutes`,
           totalMarks: selectedQuestions.length,
@@ -582,7 +588,7 @@ async function handleGenerate() {
         type: 'mcq-sheet',
         data: {
           id: examCode,
-          title: `${config.subject} – Answer Sheet`,
+          title: `${activeSubject} – Answer Sheet`,
           totalQuestions: selectedQuestions.length,
           studentInfo: includeFillout
         }
@@ -594,9 +600,9 @@ async function handleGenerate() {
         type: 'answer-key',
         data: {
           id: examCode,
-          title: `${config.subject} – Answer Key`,
+          title: `${activeSubject} – Answer Key`,
           subtitle: 'Detailed explanations for each question',
-          subject: config.subject,
+          subject: activeSubject,
           date: isoDate,
           answers: examQuestions.map(q => ({
             id: q.id,

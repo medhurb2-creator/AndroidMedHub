@@ -105,11 +105,11 @@ function contactSupport() {
     `Phone: \n\n` +
     `Please unlock my account.`
   );
-  window.location.href = `mailto:felixappbuilder@gmail.com?subject=${subject}&body=${body}`;
+  window.location.href = `mailto:support@medvix.co.ke?subject=${subject}&body=${body}`;
 }
 
 function callSupport() {
-  window.location.href = 'tel:+254746834527';
+  window.location.href = 'tel:+254720420855';
 }
 
 async function clearLocalData() {

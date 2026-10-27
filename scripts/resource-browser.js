@@ -1519,17 +1519,15 @@ function attachCardEventListeners() {
             }
 
             // ===== OPEN =====
-            if (isOpen) {
-                // Immediate visual feedback: swap the button into an inline
-                // loading state before any await. The entitlement check, the
-                // metadata lookup inside the viewer, and the blob URL
-                // creation all take time on first open — especially for a
-                // large PDF that has to be read out of the native bridge in
-                // chunks.
-                _setButtonOpening(btn);
+if (isOpen) {
+    _setButtonOpening(btn);
+    
+    // Yield the thread to allow the browser to paint the spinner
+    await new Promise(resolve => setTimeout(resolve, 50));
 
-                let previewMode = false;
-                let hasActive = false;
+    let previewMode = false;
+    let hasActive = false;
+    // ... rest of the open logic
 
                 try {
                     if (doc && doc.isPremium === true) {

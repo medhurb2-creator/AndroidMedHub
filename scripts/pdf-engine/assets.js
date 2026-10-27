@@ -148,37 +148,13 @@ export const PLACEHOLDER_PNG_BASE64 =
 // ═══════════════════════════════════════════════════════════════════════════
 // 4. Font manifest
 // ═══════════════════════════════════════════════════════════════════════════
-//
-// Every entry describes one font file. The worker (File 8) reads this
-// manifest and registers each font with the Typst WASM compiler. Missing
-// entries mean Typst substitutes a fallback font silently — the PDF renders,
-// but with the wrong typeface for that text.
-//
-// Field semantics
-// ───────────────
-//   family   — the exact string Typst uses in `#set text(font: "...")`.
-//              Must match File 4's `font-body` token spelling byte-for-byte.
-//   weight   — numeric (400, 700, ...). Matches File 4's `font-weight-*`
-//              tokens. Numeric, not string.
-//   style    — 'normal' | 'italic'.
-//   url      — path from the public directory. resolveAssetUrl() prefixes
-//              the Vite base URL at fetch time.
-//   scripts  — ISO 15924 script codes covered (documentation only).
-//   required — if true and the fetch fails, loadAssets() rejects;
-//              if false, the font is silently skipped (Typst falls back).
-//
-// Format note
-// ───────────
-//   `.ttf` / `.otf` only. Typst's HarfBuzz reads raw OpenType tables and
-//   cannot decode the `.woff2` compressed container without a decompressor
-//   step that the WASM build does not include.
 
 const FONT_MANIFEST = Object.freeze([
   Object.freeze({
     family: 'Inter',
     weight: 400,
     style: 'normal',
-    url: '/assets/fonts/Inter-Regular.ttf',
+    url: '/libs/fonts/Inter-Regular.ttf',
     scripts: ['Latn'],
     required: true
   }),
@@ -186,7 +162,7 @@ const FONT_MANIFEST = Object.freeze([
     family: 'Inter',
     weight: 700,
     style: 'normal',
-    url: '/assets/fonts/Inter-Bold.ttf',
+    url: '/libs/fonts/Inter-Bold.ttf',
     scripts: ['Latn'],
     required: false
   }),
@@ -194,7 +170,7 @@ const FONT_MANIFEST = Object.freeze([
     family: 'Inter',
     weight: 400,
     style: 'italic',
-    url: '/assets/fonts/Inter-Italic.ttf',
+    url: '/libs/fonts/Inter-Italic.ttf',
     scripts: ['Latn'],
     required: false
   }),
@@ -202,7 +178,7 @@ const FONT_MANIFEST = Object.freeze([
     family: 'Noto Naskh Arabic',
     weight: 400,
     style: 'normal',
-    url: '/assets/fonts/NotoNaskhArabic-Regular.ttf',
+    url: '/libs/fonts/NotoNaskhArabic-Regular.ttf',
     scripts: ['Arab'],
     required: false
   }),
@@ -210,7 +186,7 @@ const FONT_MANIFEST = Object.freeze([
     family: 'Noto Sans Devanagari',
     weight: 400,
     style: 'normal',
-    url: '/assets/fonts/NotoSansDevanagari-Regular.ttf',
+    url: '/libs/fonts/NotoSansDevanagari-Regular.ttf',
     scripts: ['Deva'],
     required: false
   }),
@@ -218,7 +194,7 @@ const FONT_MANIFEST = Object.freeze([
     family: 'Noto Sans Thai',
     weight: 400,
     style: 'normal',
-    url: '/assets/fonts/NotoSansThai-Regular.ttf',
+    url: '/libs/fonts/NotoSansThai-Regular.ttf',
     scripts: ['Thai'],
     required: false
   })

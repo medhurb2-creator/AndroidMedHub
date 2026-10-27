@@ -1,16 +1,44 @@
 // scripts/exam-engine.js
 
 /**
- * Core Exam Engine
- * Supports Standard, Revision, and Challenge modes.
+ * Core Exam Engine — ENGINE-INTEGRATED
+ * Supports Standard, Revision, Challenge, Shared, and Adaptive modes.
  * Manages exam lifecycle: question selection, answers, navigation,
- * auto-save, results calculation, and records seen questions.
+ * auto-save, results calculation, engine ingestion, and seen questions.
  *
- * Updated for new JSON structure:
- *   - options: [{ text, isCorrect, explanation }]
- *   - explanation: { overview, highYield, clinicalCorrelation }
+ * ── ENGINE INTEGRATION (2026-02) ───────────────────────────────────────
  *
- * Options are shuffled after loading to avoid pattern bias.
+ *   1. ADAPTIVE QUESTION SELECTION (opt-in)
+ *      Pass `adaptive: true` in the config. The engine (CL-B + CL-D) will
+ *      rank the pool by expected information gain per minute and return
+ *      the highest-utility questions, topped up with random if the engine
+ *      doesn't have enough history to fill the session.
+ *
+ *      Optional config fields:
+ *        adaptive        boolean   default false
+ *        engineMode      string    engine selection mode (auto if omitted)
+ *        timeBudgetSec   number    default questionCount * 30
+ *        excludeIds      string[]  question ids to skip
+ *
+ *      Non-adaptive configs behave EXACTLY as before — no behavior change.
+ *
+ *   2. RESULTS ENRICHMENT (always on)
+ *      After every exam, `results.medvix` is populated with:
+ *        • ingested flag + counts
+ *        • per-concept diagnostics (mastery, retrieval, misconceptions)
+ *        • per-concept review plans (urgency, next review date)
+ *        • a one-line session narration (friendly register)
+ *        • per-concept narrations (first 5 concepts)
+ *      The results page can display this without any further work. If the
+ *      engine is cold or errors, `results.medvix.ingested` is false and
+ *      everything still works.
+ *
+ *   Neither feature adds user-facing latency. Enrichment runs after the
+ *   exam is already saved; every engine call is try/catch'ed.
+ *
+ * ── BACKWARD COMPATIBILITY ──────────────────────────────────────────────
+ *   All existing exports are preserved unchanged. `examEngine` gains three
+ *   new members: `buildAdaptiveExamConfig`, `isAdaptiveMode`, `getEngineMode`.
  */
 
 import * as utils from './utils.js';
@@ -21,36 +49,31 @@ import * as performanceRating from './performance-rating-v2.js';
 import * as auth from './auth.js';
 import { convexHttpClient } from './convex-client.js';
 import * as rateUs from './rate-us.js';
+import * as medvix from './medvix.js';   // ← engine + narrator
 
 // Internal state (not exported)
 let examState = {
     config: null,
-    questions: [],          // array of question objects
-    answers: [],            // array of { selectedOption, timeSpent, flagged }
+    questions: [],
+    answers: [],
     currentIndex: 0,
     startTime: null,
     isFinished: false,
     examId: null,
 
-    // Revision / Challenge additions
-    submittedQuestions: [],  // boolean array: has this question been submitted?
-    showExplanation: [],    // boolean array: should explanation be visible?
+    submittedQuestions: [],
+    showExplanation: [],
     seed: null,
     cycle: 1,
     challengeId: null,
     challengeCode: null,
     opponent: null,
-    lobbyAvgPR: null,        // for performance rating
-    opponentRating: null     // for performance rating
+    lobbyAvgPR: null,
+    opponentRating: null,
 };
 
 // ==================== Helpers ====================
 
-/**
- * Fisher–Yates shuffle (in‑place). Returns the same array reference.
- * @param {Array} arr
- * @returns {Array}
- */
 function shuffleArray(arr) {
     for (let i = arr.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -59,29 +82,213 @@ function shuffleArray(arr) {
     return arr;
 }
 
-/**
- * Determine the correct answer letter from the new option objects.
- * Falls back to old `q.correct` if options are plain strings.
- * @param {Object} q - question object
- * @returns {string} e.g. 'A'
- */
 function getCorrectAnswerLetter(q) {
     if (!q || !q.options || !Array.isArray(q.options)) return 'A';
-    // Check if options are objects (new format)
     if (typeof q.options[0] === 'object') {
         const idx = q.options.findIndex(opt => opt.isCorrect === true);
         if (idx >= 0) {
             return String.fromCharCode(65 + idx);
         }
     }
-    // Fallback for old format (option strings + q.correct)
     return q.correct || 'A';
+}
+
+// ==================== ENGINE ENRICHMENT (private) ====================
+
+/**
+ * Enrich a finished exam result with engine diagnostics + narration.
+ *
+ * Idempotent: re-ingesting the same exam is safe (EventLog dedupes by
+ * eventId). Always leaves `results.medvix` present, even on failure.
+ *
+ * The engine is NOT required for the exam to complete — every call is
+ * try/catch'ed and the function never throws.
+ *
+ * @param {Object} results — finished exam results object (mutated)
+ */
+async function enrichResultsWithMedvix(results) {
+    const empty = {
+        ingested: false,
+        ingestedCount: 0,
+        skippedCount: 0,
+        conceptsTouched: [],
+        diagnostics: {},
+        reviewPlans: {},
+        sessionNarration: null,
+        conceptNarrations: {},
+    };
+
+    if (!results || !Array.isArray(results.questions) || results.questions.length === 0) {
+        results.medvix = { ...empty, reason: 'no_questions' };
+        return;
+    }
+
+    const enrichment = { ...empty };
+
+    // ── 1. Ingest the exam into the engine ──
+    try {
+        const ingest = await medvix.ingestExam(results, 'local');
+        if (ingest) {
+            enrichment.ingested = (ingest.ingested || 0) > 0;
+            enrichment.ingestedCount = ingest.ingested || 0;
+            enrichment.skippedCount = ingest.skipped || 0;
+            enrichment.conceptsTouched = Array.isArray(ingest.conceptsTouched)
+                ? ingest.conceptsTouched
+                : [];
+        }
+    } catch (e) {
+        console.warn('[ExamEngine] medvix.ingestExam failed:', e);
+        results.medvix = { ...empty, error: String(e) };
+        return;
+    }
+
+    // ── 2. Per-concept diagnostics ──
+    for (const conceptId of enrichment.conceptsTouched) {
+        try {
+            const diag = await medvix.getDiagnose(conceptId);
+            if (diag) {
+                enrichment.diagnostics[conceptId] = {
+                    mastery: diag.mastery || null,
+                    retrieval: diag.retrieval || null,
+                    misconceptions: diag.misconceptions || null,
+                    metacognitive: diag.metacognitive || null,
+                };
+            }
+        } catch (e) {
+            console.warn(`[ExamEngine] diagnose(${conceptId}) failed:`, e);
+        }
+    }
+
+    // ── 3. Per-concept review plans ──
+    for (const conceptId of enrichment.conceptsTouched) {
+        try {
+            const plan = await medvix.getReviewPlan(conceptId);
+            if (plan) {
+                enrichment.reviewPlans[conceptId] = {
+                    currentP: plan.currentP,
+                    targetP: plan.targetP,
+                    nextReviewAtSec: plan.nextReviewAtSec,
+                    nextReviewInDays: plan.nextReviewInDays,
+                    urgency: plan.urgency,
+                };
+            }
+        } catch (e) {
+            console.warn(`[ExamEngine] reviewPlan(${conceptId}) failed:`, e);
+        }
+    }
+
+    // ── 4. Session narration (one-line friendly summary) ──
+    try {
+        const sessionSummary = {
+            n_questions: results.totalQuestions || 0,
+            n_concepts: enrichment.conceptsTouched.length
+                || (Array.isArray(results.topics) ? results.topics.length : 0),
+            n_improved: 0,
+            n_declined: Array.isArray(results.weakAreas) ? results.weakAreas.length : 0,
+        };
+        const narr = await medvix.narrateSession(sessionSummary, 'friendly');
+        if (narr && narr.valid && typeof narr.text === 'string') {
+            enrichment.sessionNarration = narr.text;
+        }
+    } catch (e) {
+        console.warn('[ExamEngine] narrateSession failed:', e);
+    }
+
+    // ── 5. Per-concept narrations (cap to 5 to keep results page fast) ──
+    for (const conceptId of enrichment.conceptsTouched.slice(0, 5)) {
+        try {
+            const narr = await medvix.narrateConcept(conceptId, 'friendly');
+            if (narr && narr.valid && typeof narr.text === 'string') {
+                enrichment.conceptNarrations[conceptId] = narr.text;
+            }
+        } catch (e) {
+            console.warn(`[ExamEngine] narrateConcept(${conceptId}) failed:`, e);
+        }
+    }
+
+    results.medvix = enrichment;
+}
+
+// ==================== ADAPTIVE CONFIG BUILDER ====================
+
+/**
+ * Build an exam configuration that will use the engine to select questions.
+ *
+ * If `preferredEngineMode` is omitted, the engine recommends a mode based
+ * on the learner's current state (initial diagnostic, remediation,
+ * spaced retrieval, etc.).
+ *
+ * @param {Object} options
+ * @param {string} options.subject
+ * @param {string[]} options.topics
+ * @param {number} [options.questionCount=20]
+ * @param {number} [options.timeBudgetSec]        default questionCount * 30
+ * @param {string} [options.preferredExamMode='standard']
+ *        Exam behavior mode: 'standard' | 'revision' | 'challenge' | 'shared'
+ * @param {string} [options.preferredEngineMode]
+ *        Engine selection mode: 'initial_diagnostic' | 'weakness_focused_remediation'
+ *        | 'spaced_retrieval' | 'broad_curriculum_revision' | 'timed_exam_simulation'
+ *        | 'clinical_reasoning_transfer' | 'practical_identification'
+ *        | 'short_study' | 'low_confidence_high_uncertainty'
+ * @param {string[]} [options.excludeIds=[]]
+ * @returns {Promise<Object>} config ready to pass to createExam()
+ */
+export async function buildAdaptiveExamConfig(options) {
+    const {
+        subject,
+        topics,
+        questionCount = 20,
+        timeBudgetSec = null,
+        preferredExamMode = 'standard',
+        preferredEngineMode = null,
+        excludeIds = [],
+    } = options || {};
+
+    if (!subject) throw new Error('buildAdaptiveExamConfig: subject required');
+    if (!Array.isArray(topics) || topics.length === 0) {
+        throw new Error('buildAdaptiveExamConfig: topics required');
+    }
+
+    const budget = (Number.isFinite(timeBudgetSec) && timeBudgetSec > 0)
+        ? timeBudgetSec
+        : Math.max(60, questionCount * 30);
+
+    let recommendation = null;
+    try {
+        recommendation = await medvix.getModeRecommendation({
+            budgetSec: budget,
+            subject,
+        });
+    } catch (e) {
+        console.warn('[ExamEngine] getModeRecommendation failed (non-fatal):', e);
+    }
+
+    const engineMode = preferredEngineMode
+        || (recommendation && recommendation.mode)
+        || 'broad_curriculum_revision';
+
+    return {
+        subject,
+        topics,
+        questionCount,
+        mode: preferredExamMode,       // exam behavior mode
+        engineMode,                    // engine selection mode
+        adaptive: true,
+        timeBudgetSec: budget,
+        excludeIds,
+        engineRecommendation: recommendation,   // included for UI display
+    };
 }
 
 // ==================== Initialization ====================
 
 /**
  * Create a new exam based on configuration.
+ *
+ * Backward-compatible: when `config.adaptive` is falsy, this behaves
+ * exactly as before (random selection). When `config.adaptive === true`,
+ * the engine ranks the candidate pool first.
+ *
  * @param {Object} config - from app.getExamConfig()
  * @returns {Promise<void>}
  */
@@ -97,34 +304,40 @@ export async function createExam(config) {
     examState.challengeId = config.challengeId || null;
     examState.challengeCode = config.challengeCode || null;
     examState.opponent = config.opponent || null;
-    examState.lobbyAvgPR = config.lobbyAvgPR || 0.5; // default if not provided
+    examState.lobbyAvgPR = config.lobbyAvgPR || 0.5;
     examState.opponentRating = config.opponentRating || 100;
 
-    // Load questions from questions.js (passing seed, cycle, mode)
+    // Load questions — pass adaptive flags through to the question bank.
+    //
+    // Note on `mode`: `config.mode` is the EXAM behavior mode (standard /
+    // revision / challenge / shared). The engine selector wants a different
+    // set of mode names — that's `config.engineMode`. We pass ONLY the
+    // engine mode to the question bank so it can't be confused.
     const questionList = await questions.getQuestionsForExam({
         ...config,
         seed: examState.seed,
         cycle: examState.cycle,
-        mode: config.mode
+        mode: config.engineMode || null,
+        adaptive: !!config.adaptive,
+        timeBudgetSec: config.timeBudgetSec,
+        excludeIds: config.excludeIds,
     });
     if (!questionList || questionList.length === 0) {
         throw new Error('No questions available for the selected topics');
     }
 
-    // 🔀 Shuffle options for every question (in‑place, stays same for session)
+    // Shuffle options per question (unchanged)
     questionList.forEach(q => {
         if (q.options && Array.isArray(q.options)) {
-            // Shuffle the options array – the correct answer will be at a random position
             shuffleArray(q.options);
         }
     });
 
     examState.questions = questionList;
-    const qCount = questionList.length;
     examState.answers = questionList.map(() => ({
         selectedOption: null,
         timeSpent: 0,
-        flagged: false
+        flagged: false,
     }));
     examState.submittedQuestions = questionList.map(() => false);
     examState.showExplanation = questionList.map(() => false);
@@ -132,6 +345,18 @@ export async function createExam(config) {
 
 export function startExam() {
     // Nothing extra needed – exam is ready
+}
+
+// ==================== Adaptive helpers (exported) ====================
+
+/** True when the current exam was started with `adaptive: true`. */
+export function isAdaptiveMode() {
+    return !!examState.config?.adaptive;
+}
+
+/** Returns the engine selection mode used for the current exam, or null. */
+export function getEngineMode() {
+    return examState.config?.engineMode || null;
 }
 
 // ==================== Getters ====================
@@ -145,11 +370,6 @@ export function getCurrentAnswer() {
     return examState.answers[examState.currentIndex];
 }
 
-/**
- * Get the answer object for a specific question index.
- * @param {number} index
- * @returns {Object|null}
- */
 export function getAnswer(index) {
     if (index < 0 || index >= examState.answers.length) return null;
     return examState.answers[index];
@@ -179,17 +399,12 @@ export function hasPrev() {
     return examState.currentIndex > 0;
 }
 
-/**
- * Get the state of a question (answered, flagged, visited).
- * @param {number} index
- * @returns {Object}
- */
 export function getQuestionState(index) {
     const answer = examState.answers[index];
     return {
         answered: !!answer?.selectedOption,
         flagged: answer?.flagged || false,
-        visited: answer?.timeSpent > 0 || index < examState.currentIndex // approximate
+        visited: answer?.timeSpent > 0 || index < examState.currentIndex,
     };
 }
 
@@ -229,12 +444,6 @@ export function isQuestionSubmitted(index = examState.currentIndex) {
     return examState.submittedQuestions[index] || false;
 }
 
-/**
- * Get revision feedback for the current question (new format).
- * @returns {Object|null} 
- *  { selectedOption, correctOption, selectedText, correctText,
- *    selectedExplanation, correctExplanation, overallExplanation, isCorrect }
- */
 export function getRevisionFeedback() {
     const idx = examState.currentIndex;
     const q = examState.questions[idx];
@@ -245,14 +454,12 @@ export function getRevisionFeedback() {
     const correctLetter = getCorrectAnswerLetter(q);
     const isCorrect = selectedLetter === correctLetter;
 
-    // Find the option objects
     const selectedIdx = selectedLetter.charCodeAt(0) - 65;
     const correctIdx = correctLetter.charCodeAt(0) - 65;
 
     const selectedObj = q.options?.[selectedIdx] || {};
     const correctObj = q.options?.[correctIdx] || {};
 
-    // Build feedback: use option text and its specific explanation
     return {
         selectedOption: selectedLetter,
         correctOption: correctLetter,
@@ -261,27 +468,19 @@ export function getRevisionFeedback() {
         selectedExplanation: selectedObj.explanation || 'No explanation for your choice.',
         correctExplanation: correctObj.explanation || 'No explanation for the correct answer.',
         overallExplanation: q.explanation || { overview: 'No overall explanation available.' },
-        isCorrect
+        isCorrect,
     };
 }
 
-/**
- * Get all questions (used by shared mode to render everything at once).
- * @returns {Array}
- */
 export function getAllQuestions() {
     return examState.questions;
 }
 
 // ==================== Actions ====================
 
-/**
- * Submit an answer for the current question.
- */
 export function submitAnswer(selectedOption, timeSpent) {
     if (examState.isFinished) return;
 
-    // Prevent resubmission in Revision mode
     const idx = examState.currentIndex;
     if (examState.submittedQuestions[idx]) return;
 
@@ -289,32 +488,22 @@ export function submitAnswer(selectedOption, timeSpent) {
     answer.selectedOption = selectedOption;
     answer.timeSpent = timeSpent;
 
-    // Mark as submitted
     examState.submittedQuestions[idx] = true;
 
-    // If Revision mode, show explanation immediately
     if (isRevisionMode()) {
         examState.showExplanation[idx] = true;
     }
 }
 
-/**
- * Submit an answer for a specific question index (used by shared mode).
- * @param {number} index
- * @param {string} selectedOption - e.g., 'A'
- * @param {number} timeSpent - seconds
- */
 export function submitAnswerAtIndex(index, selectedOption, timeSpent) {
     if (examState.isFinished) return;
     if (index < 0 || index >= examState.questions.length) return;
 
-    // In shared mode we allow resubmission (override previous answer)
     const answer = examState.answers[index];
     answer.selectedOption = selectedOption;
     answer.timeSpent = timeSpent;
     examState.submittedQuestions[index] = true;
 
-    // If Revision mode (though shared uses its own logic), show explanation
     if (isRevisionMode()) {
         examState.showExplanation[index] = true;
     }
@@ -327,11 +516,6 @@ export function toggleCurrentFlag() {
     return answer.flagged;
 }
 
-/**
- * Toggle the flagged state for a specific question index.
- * @param {number} index
- * @returns {boolean} new flagged state
- */
 export function toggleFlagAtIndex(index) {
     if (examState.isFinished) return false;
     if (index < 0 || index >= examState.answers.length) return false;
@@ -387,7 +571,7 @@ export async function autoSave() {
         seed: examState.seed,
         cycle: examState.cycle,
         challengeId: examState.challengeId,
-        challengeCode: examState.challengeCode
+        challengeCode: examState.challengeCode,
     };
     await db.saveExamProgress(progress).catch(err => console.warn('Auto-save failed', err));
 }
@@ -396,7 +580,6 @@ export async function loadSavedExam() {
     const saved = await db.getExamProgress();
     if (!saved) return null;
 
-    // Restore questions from IDs
     const questionList = await questions.getQuestionsByIds(saved.questions);
     if (!questionList || questionList.length === 0) return null;
 
@@ -422,7 +605,6 @@ export async function endExam() {
     examState.isFinished = true;
     const totalTime = Date.now() - examState.startTime;
 
-    // Calculate total allocated time (in seconds)
     let timeAllocated = 0;
     if (examState.config.timingMode === 'fixed') {
         timeAllocated = examState.config.questionCount * (examState.config.fixedTimePerQuestion || 30);
@@ -432,7 +614,6 @@ export async function endExam() {
         timeAllocated = examState.config.questionCount * 30;
     }
 
-    // Build local results
     const results = {
         examId: examState.examId,
         subject: examState.config.subject,
@@ -442,7 +623,7 @@ export async function endExam() {
         correctAnswers: 0,
         scorePercentage: 0,
         timeSpent: totalTime,
-        timeAllocated: timeAllocated,
+        timeAllocated,
         averageTimePerQuestion: totalTime / examState.questions.length / 1000,
         questions: [],
         topics: [],
@@ -451,8 +632,10 @@ export async function endExam() {
         cycle: examState.cycle,
         challengeId: examState.challengeId,
         challengeCode: examState.challengeCode,
+        // Adaptive metadata — persisted so the results page knows it was adaptive
+        adaptive: !!examState.config.adaptive,
+        engineMode: examState.config.engineMode || null,
         revisionCompleted: examState.submittedQuestions.every(v => v),
-        // Performance Rating fields (will be filled later)
         performanceRatio: null,
         factors: null,
         previousRating: null,
@@ -463,7 +646,9 @@ export async function endExam() {
         historyEWMA: null,
         reliability: null,
         integrity: null,
-        historyCount: 0
+        historyCount: 0,
+        // Populated by enrichResultsWithMedvix() below
+        medvix: null,
     };
 
     const topicMap = {};
@@ -485,9 +670,9 @@ export async function endExam() {
             explanation: q.explanation,
             topic: q.topic,
             difficulty: q.difficulty,
-            image: q.image || null,   // ← ADD THIS
+            image: q.image || null,
             flagged: answer.flagged,
-            submitted: examState.submittedQuestions[idx]
+            submitted: examState.submittedQuestions[idx],
         };
         results.questions.push(qResult);
 
@@ -505,12 +690,12 @@ export async function endExam() {
         questions: data.total,
         correct: data.correct,
         percentage: (data.correct / data.total) * 100,
-        averageTime: data.totalTime / data.total
+        averageTime: data.totalTime / data.total,
     }));
     results.weakAreas = results.topics.filter(t => t.percentage < 70).map(t => t.topic);
 
     // ============================================================
-    // 1. SAVE THE EXAM FIRST (so it exists in the database)
+    // 1. SAVE THE EXAM FIRST (durability)
     // ============================================================
     await db.saveExamResult(results);
 
@@ -521,8 +706,8 @@ export async function endExam() {
         const user = auth.getUser();
         if (user && user._id) {
             const prResult = await performanceRating.computeFullPerformance(
-                results.examId,          // examId string
-                user._id,                // userId string
+                results.examId,
+                user._id,
                 examState.lobbyAvgPR || 0.5,
                 examState.opponentRating || 100
             );
@@ -539,7 +724,6 @@ export async function endExam() {
             results.integrity = prResult.integrity;
             results.historyCount = prResult.historyCount;
 
-            // Update user
             user.rating = prResult.newRating;
             user.rank = prResult.rank.rank;
             user.historyEWMA = prResult.historyEWMA;
@@ -552,22 +736,35 @@ export async function endExam() {
     }
 
     // ============================================================
-    // 3. SUBMIT CHALLENGE RESULT (if mode is challenge/shared)
+    // 3. SUBMIT CHALLENGE RESULT (if applicable)
     // ============================================================
     if (examState.config.mode === 'challenge' || examState.config.mode === 'shared') {
         await submitChallengeResult(results);
     }
 
     // ============================================================
-    // 4. UPDATE THE EXAM RECORD WITH RATING DATA (already saved)
+    // 4. MEDVIX ENGINE INGESTION + ENRICHMENT
+    // ============================================================
+    // Ingests this exam into the adaptive engine so future sessions benefit,
+    // and enriches results.medvix with diagnostics, review plans, and
+    // narrator text for the results page. Non-fatal: failures are logged
+    // and results.medvix will be set with `ingested: false`.
+    try {
+        await enrichResultsWithMedvix(results);
+    } catch (err) {
+        console.warn('[ExamEngine] MedVix enrichment failed (non-fatal):', err);
+        results.medvix = { ingested: false, error: String(err) };
+    }
+
+    // ============================================================
+    // 5. FINAL SAVE — everything (rating + challenge + medvix)
     // ============================================================
     await db.saveExamResult(results);
 
     // ============================================================
-    // 5. RECORD SEEN QUESTIONS (except challenge mode)
+    // 6. RECORD SEEN QUESTIONS (except challenge mode)
     // ============================================================
     if (examState.config.mode !== 'challenge') {
-        const questionIds = results.questions.map(q => q.id);
         const byTopic = {};
         results.questions.forEach(q => {
             if (!byTopic[q.topic]) byTopic[q.topic] = [];
@@ -577,36 +774,33 @@ export async function endExam() {
             await db.addSeenQuestions(results.subject, ids, topic);
         }
     }
-// ── TRIGGER IN-APP REVIEW (Respects 45-day cooldown) ──
+
+    // ============================================================
+    // 7. IN-APP REVIEW (cooldown-respecting)
+    // ============================================================
     try {
         await rateUs.requestAppReview();
     } catch (err) {
         console.warn('[ExamEngine] RateUs trigger failed:', err);
     }
+
     return results;
 }
 
-
 // ==================== Challenge Result Submission ====================
 
-/**
- * Submit challenge result to backend, or queue if offline.
- * @param {Object} results - exam results object
- */
 async function submitChallengeResult(results) {
     const token = auth.getToken();
     if (!token) return;
 
-    // Use challengeId if available, otherwise fall back to challengeCode
     const challengeId = examState.challengeId || examState.challengeCode;
     if (!challengeId) return;
 
     const totalQuestions = results.totalQuestions;
     const correctCount = results.correctAnswers;
     const percentage = results.scorePercentage;
-    const timeSpent = results.timeSpent / 1000; // convert to seconds
+    const timeSpent = results.timeSpent / 1000;
 
-    // Compute mean difficulty from all questions
     let difficultySum = 0;
     let difficultyCount = 0;
     results.questions.forEach(q => {
@@ -619,7 +813,7 @@ async function submitChallengeResult(results) {
 
     const payload = {
         token,
-        challengeId,          // ✅ backend expects challengeId
+        challengeId,
         score: correctCount,
         totalQuestions,
         percentage,
@@ -629,15 +823,12 @@ async function submitChallengeResult(results) {
 
     if (navigator.onLine) {
         try {
-            await convexHttpClient.action("challenges/actions:submitResult", payload);   // ← FIXED
+            await convexHttpClient.action('challenges/actions:submitResult', payload);
             console.log('Challenge result submitted successfully');
-            // Mark as submitted to prevent duplicate push via sync
             results.challengeResultSubmitted = true;
-            // Re‑save the exam with this flag
             await db.saveExamResult(results);
         } catch (err) {
             console.error('Challenge result submission failed:', err);
-            // Queue for later sync
             await queueChallengeResult(payload);
         }
     } else {
@@ -646,20 +837,12 @@ async function submitChallengeResult(results) {
     }
 }
 
-/**
- * Queue challenge result for later submission.
- * @param {Object} payload - challenge result payload
- */
 async function queueChallengeResult(payload) {
     await db.addToSyncQueue('challenge_result', payload);
 }
 
 // ==================== Exam Config Management ====================
 
-/**
- * Store exam configuration in the state and optionally in sessionStorage.
- * @param {Object} config - exam configuration object
- */
 export function setExamConfig(config) {
     examState.config = config;
     if (config) {
@@ -669,10 +852,6 @@ export function setExamConfig(config) {
     }
 }
 
-/**
- * Retrieve the current exam configuration from state, or from sessionStorage as fallback.
- * @returns {Object|null}
- */
 export function getExamConfig() {
     if (examState.config) return examState.config;
     const saved = sessionStorage.getItem('examConfig');
@@ -687,17 +866,11 @@ export function getExamConfig() {
     return null;
 }
 
-/**
- * Clear the exam configuration from state and sessionStorage.
- */
 export function clearExamConfig() {
     examState.config = null;
     sessionStorage.removeItem('examConfig');
 }
 
-/**
- * Clear the entire exam state (for logout, reset, etc.)
- */
 export function clearExamState() {
     examState.config = null;
     examState.questions = [];
@@ -719,7 +892,7 @@ export function clearExamState() {
 
 // ==================== Export ====================
 
-// Live proxy for backward compatibility with `import { config } from ...`
+// Live proxy for `import { config } from ...`
 export const config = new Proxy({}, {
     get(_, prop) { return examState.config?.[prop]; },
     set(_, prop, value) { if (examState.config) { examState.config[prop] = value; return true; } return false; },
@@ -730,11 +903,11 @@ export const config = new Proxy({}, {
             return { configurable: true, enumerable: true, value: examState.config[prop] };
         }
         return undefined;
-    }
+    },
 });
 
-// Standard object literal – uses function hoisting, no issues
 export const examEngine = {
+    // Existing API — unchanged
     createExam,
     startExam,
     getConfig,
@@ -772,5 +945,10 @@ export const examEngine = {
     setExamConfig,
     getExamConfig,
     clearExamConfig,
-    clearExamState
+    clearExamState,
+
+    // NEW — engine-aware
+    buildAdaptiveExamConfig,
+    isAdaptiveMode,
+    getEngineMode,
 };

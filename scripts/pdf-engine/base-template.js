@@ -2,37 +2,6 @@
  * MedVix Unified PDF Engine v7.0
  * File 5 of 8 — Master Page Geometry & Frame Layout
  * ─────────────────────────────────────────────────────────────────────────────
- *
- * Owns the outermost frame of every PDF the engine produces:
- *
- *   • #set page(...)     — paper size, margins, watermark, running header,
- *                          running footer with dynamic "Page X of Y" count.
- *   • #set text(...)     — document-wide font, size, colour, language.
- *   • #set par(...)      — justification, leading.
- *   • #show heading: ... — brand-consistent heading sizes and colour.
- *   • header content     — either in the page(header:) slot (repeating) or
- *                          emitted once at the top of the body (first-page).
- *
- * File 5 is pure and synchronous: it receives a small parameter object and
- * returns a complete Typst source string, ready to be prepended to the
- * document body by File 7.
- *
- * Public API
- * ──────────
- *   renderBaseSetup(params) → string
- *
- * Guarantees
- * ──────────
- *   • Pure          — no DOM, no fetch, no side effects.
- *   • Deterministic — same input → byte-identical output.
- *   • Escaped       — every interpolated user string passes through
- *                     File 2's escapeTypstLiteral / escapeTypstString.
- *   • Typst-safe    — uses only constructs verified against the Typst
- *                     reference: 4-arg rgb(), #linebreak(), context-based
- *                     page counters, header/footer slots.
- *   • Fail-fast     — an unknown theme or an invalid logo string throws
- *                     immediately, before any Typst is emitted.
- * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import { escapeTypstLiteral, escapeTypstString } from './types.js';
@@ -43,19 +12,8 @@ import { DEFAULT_THEME, SUPPORTED_THEMES }         from './tokens.js';
 // ═══════════════════════════════════════════════════════════════════════════
 
 const LOG_PREFIX = '[pdf-engine/base-template]';
-
-/**
- * The watermark's font size. Decorative rather than structural; not a
- * design token because it never varies per brand and never appears in the
- * reference CSS variable set.
- */
 const WATERMARK_SIZE_PT = 60;
 
-/**
- * A 1×1 fully transparent PNG payload. Used only as a defensive fallback
- * when the caller passes an empty or invalid logo string — File 3 already
- * guarantees a valid payload, so this is a safety net, not a policy.
- */
 const FALLBACK_LOGO_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
@@ -63,35 +21,6 @@ const FALLBACK_LOGO_BASE64 =
 // 2. Public API
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Render the complete Typst setup block for a document.
- *
- * The returned string contains:
- *   • A header comment identifying the generator.
- *   • `#set page(...)` with paper, margins, watermark, header, and footer.
- *   • `#set text(...)` for document-wide typography.
- *   • `#set par(...)` for paragraph defaults.
- *   • `#show heading: ...` for brand-styled headings.
- *   • If `headerRepeats` is false, the header + divider emitted as content
- *     so it appears only on the first page.
- *
- * @param {object} params
- * @param {string}   params.logoBase64           Base64 payload (no data: prefix). Required.
- * @param {string}   [params.headerTitle]        Document-type title shown on the right.
- * @param {string}   [params.headerSubtitle]     Small descriptor under the title.
- * @param {string}   [params.headerBrandName]    Left-column brand name. Default 'MedVix'.
- * @param {string}   [params.headerBrandTagline] Left-column tagline.
- * @param {boolean}  [params.headerRepeats]      True → chrome on every page; false → first page only.
- * @param {string}   [params.footerLeft]         Left footer column.
- * @param {string}   [params.footerCenter]       Center footer column.
- * @param {string}   [params.footerRight]        Right footer column (page count is appended).
- * @param {string}   [params.watermarkLine1]     First line of the background watermark.
- * @param {string}   [params.watermarkLine2]     Second line.
- * @param {string}   [params.language]           BCP-47 language tag. Default 'en-US'.
- * @param {string}   [params.theme]              Design-token theme. Default 'light'.
- * @returns {string}                             Complete Typst source string.
- * @throws {Error}                               On invalid params or unknown theme.
- */
 export function renderBaseSetup(params = {}) {
   if (params === null || typeof params !== 'object' || Array.isArray(params)) {
     throw new Error(`${LOG_PREFIX} params must be a plain object`);
@@ -105,7 +34,6 @@ export function renderBaseSetup(params = {}) {
     );
   }
 
-  // ── Resolve the logo (defensive fallback only) ──────────────────────────
   const logoBase64 =
     typeof params.logoBase64 === 'string' && params.logoBase64.length > 0
       ? params.logoBase64
@@ -113,7 +41,6 @@ export function renderBaseSetup(params = {}) {
 
   const logoMime = detectImageMime(logoBase64);
 
-  // ── Escape every caller-provided string exactly once ────────────────────
   const esc = {
     headerTitle:        escapeTypstLiteral(compact(params.headerTitle)),
     headerSubtitle:     escapeTypstLiteral(compact(params.headerSubtitle)),
@@ -129,13 +56,11 @@ export function renderBaseSetup(params = {}) {
   const language = sanitizeLanguage(params.language);
   const headerRepeats = params.headerRepeats !== false;   // default true
 
-  // ── Build fragments ─────────────────────────────────────────────────────
   const headerFragment     = buildHeaderFragment(esc, logoBase64, logoMime);
   const footerFragment     = buildFooterFragment(esc);
   const watermarkExpr      = buildWatermarkExpr(esc);
   const headingShowRule    = buildHeadingShowRule();
 
-  // ── Assemble the setup block ────────────────────────────────────────────
   const out = [];
 
   out.push('// ─────────────────────────────────────────────────────────────');
@@ -193,10 +118,6 @@ export function renderBaseSetup(params = {}) {
 // 3. Fragment builders
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Build the header content: three-column grid (logo / brand block / doc
- * title block), followed by a spacer and a horizontal divider.
- */
 function buildHeaderFragment(esc, logoBase64, logoMime) {
   const lines = [];
 
@@ -224,10 +145,6 @@ function buildHeaderFragment(esc, logoBase64, logoMime) {
   return lines.join('\n');
 }
 
-/**
- * Build the footer content: a thin divider line, a small gap, then a
- * three-column grid. The right column appends the dynamic page counter.
- */
 function buildFooterFragment(esc) {
   const lines = [];
 
@@ -238,19 +155,16 @@ function buildFooterFragment(esc) {
   lines.push('  align: (left, center, right),');
   lines.push(`  text(size: font-size-xs, fill: text-muted)[${esc.footerLeft}],`);
   lines.push(`  text(size: font-size-xs, fill: text-muted)[${esc.footerCenter}],`);
+  // FIXED: Removed the invalid .first() call from the page counter
   lines.push(
     `  text(size: font-size-xs, fill: text-muted)[${esc.footerRight} · Page ` +
-    `#counter(page).display() of #counter(page).final().first()]`
+    `#counter(page).display() of #context counter(page).final()]`
   );
   lines.push(')');
 
   return lines.join('\n');
 }
 
-/**
- * Build the watermark expression: a rotated bold text block whose fill is
- * the paired `watermark-color` binding (already a 4-argument rgb()).
- */
 function buildWatermarkExpr(esc) {
   const lines = [];
 
@@ -266,11 +180,8 @@ function buildWatermarkExpr(esc) {
   return lines.join('\n');
 }
 
-/**
- * Build the heading show rule. Maps level 1/2/3 to the corresponding size
- * tokens and paints every heading in the brand color, bold.
- */
 function buildHeadingShowRule() {
+  // FIXED: Kept the `else if` statements on the same line so Typst can parse them.
   return [
     '#show heading: it => block(',
     '  above: 1.2em,',
@@ -278,10 +189,7 @@ function buildHeadingShowRule() {
     '  text(',
     '    weight: "bold",',
     '    fill: brand-primary,',
-    '    size: if it.level == 1 { font-size-xl }',
-    '          else if it.level == 2 { font-size-lg }',
-    '          else if it.level == 3 { font-size-md }',
-    '          else { font-size-base }',
+    '    size: if it.level == 1 { font-size-xl } else if it.level == 2 { font-size-lg } else if it.level == 3 { font-size-md } else { font-size-base }',
     '  )[#it.body]',
     ')'
   ].join('\n');
@@ -291,17 +199,6 @@ function buildHeadingShowRule() {
 // 4. Helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Detect the image MIME type from a base64 payload by matching the
- * encoder-stable prefix produced by each image format's magic number.
- *
- *   PNG  → \x89PNG\r\n\x1a\n  → base64 prefix "iVBORw0KGgo"
- *   JPEG → \xFF\xD8\xFF        → base64 prefix "/9j/"
- *   WebP → "RIFF....WEBP"      → base64 prefix "UklGR"
- *
- * Anything else is treated as PNG — this is a safe default because the
- * raster-fallback path in File 3 always produces a valid PNG.
- */
 function detectImageMime(base64) {
   if (typeof base64 !== 'string' || base64.length < 4) return 'image/png';
   if (base64.startsWith('iVBORw0KGgo')) return 'image/png';
@@ -310,33 +207,17 @@ function detectImageMime(base64) {
   return 'image/png';
 }
 
-/**
- * Collapse any whitespace in a string to single spaces and trim the edges.
- * The header/footer slots are single-line in practice; a stray newline in a
- * caller-provided string would otherwise create an unwanted line break.
- */
 function compact(value) {
   if (value == null) return '';
   return String(value).replace(/\s+/g, ' ').trim();
 }
 
-/**
- * Normalize a language tag to a small, safe subset. Anything that does not
- * match the expected BCP-47 shape falls back to 'en-US'. This avoids the
- * need to escape the string after the fact — the emission site can simply
- * interpolate the sanitized value into a string literal.
- */
 function sanitizeLanguage(input) {
   if (typeof input !== 'string') return 'en-US';
   const cleaned = input.replace(/[^A-Za-z0-9-]/g, '').slice(0, 12);
   return cleaned.length >= 2 ? cleaned : 'en-US';
 }
 
-/**
- * Prefix every line of a multi-line string with the given indentation.
- * Used to keep the emitted Typst readable when a fragment is nested inside
- * `page(header: [...])` or `page(footer: context [...])`.
- */
 function indent(str, prefix) {
   if (!str) return '';
   return str.split('\n').map(line => line ? prefix + line : '').join('\n');
